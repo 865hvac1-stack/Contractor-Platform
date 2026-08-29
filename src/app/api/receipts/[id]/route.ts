@@ -5,7 +5,8 @@ import { getTenantContext } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 function uploadRoot() {
-  return path.resolve(process.env.UPLOAD_DIR || "./uploads");
+  const configured = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  return path.resolve(/* turbopackIgnore: true */ configured);
 }
 
 export async function GET(
@@ -32,7 +33,7 @@ export async function GET(
   }
 
   try {
-    const data = await readFile(absolute);
+    const data = await readFile(/* turbopackIgnore: true */ absolute);
     const safeName = receipt.fileName.replace(/[^\w.\- ()]/g, "_");
     return new NextResponse(data, {
       status: 200,
