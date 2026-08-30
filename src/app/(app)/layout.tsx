@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
@@ -31,14 +31,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-[var(--background)]">
-      <AppSidebar
-        companyName={tenant.company.businessName}
-        userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
-      />
-      <main className="flex-1 overflow-x-hidden">
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</div>
-      </main>
-    </div>
+    <AppShell
+      companyName={tenant.company.businessName}
+      userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
+      userEmail={tenant.user.email}
+    >
+      {children}
+    </AppShell>
   );
 }

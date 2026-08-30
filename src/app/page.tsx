@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
 import { brand } from "@/lib/brand";
+import { BrandMark } from "@/components/brand-mark";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,18 +19,16 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden">
+    <div className="relative flex min-h-screen flex-col bg-[var(--cy-navy)] text-white">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#CCFBF1_0%,_transparent_55%),linear-gradient(180deg,_#F7F6F3_0%,_#EFEDE8_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(240,90,26,0.22)_0%,_transparent_42%)]"
       />
       <header className="relative z-10 flex items-center justify-between px-6 py-5 md:px-10">
-        <p className="font-display text-xl tracking-tight text-[var(--foreground)] md:text-2xl">
-          {brand.name}
-        </p>
+        <BrandMark variant="full" tone="light" />
         <Link
           href="/login"
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-[var(--muted-foreground)]")}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-white/70 hover:bg-white/8 hover:text-white")}
         >
           Sign in
         </Link>
@@ -37,21 +36,25 @@ export default async function HomePage() {
 
       <main className="relative z-10 flex flex-1 flex-col items-start justify-center px-6 pb-20 pt-8 md:px-10 md:pb-28">
         <div className="max-w-2xl">
-          <h1 className="font-display text-5xl leading-[1.05] tracking-tight text-[var(--foreground)] md:text-7xl">
-            {brand.name}
-          </h1>
-          <p className="mt-5 max-w-md text-lg text-[var(--muted-foreground)] md:text-xl">
-            {brand.tagline}
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--cy-orange)]">
+            {brand.positioning}
           </p>
+          <h1 className="mt-4 text-5xl font-semibold leading-[1.02] tracking-tight md:text-7xl">
+            {brand.headline}
+          </h1>
+          <p className="mt-5 max-w-md text-lg text-white/65 md:text-xl">{brand.tagline}</p>
           <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link href="/login" className={cn(buttonVariants({ size: "lg" }), "h-11 px-6")}>
-              Log in
+            <Link href="/register" className={cn(buttonVariants({ size: "lg" }), "h-11 px-6")}>
+              Create account
             </Link>
             <Link
-              href="/register"
-              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 px-6")}
+              href="/login"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "h-11 border-white/20 bg-transparent px-6 text-white hover:bg-white/8"
+              )}
             >
-              Create account
+              Log in
             </Link>
           </div>
         </div>

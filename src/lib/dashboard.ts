@@ -22,6 +22,8 @@ export async function getCommandCenterData(companyId: string) {
     jobsNeedingAttention,
     attention,
     technicians,
+    scheduledJobsToday,
+    expensesThisMonth,
   ] = await Promise.all([
     prisma.job.count({
       where: {
@@ -101,12 +103,18 @@ export async function getCommandCenterData(companyId: string) {
         role: { in: ["TECHNICIAN", "INSTALLER"] },
       },
     }),
+    getScheduleJobs(companyId, "today"),
+    prisma.expense.aggregate({
+      where: { companyId, date: { gte: monthStart, lte: monthEnd } },
+      _sum: { amountCents: true },
+    }),
   ]);
 
   const openEstimateValue = openEstimates.reduce((s, e) => s + e.totalCents, 0);
   const wonEstimateValue = wonEstimatesThisMonth.reduce((s, e) => s + e.totalCents, 0);
   const outstandingBalance = unpaidInvoices.reduce((s, i) => s + i.balanceCents, 0);
   const revenueThisMonth = paidInvoicesThisMonth._sum.totalCents ?? 0;
+  const expensesCents = expensesThisMonth._sum.amountCents ?? 0;
 
   const estimatesNeedingFollowUp = attention.filter((a) => a.type === "estimate_not_followed_up").length;
 
@@ -125,6 +133,8 @@ export async function getCommandCenterData(companyId: string) {
       revenueThisMonth,
       unpaidInvoices: unpaidInvoices.length,
       outstandingBalance,
+      expensesThisMonth: expensesCents,
+      contributionThisMonth: revenueThisMonth - expensesCents,
     },
     followUp: {
       estimatesNeedingFollowUp,
@@ -136,6 +146,7 @@ export async function getCommandCenterData(companyId: string) {
       technicianCount: technicians,
     },
     attention,
+    scheduledJobsToday,
   };
 }
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { brand, industries, companySizes } from "@/lib/brand";
+import { industries, companySizes } from "@/lib/brand";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,9 @@ export default async function OnboardingPage() {
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-12">
       <div className="mb-8">
-        <p className="font-display text-2xl tracking-tight text-[var(--foreground)]">{brand.name}</p>
+        <p className="text-sm font-semibold tracking-[0.14em] text-[var(--cy-navy)]">
+          CONTRACTOR<span className="text-[var(--cy-orange)]"> YOU</span>
+        </p>
         <h1 className="mt-4 font-display text-3xl tracking-tight text-[var(--foreground)]">
           Set up your company
         </h1>

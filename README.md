@@ -1,4 +1,4 @@
-# Contractor OS
+# ContractorYou
 
 Multi-tenant SaaS foundation for home-service contractors (HVAC first template, trade-agnostic core).
 

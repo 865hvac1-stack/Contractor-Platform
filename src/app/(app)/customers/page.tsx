@@ -47,24 +47,30 @@ export default async function CustomersPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl tracking-tight">Customers</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)]">
+            Customers
+          </h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             People and businesses you serve.
           </p>
         </div>
-        <Link href="/customers/new" className={cn(buttonVariants())}>
+        <Link href="/customers/new" className={cn(buttonVariants(), "h-10 px-4")}>
           New customer
         </Link>
       </div>
 
-      <form className="flex max-w-md gap-2" method="get">
+      <form
+        className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-3 sm:flex-row sm:items-center"
+        method="get"
+      >
         <Input
           name="q"
           defaultValue={query}
-          placeholder="Search name, email, phone…"
+          placeholder="Search name, email, or phone"
           aria-label="Search customers"
+          className="h-10 border-transparent bg-[var(--cy-gray)]"
         />
-        <Button type="submit" variant="outline">
+        <Button type="submit" className="h-10 px-5">
           Search
         </Button>
       </form>
@@ -81,10 +87,10 @@ export default async function CustomersPage({
           actionHref="/customers/new"
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-white">
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-[var(--cy-gray)]/70">
                 <TableHead>Name</TableHead>
                 <TableHead className="hidden md:table-cell">Contact</TableHead>
                 <TableHead>Status</TableHead>
@@ -93,14 +99,13 @@ export default async function CustomersPage({
             </TableHeader>
             <TableBody>
               {customers.map((c) => {
-                const name =
-                  c.businessName?.trim() || `${c.firstName} ${c.lastName}`.trim();
+                const name = c.businessName?.trim() || `${c.firstName} ${c.lastName}`.trim();
                 return (
                   <TableRow key={c.id}>
                     <TableCell>
                       <Link
                         href={`/customers/${c.id}`}
-                        className="font-medium text-[var(--foreground)] hover:underline"
+                        className="font-medium text-[var(--cy-navy)] hover:text-[var(--cy-orange)]"
                       >
                         {name}
                       </Link>

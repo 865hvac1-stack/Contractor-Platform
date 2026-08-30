@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requirePlatformAdmin, getSessionUser } from "@/lib/auth";
-import { brand } from "@/lib/brand";
 import { logoutAction } from "@/server/actions/auth";
 
 export default async function PlatformLayout({
@@ -18,8 +17,11 @@ export default async function PlatformLayout({
       <header className="border-b border-[var(--border)] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 md:px-8">
           <div>
-            <Link href="/platform" className="font-display text-xl tracking-tight">
-              {brand.name} · Platform
+            <Link href="/platform" className="text-sm font-semibold tracking-[0.12em]">
+              CONTRACTOR<span className="text-[var(--cy-orange)]"> YOU</span>
+              <span className="ml-2 font-medium tracking-normal text-[var(--muted-foreground)]">
+                Platform
+              </span>
             </Link>
             <p className="text-xs text-[var(--muted-foreground)]">
               {user.firstName} {user.lastName}

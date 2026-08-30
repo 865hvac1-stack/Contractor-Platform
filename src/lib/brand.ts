@@ -1,26 +1,27 @@
 /**
- * Centralized brand / theme tokens.
- * Rebrand by changing these values — avoid hard-coding colors in components.
+ * ContractorYou brand and theme tokens.
+ * Restyle the product from this file + CSS variables — do not hard-code colors in screens.
  */
 export const brand = {
-  name: "Contractor OS",
-  tagline: "Less office work. More visibility. Better margins.",
-  accent: {
-    DEFAULT: "#0F766E", // teal-700 — strong, rebrandable
-    hover: "#0D9488",
-    muted: "#CCFBF1",
-    foreground: "#FFFFFF",
-  },
-  surface: {
-    page: "#F7F6F3",
-    card: "#FFFFFF",
-    border: "#E7E5E0",
-    muted: "#F0EEE9",
-  },
-  text: {
-    primary: "#1C1917",
-    secondary: "#57534E",
-    muted: "#A8A29E",
+  name: "ContractorYou",
+  wordmarkPrimary: "CONTRACTOR",
+  wordmarkAccent: "YOU",
+  mark: "CY",
+  positioning: "The Operating System for Contractors",
+  headline: "YOUR BUSINESS. YOUR WAY.",
+  tagline: "Less office work. More visibility. Better follow-up. Better margins.",
+  colors: {
+    navy: "#0B1220",
+    navySoft: "#141C2E",
+    orange: "#F05A1A",
+    orangeHover: "#D94E14",
+    orangeMuted: "#FFF1EA",
+    white: "#FFFFFF",
+    gray: "#F4F6F8",
+    grayBorder: "#E4E7EC",
+    text: "#0B1220",
+    textSecondary: "#5B6573",
+    textMuted: "#8B93A0",
   },
 } as const;
 
