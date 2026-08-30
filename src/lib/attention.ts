@@ -29,7 +29,15 @@ export function registerAttentionDetector(detector: AttentionDetector): void {
 }
 
 export async function getNeedsAttention(companyId: string): Promise<AttentionItem[]> {
-  const results = await Promise.all(detectors.map((d) => d(companyId)));
+  const results = await Promise.all(
+    detectors.map(async (detector) => {
+      try {
+        return await detector(companyId);
+      } catch {
+        return [];
+      }
+    })
+  );
   return results
     .flat()
     .sort((a, b) => {
@@ -280,7 +288,7 @@ registerAttentionDetector(async (companyId) => {
     where: {
       companyId,
       status: { in: ["DISPATCHED", "IN_PROGRESS"] },
-      playbookSnapshot: { isNot: null },
+      playbookId: { not: null },
     },
     include: { playbookSnapshot: true },
     orderBy: { updatedAt: "desc" },
