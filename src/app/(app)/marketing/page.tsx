@@ -188,6 +188,7 @@ export default async function MarketingHubPage({
                   <th className="py-2 pr-3 font-medium">Booked</th>
                   <th className="py-2 pr-3 font-medium">Sold</th>
                   <th className="py-2 pr-3 font-medium">Spend</th>
+                  <th className="py-2 pr-3 font-medium">CPL</th>
                   <th className="py-2 pr-3 font-medium">Revenue</th>
                   <th className="py-2 font-medium">Gross profit</th>
                 </tr>
@@ -203,6 +204,11 @@ export default async function MarketingHubPage({
                     <td className="py-3 pr-3 tabular-nums">{row.sold}</td>
                     <td className="py-3 pr-3 tabular-nums">
                       {row.spend > 0 ? formatMoney(row.spend) : "—"}
+                    </td>
+                    <td className="py-3 pr-3 tabular-nums">
+                      {row.spend > 0 && row.leads > 0
+                        ? formatMoney(Math.round(row.spend / row.leads))
+                        : "Not enough data yet"}
                     </td>
                     <td className="py-3 pr-3 tabular-nums">
                       {row.revenue > 0 ? formatMoney(row.revenue) : "—"}
@@ -242,9 +248,11 @@ export default async function MarketingHubPage({
                     <p className="text-xs text-[var(--muted-foreground)]">{card.provider.value}</p>
                   </div>
                   <span className="shrink-0 text-xs font-medium text-[var(--cy-orange)]">
-                    {card.provider.readiness === "coming_soon"
-                      ? "Coming soon"
-                      : "Not configured"}
+                    {card.action === "CONFIGURE_INTEGRATION"
+                      ? "Configure"
+                      : card.action === "COMING_SOON"
+                        ? "Coming soon"
+                        : "Connect"}
                   </span>
                 </Link>
               </li>

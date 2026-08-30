@@ -254,6 +254,10 @@ export const automationDraftSchema = z.object({
 export const socialDraftSchema = z.object({
   channel: z.enum(["FACEBOOK", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE", "TIKTOK", "LINKEDIN", "YOUTUBE"]),
   body: z.string().min(1).max(5000),
+  linkUrl: z.string().url().max(500).optional().or(z.literal("")),
+  mediaUrl: z.string().url().max(500).optional().or(z.literal("")),
+  ctaLabel: z.string().max(80).optional().or(z.literal("")),
+  scheduledAt: z.string().max(40).optional().or(z.literal("")),
 });
 
 export const inviteMemberSchema = z.object({

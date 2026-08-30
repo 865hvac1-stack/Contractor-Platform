@@ -15,10 +15,13 @@ export type EncryptedSecret = {
  * Never log plaintext. Never send ciphertext or plaintext to the browser.
  */
 export function getIntegrationKey(): Buffer {
-  const secret = process.env.INTEGRATION_SECRET || process.env.SESSION_SECRET;
+  const secret =
+    process.env.INTEGRATION_ENCRYPTION_KEY ||
+    process.env.INTEGRATION_SECRET ||
+    process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error(
-      "INTEGRATION_SECRET or SESSION_SECRET (32+ characters) is required to encrypt provider credentials."
+      "INTEGRATION_ENCRYPTION_KEY, INTEGRATION_SECRET, or SESSION_SECRET (32+ characters) is required to encrypt provider credentials."
     );
   }
   return scryptSync(secret, KEY_SALT, 32);

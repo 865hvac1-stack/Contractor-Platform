@@ -21,7 +21,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **RBAC:** centralized `can(role, permission)` in `src/lib/permissions.ts`. Pages/actions call `requirePermission`.
 - **Money:** integer cents only (`src/lib/money.ts`).
 - **Needs Attention:** pluggable detectors in `src/lib/attention.ts` (dashboard consumes them).
-- **Marketing Hub:** tenant-scoped leads, channel catalog, attribution, and Intelligence foundations. Provider OAuth is not live; cards stay Coming Soon / not configured. Metrics are calculated from recorded leads and advertising expenses only.
+- **Marketing Hub:** tenant-scoped leads, channels, attribution, and Intelligence. Website forms, landing pages, and UTM capture are live. OAuth for Google / Meta / TikTok / LinkedIn is implemented; connections stay disconnected until real credentials and provider approval exist. Metrics use recorded leads, expenses, and imported spend only.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
@@ -113,6 +113,48 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 - Uploaded receipts are served only after membership checks.
 - Never commit secrets. Never set `ALLOW_SEED=true` in production.
 
+## Marketing integrations
+
+Channels are real OAuth and ContractorYou-hosted products. ContractorYou will not fake a successful connection or invent marketing numbers.
+
+**Live now (no provider approval):** Website forms, landing pages, UTM first/last touch, tracking-number mapping.
+
+**Code ready — needs Railway credentials:** Google, Meta, TikTok, LinkedIn, Twilio, Resend.
+
+**Code ready — needs provider approval:** Google Business Profile API access, Google Ads developer token / LSA, Meta App Review, TikTok Content Posting / Ads, LinkedIn Marketing APIs.
+
+### OAuth callback URIs
+
+Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into each developer console:
+
+| Provider | Callback URI |
+|----------|----------------|
+| Google (shared) | `{APP_URL}/api/integrations/google/callback` |
+| Meta | `{APP_URL}/api/integrations/meta/callback` |
+| TikTok | `{APP_URL}/api/integrations/tiktok/callback` |
+| LinkedIn | `{APP_URL}/api/integrations/linkedin/callback` |
+
+Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
+
+### Railway variables for integrations
+
+| Variable | Used by |
+|----------|---------|
+| `APP_URL` | OAuth redirect URIs and hosted form links |
+| `INTEGRATION_ENCRYPTION_KEY` | AES-256-GCM for provider tokens (32+ chars). Falls back to `INTEGRATION_SECRET` then `SESSION_SECRET`. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | All Google products |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads and Local Services Ads |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Optional manager (MCC) account |
+| `META_APP_ID` / `META_APP_SECRET` | Facebook, Instagram, Meta Ads |
+| `META_WEBHOOK_VERIFY_TOKEN` | Meta webhook handshake |
+| `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | TikTok Login Kit |
+| `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` | LinkedIn |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Phone / SMS (no fake ringing without these) |
+| `RESEND_API_KEY` | Transactional email |
+| `INTEGRATION_WEBHOOK_SECRET` | Optional HMAC for `/api/webhooks/[provider]` |
+
+Never commit real values. Platform Admin → Integrations shows **presence only**.
+
 ## Railway deployment
 
 1. Create a Railway project and connect this GitHub repo.
@@ -157,6 +199,10 @@ Critical coverage includes:
 - Empty dashboard aggregates = `$0`
 - Playbook tenant isolation (Company A cannot read or mutate Company B playbooks, versions, snapshots, or form templates)
 - Playbook snapshots stay frozen when the live playbook is edited
+- Integration tenant isolation (connections, forms, leads)
+- OAuth state is single-use
+- Website form submissions create real leads with UTMs
+- External lead sync is idempotent
 - Jobs without a playbook continue to function
 - Message merge fields never execute code
 

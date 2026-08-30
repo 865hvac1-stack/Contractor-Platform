@@ -28,6 +28,12 @@ export default async function PlatformLayout({
           </div>
           <div className="flex items-center gap-4 text-sm">
             <Link
+              href="/platform/integrations"
+              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              Integrations
+            </Link>
+            <Link
               href="/dashboard"
               className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
             >

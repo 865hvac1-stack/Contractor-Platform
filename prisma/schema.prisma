@@ -171,12 +171,18 @@ enum LeadSource {
   DIRECT
   MANUAL
   OTHER
+  TIKTOK
+  LINKEDIN
+  YOUTUBE
+  META_ADS
 }
 
 enum IntegrationStatus {
   NOT_CONNECTED
   CONNECTING
+  SELECT_ACCOUNT
   CONNECTED
+  SYNCING
   REAUTH_REQUIRED
   ERROR
   DISABLED
@@ -246,6 +252,7 @@ model User {
   attributionOverrides AttributionEvent[]   @relation("AttributionOverride")
   playbookVersionsCreated PlaybookVersion[] @relation("PlaybookVersionAuthor")
   jobWorkflowEvents JobWorkflowEvent[]
+  oauthStates OAuthState[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -333,6 +340,12 @@ model Company {
   metricSnapshots MetricSnapshot[]
   socialPosts SocialPost[]
   formSubmissions FormSubmission[]
+  oauthStates OAuthState[]
+  integrationAccounts IntegrationAccount[]
+  websiteForms WebsiteForm[]
+  landingPages LandingPage[]
+  trackingNumbers TrackingNumber[]
+  socialPublications SocialPostPublication[]
   playbooks Playbook[]
   playbookVersions PlaybookVersion[]
   jobPlaybookSnapshots JobPlaybookSnapshot[]
@@ -780,6 +793,8 @@ model IntegrationConnection {
   externalAccountId String?
   scopes            String[]          @default([])
   lastSyncAt        DateTime?
+  lastAttemptAt     DateTime?
+  nextSyncAt        DateTime?
   lastHealthAt      DateTime?
   healthMessage     String?
   errorMessage      String?
@@ -791,6 +806,7 @@ model IntegrationConnection {
   credentials IntegrationCredential?
   syncs       IntegrationSync[]
   events      IntegrationEvent[]
+  accounts    IntegrationAccount[]
 
   @@unique([companyId, providerKey])
   @@index([companyId])
@@ -848,6 +864,102 @@ model IntegrationEvent {
 
   @@index([companyId, connectionId])
   @@index([companyId, eventType])
+  @@unique([companyId, connectionId, externalId])
+}
+
+model IntegrationAccount {
+  id           String   @id @default(cuid())
+  companyId    String
+  connectionId String
+  providerKey  String
+  kind         String
+  externalId   String
+  name         String
+  selected     Boolean  @default(false)
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, kind, externalId])
+  @@index([companyId, connectionId])
+}
+
+model OAuthState {
+  id           String   @id @default(cuid())
+  companyId    String
+  userId       String
+  providerKey  String
+  state        String   @unique
+  codeVerifier String?
+  redirectTo   String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([expiresAt])
+}
+
+model WebsiteForm {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  slug        String
+  fields      Json
+  status      String   @default("ACTIVE")
+  honeypot    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  submissions FormSubmission[]
+  landingPages LandingPage[]
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+}
+
+model LandingPage {
+  id          String   @id @default(cuid())
+  companyId   String
+  formId      String?
+  name        String
+  slug        String
+  headline    String
+  body        String
+  ctaLabel    String   @default("Request service")
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  form    WebsiteForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+}
+
+model TrackingNumber {
+  id          String   @id @default(cuid())
+  companyId   String
+  phoneNumber String
+  source      String
+  campaign    String?
+  channel     String?
+  provider    String?
+  status      String   @default("INACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, phoneNumber])
+  @@index([companyId])
 }
 
 model Lead {
@@ -980,6 +1092,7 @@ model MarketingSpend {
 
   @@index([companyId, periodStart, periodEnd])
   @@index([companyId, source])
+  @@unique([companyId, provider, externalId])
 }
 
 model Campaign {
@@ -1148,19 +1261,44 @@ model SocialPost {
   channel     String
   status      String    @default("DRAFT")
   body        String
+  linkUrl     String?
+  mediaUrl    String?
+  ctaLabel    String?
   scheduledAt DateTime?
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  publications  SocialPostPublication[]
 
   @@index([companyId, status])
+}
+
+model SocialPostPublication {
+  id            String    @id @default(cuid())
+  companyId     String
+  postId        String
+  channel       String
+  status        String    @default("PENDING")
+  externalId    String?
+  errorMessage  String?
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  post    SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, channel])
+  @@index([companyId, postId])
 }
 
 model FormSubmission {
   id             String   @id @default(cuid())
   companyId      String
+  websiteFormId  String?
+  landingPageId  String?
   leadId         String?
   customerId     String?
   landingPage    String?
@@ -1177,12 +1315,14 @@ model FormSubmission {
   payload        Json?
   createdAt      DateTime @default(now())
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  websiteForm WebsiteForm? @relation(fields: [websiteFormId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, createdAt])
+  @@index([companyId, websiteFormId])
 }
 
 // ============================================================

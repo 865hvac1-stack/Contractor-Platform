@@ -16,6 +16,10 @@ export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   DIRECT: "Direct",
   MANUAL: "Manual entry",
   OTHER: "Other",
+  TIKTOK: "TikTok",
+  LINKEDIN: "LinkedIn",
+  YOUTUBE: "YouTube",
+  META_ADS: "Meta Ads",
 };
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {

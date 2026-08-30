@@ -1,10 +1,16 @@
 import { requirePermission } from "@/lib/tenant";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
+import { replyToReviewAction } from "@/server/actions/integrations";
+import { ActionForm } from "@/components/action-form";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 
 export default async function ReviewsPage() {
   const ctx = await requirePermission("marketing:view");
+  const canManage = can(ctx.role, "marketing:manage");
   const [reviews, requests, completedJobs] = await Promise.all([
     prisma.review.findMany({
       where: { companyId: ctx.company.id },
@@ -102,6 +108,15 @@ export default async function ReviewsPage() {
                 {review.needsResponse ? <StatusBadge status="REVIEW_REQUIRED" /> : null}
               </div>
               <p className="mt-2 text-sm text-[var(--muted-foreground)]">{review.body}</p>
+              {canManage && review.needsResponse && review.provider === "google_business_profile" ? (
+                <ActionForm action={replyToReviewAction} className="mt-3 space-y-2" successMessage="Reply sent to Google.">
+                  <input type="hidden" name="reviewId" value={review.id} />
+                  <Textarea name="comment" rows={3} required placeholder="Write a reply. This posts to Google only after you submit." />
+                  <Button type="submit" variant="outline">
+                    Post reply to Google
+                  </Button>
+                </ActionForm>
+              ) : null}
             </li>
           ))}
         </ul>

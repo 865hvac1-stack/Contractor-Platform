@@ -98,9 +98,17 @@ export async function createSocialDraftAction(
     const parsed = socialDraftSchema.safeParse({
       channel: formData.get("channel"),
       body: formData.get("body"),
+      linkUrl: formData.get("linkUrl") || "",
+      mediaUrl: formData.get("mediaUrl") || "",
+      ctaLabel: formData.get("ctaLabel") || "",
+      scheduledAt: formData.get("scheduledAt") || "",
     });
     if (!parsed.success) {
       return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid draft." };
+    }
+    const scheduledAt = parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null;
+    if (scheduledAt && Number.isNaN(scheduledAt.getTime())) {
+      return { ok: false, error: "Scheduled time is not valid." };
     }
 
     await prisma.socialPost.create({
@@ -108,7 +116,11 @@ export async function createSocialDraftAction(
         companyId: ctx.company.id,
         channel: parsed.data.channel,
         body: parsed.data.body,
-        status: "DRAFT",
+        linkUrl: parsed.data.linkUrl || null,
+        mediaUrl: parsed.data.mediaUrl || null,
+        ctaLabel: parsed.data.ctaLabel || null,
+        scheduledAt,
+        status: scheduledAt ? "SCHEDULED" : "DRAFT",
       },
     });
 

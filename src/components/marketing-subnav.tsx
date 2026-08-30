@@ -8,6 +8,8 @@ const items = [
   { href: "/marketing", label: "Hub", exact: true },
   { href: "/marketing/leads", label: "Leads" },
   { href: "/marketing/channels", label: "Channels" },
+  { href: "/marketing/onboarding", label: "Setup" },
+  { href: "/marketing/forms", label: "Website" },
   { href: "/marketing/social", label: "Social" },
   { href: "/marketing/campaigns", label: "Campaigns" },
   { href: "/marketing/reviews", label: "Reviews" },

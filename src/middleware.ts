@@ -15,7 +15,12 @@ export function middleware(request: NextRequest) {
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    pathname.startsWith("/api/health");
+    pathname.startsWith("/api/health") ||
+    pathname.startsWith("/f/") ||
+    pathname.startsWith("/p/") ||
+    pathname.startsWith("/api/forms/") ||
+    pathname.startsWith("/api/webhooks/") ||
+    pathname.startsWith("/api/integrations/") && pathname.includes("/callback");
 
   const session = request.cookies.get("cp_session")?.value; // must match SESSION_COOKIE in lib/auth
 
