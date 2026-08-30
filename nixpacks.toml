@@ -1,0 +1,7 @@
+# Railway / Nixpacks: use current LTS Node. Do not re-run npm ci here —
+# Nixpacks already installs dependencies before the build command.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
