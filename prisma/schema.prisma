@@ -253,6 +253,7 @@ model User {
   playbookVersionsCreated PlaybookVersion[] @relation("PlaybookVersionAuthor")
   jobWorkflowEvents JobWorkflowEvent[]
   oauthStates OAuthState[]
+  importSessions ImportSession[]
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
@@ -360,6 +361,10 @@ model Company {
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
   intelligenceSetting CompanyIntelligenceSetting?
+  importSessions ImportSession[]
+  importRows ImportRow[]
+  importExternalRefs ImportExternalRef[]
+  importProfiles ImportMappingProfile[]
 
   @@index([status])
   @@index([industry])
@@ -418,6 +423,9 @@ model Customer {
   status                 CustomerStatus         @default(ACTIVE)
   tags                   String[]               @default([])
   source                 String?
+  sourceSystem           String?
+  externalId             String?
+  importSessionId        String?
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 
@@ -434,12 +442,15 @@ model Customer {
   callRecords CallRecord[]
   formSubmissions FormSubmission[]
   attributionEvents AttributionEvent[]
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
   @@index([companyId, status])
   @@index([companyId, email])
   @@index([companyId, phone])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 model Property {
@@ -455,6 +466,7 @@ model Property {
   accessNotes  String?
   gateCodeNotes String? // treat as sensitive operational note
   isPrimary    Boolean      @default(false)
+  importSessionId String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -465,10 +477,12 @@ model Property {
   invoices  Invoice[]
   equipment Equipment[]
   leads     Lead[]
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, customerId])
   @@index([customerId])
+  @@index([companyId, importSessionId])
 }
 
 model Equipment {
@@ -1540,4 +1554,167 @@ model FormTemplate {
 
   @@index([companyId])
   @@index([companyId, playbookId])
+}
+
+enum ImportRecordType {
+  CUSTOMERS
+  PROPERTIES
+  CONTACTS
+  JOBS
+  ESTIMATES
+  INVOICES
+  PAYMENTS
+  EQUIPMENT
+  MEMBERSHIPS
+  NOTES
+  TAGS
+  LEAD_SOURCES
+  EXPENSES
+  PRICEBOOK
+  COMMUNICATIONS
+  OTHER
+}
+
+enum ImportSourceType {
+  HOUSECALL_PRO
+  SERVICETITAN
+  JOBBER
+  FIELDEDGE
+  SERVICE_FUSION
+  WORKIZ
+  QUICKBOOKS
+  HUBSPOT
+  SALESFORCE
+  SPREADSHEET
+  OTHER
+  UNKNOWN
+}
+
+enum ImportSessionStatus {
+  UPLOADED
+  ANALYZING
+  MAPPING_REQUIRED
+  READY_FOR_PREVIEW
+  READY_TO_IMPORT
+  IMPORTING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum ImportRowStatus {
+  PENDING
+  VALID
+  WARNING
+  ERROR
+  IMPORTED
+  SKIPPED
+  FAILED
+}
+
+enum ImportRowAction {
+  CREATE
+  UPDATE
+  MERGE
+  SKIP
+  ERROR
+}
+
+enum ImportDuplicateVerdict {
+  NEW
+  LIKELY_DUPLICATE
+  EXACT_MATCH
+  NEEDS_REVIEW
+}
+
+model ImportSession {
+  id                String              @id @default(cuid())
+  companyId         String
+  userId            String
+  recordType        ImportRecordType
+  sourceType        ImportSourceType
+  fileName          String
+  fileHash          String
+  mimeType          String?
+  encoding          String?
+  status            ImportSessionStatus @default(UPLOADED)
+  rowCount          Int                 @default(0)
+  analysis          Json?
+  mapping           Json?
+  previewSummary    Json?
+  importSummary     Json?
+  intelligence      String?
+  errorMessage      String?
+  duplicatePolicy   String              @default("SKIP")
+  confirmedAt       DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  processedRows     Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rows              ImportRow[]
+  externalRefs      ImportExternalRef[]
+  createdCustomers  Customer[]
+  createdProperties Property[]
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status])
+}
+
+model ImportRow {
+  id               String                 @id @default(cuid())
+  companyId        String
+  importSessionId  String
+  rowNumber        Int
+  status           ImportRowStatus        @default(PENDING)
+  action           ImportRowAction        @default(CREATE)
+  duplicateVerdict ImportDuplicateVerdict @default(NEW)
+  rawData          Json
+  normalizedData   Json?
+  mappedData       Json?
+  issues           Json?
+  targetRecordId   String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  company          Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  session          ImportSession          @relation(fields: [importSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([importSessionId, rowNumber])
+  @@index([companyId, importSessionId])
+  @@index([importSessionId, status])
+}
+
+model ImportExternalRef {
+  id              String           @id @default(cuid())
+  companyId       String
+  sourceSystem    ImportSourceType
+  recordType      ImportRecordType
+  externalId      String
+  targetRecordId  String
+  importSessionId String?
+  createdAt       DateTime         @default(now())
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  session         ImportSession?   @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, sourceSystem, recordType, externalId])
+  @@index([companyId, recordType, targetRecordId])
+}
+
+model ImportMappingProfile {
+  id                String           @id @default(cuid())
+  companyId         String?
+  sourceType        ImportSourceType
+  recordType        ImportRecordType
+  name              String
+  headerFingerprint String
+  mapping           Json
+  isSystem          Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  company           Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([sourceType, recordType])
 }

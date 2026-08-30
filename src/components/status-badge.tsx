@@ -55,6 +55,15 @@ const toneMap: Record<string, string> = {
   DISABLED: "bg-stone-100 text-stone-500",
   SENDING: "bg-amber-50 text-amber-800",
   PAUSED: "bg-stone-100 text-stone-600",
+  ANALYZING: "bg-sky-50 text-sky-800",
+  MAPPING_REQUIRED: "bg-amber-50 text-amber-800",
+  READY_FOR_PREVIEW: "bg-indigo-50 text-indigo-800",
+  READY_TO_IMPORT: "bg-teal-50 text-teal-800",
+  IMPORTING: "bg-sky-50 text-sky-800",
+  PARTIAL: "bg-amber-50 text-amber-800",
+  SKIPPED: "bg-stone-100 text-stone-500",
+  VALID: "bg-emerald-50 text-emerald-800",
+  WARNING: "bg-amber-50 text-amber-800",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

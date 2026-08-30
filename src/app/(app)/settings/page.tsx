@@ -50,6 +50,22 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
+      {can(ctx.role, "imports:manage") ? (
+        <Link
+          href="/settings/import"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Bring your data
+          </p>
+          <h2 className="mt-2 font-medium">Import data</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Upload a customer list from almost any software or spreadsheet. Match the columns, preview,
+            then import safely.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "playbooks:view") ? (
         <Link
           href="/settings/playbooks"

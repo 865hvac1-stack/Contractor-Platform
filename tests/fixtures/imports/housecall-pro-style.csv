@@ -1,0 +1,4 @@
+Customer ID,First Name,Last Name,Company,Email,Mobile Number,Home Number,Lead Source,Tags,Notes,Address,City,State,Zip,Service Address,Service City,Service State,Service Zip,Customer Since,Lifetime Value,Do Not Service,Notifications
+abc123,Jordan,Lee,Lee Homes,jordan@leehomes.test,4235551001,4235551002,Google,vip|warranty,Gate code in notes,10 Billing Way,Knoxville,TN,37902,88 Service Ln,Farragut,TN,37934,2019-04-12,"$4,210.50",No,Yes
+abc123,Jordan,Lee,Lee Homes,jordan@leehomes.test,4235551001,4235551002,Google,vip,Second location,,,,,200 Shop Ct,Lenoir City,TN,37771,2019-04-12,$100.00,No,Yes
+dns9,Pat,Kim,,pat@example.com,4235551099,,Referral,,Do not return,9 Closed Rd,Knoxville,TN,37920,,,,,2020-01-01,$0.00,Yes,No

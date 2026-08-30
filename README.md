@@ -24,6 +24,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Marketing Hub:** tenant-scoped leads, channels, attribution, and Intelligence. Website forms, landing pages, and UTM capture are live. OAuth for Google / Meta / TikTok / LinkedIn is implemented; connections stay disconnected until real credentials and provider approval exist. Metrics use recorded leads, expenses, and imported spend only.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
+- **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
 - **Receipts:** upload + storage + processing status fields; no fake AI extraction.
@@ -105,6 +106,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 6. Log expense + upload receipt  
 7. Dashboard / reports update from **real** data only  
 8. Marketing Hub → record a lead → pipeline. Channel cards stay disconnected until OAuth is configured.
+9. Settings → Import Data → upload a customer export → match columns → preview → confirm.
 
 ## Security notes
 
@@ -203,6 +205,8 @@ Critical coverage includes:
 - Playbook snapshots stay frozen when the live playbook is edited
 - Integration tenant isolation (connections, forms, leads)
 - OAuth state is single-use
+- Import engine maps generic, Housecall Pro-style, Jobber-style, ServiceTitan-style, and unknown headers
+- Duplicate detection and tenant isolation for import sessions
 - Website form submissions create real leads with UTMs
 - External lead sync is idempotent
 - Jobs without a playbook continue to function
@@ -218,6 +222,14 @@ src/lib/            auth, tenant, permissions, money, attention, dashboard
 src/server/actions/ server mutations
 tests/              vitest suites
 ```
+
+## Import data
+
+Settings → Import Data. Owners, admins, managers, and office can import. Technicians and installers cannot.
+
+Customer import is live. Jobs, invoices, and other record types show as coming soon on the same engine.
+
+Supported files: CSV, XLSX, XLS (8 MB / 8,000 rows in this phase). The importer does not execute spreadsheet formulas. Nothing is written to customers until you confirm.
 
 ## Playbooks
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -54,9 +55,16 @@ export default async function CustomersPage({
             People and businesses you serve.
           </p>
         </div>
-        <Link href="/customers/new" className={cn(buttonVariants(), "h-10 px-4")}>
-          New customer
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {can(ctx.role, "imports:manage") ? (
+            <Link href="/settings/import" className={cn(buttonVariants({ variant: "outline" }), "h-10 px-4")}>
+              Import customers
+            </Link>
+          ) : null}
+          <Link href="/customers/new" className={cn(buttonVariants(), "h-10 px-4")}>
+            New customer
+          </Link>
+        </div>
       </div>
 
       <form
@@ -76,16 +84,35 @@ export default async function CustomersPage({
       </form>
 
       {customers.length === 0 ? (
-        <EmptyState
-          title={query ? "No matches" : "No customers yet"}
-          description={
-            query
-              ? "Try a different search, or add a new customer."
-              : "Add your first customer to start jobs, estimates, and invoices."
-          }
-          actionLabel="Add customer"
-          actionHref="/customers/new"
-        />
+        query ? (
+          <EmptyState
+            title="No matches"
+            description="Try a different search, or add a new customer."
+            actionLabel="Add customer"
+            actionHref="/customers/new"
+          />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-6 py-16 text-center">
+            <h3 className="font-display text-xl">Import your existing customers</h3>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--muted-foreground)]">
+              Moving from another system? Upload your customer list and we&apos;ll help you bring it into
+              ContractorYou.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {can(ctx.role, "imports:manage") ? (
+                <Link href="/settings/import" className={cn(buttonVariants(), "h-10 px-4")}>
+                  Import customers
+                </Link>
+              ) : null}
+              <Link href="/settings/import" className={cn(buttonVariants({ variant: "outline" }), "h-10 px-4")}>
+                Learn how it works
+              </Link>
+              <Link href="/customers/new" className={cn(buttonVariants({ variant: "outline" }), "h-10 px-4")}>
+                Add one customer
+              </Link>
+            </div>
+          </div>
+        )
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
           <Table>

@@ -35,7 +35,8 @@ export type Permission =
   | "intelligence:view"
   | "intelligence:manage"
   | "playbooks:view"
-  | "playbooks:manage";
+  | "playbooks:manage"
+  | "imports:manage";
 
 const ALL_COMPANY: Permission[] = [
   "company:manage",
@@ -68,6 +69,7 @@ const ALL_COMPANY: Permission[] = [
   "intelligence:manage",
   "playbooks:view",
   "playbooks:manage",
+  "imports:manage",
 ];
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
@@ -98,6 +100,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "leads:manage",
     "intelligence:view",
     "playbooks:view",
+    "imports:manage",
   ],
   DISPATCHER: [
     "customers:view",
@@ -167,6 +170,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "leads:view",
     "intelligence:view",
     "playbooks:view",
+    "imports:manage",
   ],
 };
 

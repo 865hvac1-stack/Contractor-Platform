@@ -18,9 +18,11 @@ const allowedOrigins = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  serverExternalPackages: ["xlsx"],
   experimental: {
     serverActions: {
       allowedOrigins: [...allowedOrigins, "*.up.railway.app", "*.railway.app"],
+      bodySizeLimit: "12mb",
     },
   },
 };
