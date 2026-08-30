@@ -21,6 +21,8 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **RBAC:** centralized `can(role, permission)` in `src/lib/permissions.ts`. Pages/actions call `requirePermission`.
 - **Money:** integer cents only (`src/lib/money.ts`).
 - **Needs Attention:** pluggable detectors in `src/lib/attention.ts` (dashboard consumes them).
+- **Marketing Hub:** tenant-scoped leads, channel catalog, attribution, and Intelligence foundations. Provider OAuth is not live; cards stay Coming Soon / not configured. Metrics are calculated from recorded leads and advertising expenses only.
+- **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
 - **Receipts:** upload + storage + processing status fields; no fake AI extraction.
 
@@ -100,6 +102,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 5. Complete job → create invoice → record payment  
 6. Log expense + upload receipt  
 7. Dashboard / reports update from **real** data only  
+8. Marketing Hub → record a lead → pipeline. Channel cards stay disconnected until OAuth is configured.
 
 ## Security notes
 

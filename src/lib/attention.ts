@@ -251,6 +251,29 @@ registerAttentionDetector(async (companyId) => {
   }));
 });
 
+registerAttentionDetector(async (companyId) => {
+  const leads = await prisma.lead.findMany({
+    where: {
+      companyId,
+      firstRespondedAt: null,
+      status: { in: ["NEW", "CONTACTED"] },
+    },
+    orderBy: { receivedAt: "asc" },
+    take: 25,
+  });
+  return leads.map((lead) => ({
+    id: `lead-unanswered-${lead.id}`,
+    type: "lead_unanswered",
+    title: "Unanswered lead",
+    description: `${lead.firstName} ${lead.lastName}`,
+    severity: "warning" as const,
+    href: `/marketing/leads/${lead.id}`,
+    entityType: "Lead",
+    entityId: lead.id,
+    createdAt: lead.receivedAt,
+  }));
+});
+
 function formatCents(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

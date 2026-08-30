@@ -174,6 +174,87 @@ export const expenseSchema = z.object({
   status: z.enum(["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "POSTED"]).optional(),
 });
 
+export const leadSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  phone: z.string().max(40).optional().or(z.literal("")),
+  email: z.string().email().max(255).optional().or(z.literal("")),
+  message: z.string().max(5000).optional().or(z.literal("")),
+  source: z.enum([
+    "GOOGLE_BUSINESS_PROFILE",
+    "GOOGLE_LSA",
+    "GOOGLE_ADS",
+    "FACEBOOK",
+    "INSTAGRAM",
+    "WEBSITE",
+    "PHONE",
+    "SMS",
+    "EMAIL",
+    "REFERRAL",
+    "REPEAT_CUSTOMER",
+    "ORGANIC_SEARCH",
+    "DIRECT",
+    "MANUAL",
+    "OTHER",
+  ]),
+  sourceDetail: z.string().max(200).optional().or(z.literal("")),
+  campaignName: z.string().max(200).optional().or(z.literal("")),
+  medium: z.string().max(80).optional().or(z.literal("")),
+  assignedUserId: z.string().cuid().optional().or(z.literal("")),
+  estimatedOpportunityCents: z.string().max(20).optional().or(z.literal("")),
+  nextAction: z.string().max(300).optional().or(z.literal("")),
+  utmSource: z.string().max(120).optional().or(z.literal("")),
+  utmMedium: z.string().max(120).optional().or(z.literal("")),
+  utmCampaign: z.string().max(200).optional().or(z.literal("")),
+  utmContent: z.string().max(200).optional().or(z.literal("")),
+  utmTerm: z.string().max(200).optional().or(z.literal("")),
+  landingPage: z.string().max(500).optional().or(z.literal("")),
+  referrer: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const leadStatusSchema = z.object({
+  leadId: z.string().cuid(),
+  status: z.enum([
+    "NEW",
+    "CONTACTED",
+    "BOOKED",
+    "ESTIMATE_SCHEDULED",
+    "ESTIMATE_SENT",
+    "WON",
+    "LOST",
+    "SPAM",
+  ]),
+  lostReason: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const campaignDraftSchema = z.object({
+  name: z.string().min(1).max(200),
+  type: z.enum([
+    "SMS",
+    "EMAIL",
+    "SOCIAL",
+    "PAID_AD_REFERENCE",
+    "CUSTOMER_REACTIVATION",
+    "SEASONAL",
+    "MAINTENANCE",
+    "UNSOLD_ESTIMATE",
+    "MEMBERSHIP",
+    "REVIEW",
+  ]),
+  notes: z.string().max(4000).optional().or(z.literal("")),
+});
+
+export const automationDraftSchema = z.object({
+  name: z.string().min(1).max(200),
+  trigger: z.string().min(1).max(80),
+  action: z.string().min(1).max(80),
+});
+
+export const socialDraftSchema = z.object({
+  channel: z.enum(["FACEBOOK", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE", "TIKTOK", "LINKEDIN", "YOUTUBE"]),
+  body: z.string().min(1).max(5000),
+});
+
 export const inviteMemberSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1).max(100),

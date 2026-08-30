@@ -27,7 +27,12 @@ export type Permission =
   | "reports:financial"
   | "dashboard:view"
   | "equipment:manage"
-  | "equipment:view";
+  | "equipment:view"
+  | "marketing:view"
+  | "marketing:manage"
+  | "leads:view"
+  | "leads:manage"
+  | "intelligence:view";
 
 const ALL_COMPANY: Permission[] = [
   "company:manage",
@@ -52,6 +57,11 @@ const ALL_COMPANY: Permission[] = [
   "dashboard:view",
   "equipment:manage",
   "equipment:view",
+  "marketing:view",
+  "marketing:manage",
+  "leads:view",
+  "leads:manage",
+  "intelligence:view",
 ];
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
@@ -76,6 +86,11 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "equipment:view",
     "team:view",
     "company:settings",
+    "marketing:view",
+    "marketing:manage",
+    "leads:view",
+    "leads:manage",
+    "intelligence:view",
   ],
   DISPATCHER: [
     "customers:view",
@@ -96,6 +111,10 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "jobs:view",
     "dashboard:view",
     "equipment:view",
+    "marketing:view",
+    "leads:view",
+    "leads:manage",
+    "intelligence:view",
   ],
   TECHNICIAN: [
     "jobs:view",
@@ -132,6 +151,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "dashboard:view",
     "team:view",
     "equipment:view",
+    "marketing:view",
+    "leads:view",
+    "intelligence:view",
   ],
 };
 

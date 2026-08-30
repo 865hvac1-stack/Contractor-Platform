@@ -34,6 +34,21 @@ const toneMap: Record<string, string> = {
   NORMAL: "bg-stone-100 text-stone-700",
   HIGH: "bg-orange-50 text-orange-800",
   URGENT: "bg-rose-50 text-rose-800",
+  CONTACTED: "bg-sky-50 text-sky-800",
+  BOOKED: "bg-emerald-50 text-emerald-800",
+  ESTIMATE_SCHEDULED: "bg-indigo-50 text-indigo-800",
+  ESTIMATE_SENT: "bg-violet-50 text-violet-800",
+  WON: "bg-emerald-50 text-emerald-800",
+  LOST: "bg-rose-50 text-rose-800",
+  SPAM: "bg-stone-100 text-stone-500",
+  NOT_CONNECTED: "bg-slate-100 text-slate-600",
+  CONNECTING: "bg-amber-50 text-amber-800",
+  CONNECTED: "bg-emerald-50 text-emerald-800",
+  REAUTH_REQUIRED: "bg-orange-50 text-orange-800",
+  ERROR: "bg-rose-50 text-rose-800",
+  DISABLED: "bg-stone-100 text-stone-500",
+  SENDING: "bg-amber-50 text-amber-800",
+  PAUSED: "bg-stone-100 text-stone-600",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

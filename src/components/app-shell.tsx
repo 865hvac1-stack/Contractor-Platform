@@ -16,6 +16,9 @@ import {
   Star,
   Zap,
   Wallet,
+  Plug,
+  Share2,
+  MessageSquare,
   BarChart3,
   UserCog,
   Settings,
@@ -43,6 +46,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   comingSoon?: boolean;
+  exact?: boolean;
 };
 
 type NavGroup = {
@@ -59,15 +63,9 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: "CRM",
+    title: "Operations",
     items: [
       { href: "/customers", label: "Customers", icon: Users },
-      { label: "Leads", icon: UserPlus, comingSoon: true },
-    ],
-  },
-  {
-    title: "Work",
-    items: [
       { href: "/schedule", label: "Schedule", icon: CalendarDays },
       { href: "/jobs", label: "Jobs", icon: Briefcase },
       { href: "/estimates", label: "Estimates", icon: FileText },
@@ -75,11 +73,15 @@ const groups: NavGroup[] = [
     ],
   },
   {
-    title: "Marketing",
+    title: "Marketing Hub",
     items: [
-      { label: "Campaigns", icon: Megaphone, comingSoon: true },
-      { label: "Reviews", icon: Star, comingSoon: true },
-      { label: "Automations", icon: Zap, comingSoon: true },
+      { href: "/marketing", label: "Marketing Hub", icon: Megaphone, exact: true },
+      { href: "/marketing/leads", label: "Leads", icon: UserPlus },
+      { href: "/marketing/communications", label: "Communications", icon: MessageSquare },
+      { href: "/marketing/campaigns", label: "Campaigns", icon: Share2 },
+      { href: "/marketing/reviews", label: "Reviews", icon: Star },
+      { href: "/marketing/automations", label: "Automations", icon: Zap },
+      { href: "/marketing/channels", label: "Channels", icon: Plug },
     ],
   },
   {
@@ -114,7 +116,9 @@ function NavList({
               const Icon = item.icon;
               const active = Boolean(
                 item.href &&
-                  (pathname === item.href || pathname.startsWith(item.href + "/"))
+                  (item.exact
+                    ? pathname === item.href
+                    : pathname === item.href || pathname.startsWith(item.href + "/"))
               );
 
               if (item.comingSoon || !item.href) {

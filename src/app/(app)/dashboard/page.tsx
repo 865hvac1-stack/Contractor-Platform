@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { requirePermission } from "@/lib/tenant";
 import { getCommandCenterData } from "@/lib/dashboard";
+import { getBusinessPulse } from "@/lib/intelligence/pulse";
 import { formatMoney } from "@/lib/money";
 import { StatusBadge } from "@/components/status-badge";
 import { AskContractorYou } from "@/components/ask-contractoryou";
@@ -33,7 +34,10 @@ const severityTone: Record<string, string> = {
 
 export default async function DashboardPage() {
   const ctx = await requirePermission("dashboard:view");
-  const data = await getCommandCenterData(ctx.company.id);
+  const [data, pulse] = await Promise.all([
+    getCommandCenterData(ctx.company.id),
+    getBusinessPulse(ctx.company.id),
+  ]);
   const greeting = greetingForHour(new Date().getHours());
 
   const kpis = [
@@ -116,6 +120,35 @@ export default async function DashboardPage() {
           );
         })}
       </section>
+
+      {pulse.length > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">
+              Today&apos;s business pulse
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              The most important recorded items across sales, marketing, money, and operations.
+            </p>
+          </div>
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {pulse.map((item) => (
+              <li key={item.id}>
+                <Link
+                  href={item.href}
+                  className="block rounded-2xl border border-[var(--border)] bg-white p-4 hover:border-[var(--cy-navy)]/15"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+                    {item.category}
+                  </p>
+                  <p className="mt-2 font-medium text-[var(--cy-navy)]">{item.title}</p>
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)]">{item.summary}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-3">

@@ -144,6 +144,74 @@ enum PaymentMethod {
   OTHER
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  BOOKED
+  ESTIMATE_SCHEDULED
+  ESTIMATE_SENT
+  WON
+  LOST
+  SPAM
+}
+
+enum LeadSource {
+  GOOGLE_BUSINESS_PROFILE
+  GOOGLE_LSA
+  GOOGLE_ADS
+  FACEBOOK
+  INSTAGRAM
+  WEBSITE
+  PHONE
+  SMS
+  EMAIL
+  REFERRAL
+  REPEAT_CUSTOMER
+  ORGANIC_SEARCH
+  DIRECT
+  MANUAL
+  OTHER
+}
+
+enum IntegrationStatus {
+  NOT_CONNECTED
+  CONNECTING
+  CONNECTED
+  REAUTH_REQUIRED
+  ERROR
+  DISABLED
+}
+
+enum AttributionModel {
+  FIRST_TOUCH
+  LAST_TOUCH
+  PRIMARY_SOURCE
+  CAMPAIGN
+  MANUAL
+}
+
+enum CampaignType {
+  SMS
+  EMAIL
+  SOCIAL
+  PAID_AD_REFERENCE
+  CUSTOMER_REACTIVATION
+  SEASONAL
+  MAINTENANCE
+  UNSOLD_ESTIMATE
+  MEMBERSHIP
+  REVIEW
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELED
+}
+
 // ============================================================
 // PLATFORM / AUTH
 // ============================================================
@@ -167,6 +235,9 @@ model User {
   assignedJobs         JobAssignment[]
   expensesCreated      Expense[]            @relation("ExpenseCreator")
   invitedMemberships   Membership[]         @relation("MembershipInviter")
+  assignedLeads        Lead[]               @relation("LeadAssignee")
+  leadActivities       LeadActivity[]
+  attributionOverrides AttributionEvent[]   @relation("AttributionOverride")
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -237,6 +308,23 @@ model Company {
   equipment   Equipment[]
   auditLogs   AuditLog[]
   numberSequences NumberSequence[]
+  leads Lead[]
+  leadActivities LeadActivity[]
+  integrationConnections IntegrationConnection[]
+  integrationCredentials IntegrationCredential[]
+  integrationSyncs IntegrationSync[]
+  integrationEvents IntegrationEvent[]
+  attributionEvents AttributionEvent[]
+  marketingSpendEntries MarketingSpend[]
+  campaigns Campaign[]
+  reviews Review[]
+  reviewRequests ReviewRequest[]
+  callRecords CallRecord[]
+  automations Automation[]
+  insights Insight[]
+  metricSnapshots MetricSnapshot[]
+  socialPosts SocialPost[]
+  formSubmissions FormSubmission[]
 
   @@index([status])
   @@index([industry])
@@ -305,6 +393,12 @@ model Customer {
   invoices   Invoice[]
   expenses   Expense[]
   equipment  Equipment[]
+  leads      Lead[]
+  reviews    Review[]
+  reviewRequests ReviewRequest[]
+  callRecords CallRecord[]
+  formSubmissions FormSubmission[]
+  attributionEvents AttributionEvent[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -335,6 +429,7 @@ model Property {
   estimates Estimate[]
   invoices  Invoice[]
   equipment Equipment[]
+  leads     Lead[]
 
   @@index([companyId])
   @@index([companyId, customerId])
@@ -401,6 +496,11 @@ model Job {
   invoices   Invoice[]
   expenses   Expense[]
   assignments JobAssignment[]
+  leads      Lead[]
+  reviews    Review[]
+  reviewRequests ReviewRequest[]
+  callRecords CallRecord[]
+  attributionEvents AttributionEvent[]
 
   @@unique([companyId, jobNumber])
   @@index([companyId])
@@ -455,6 +555,8 @@ model Estimate {
   job       Job?            @relation("EstimateOptionalJob", fields: [jobId], references: [id])
   linkedJob Job?            @relation("JobEstimate")
   lineItems EstimateLineItem[]
+  leads     Lead[]
+  attributionEvents AttributionEvent[]
 
   @@unique([companyId, estimateNumber])
   @@index([companyId])
@@ -509,6 +611,7 @@ model Invoice {
   job       Job?              @relation(fields: [jobId], references: [id])
   lineItems InvoiceLineItem[]
   payments  Payment[]
+  attributionEvents AttributionEvent[]
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -635,4 +738,420 @@ model AuditLog {
   @@index([companyId, entityType, entityId])
   @@index([actorId])
   @@index([action])
+}
+
+// ============================================================
+// MARKETING / INTEGRATIONS / INTELLIGENCE
+// Tenant-scoped. Provider tokens live only in IntegrationCredential.
+// ============================================================
+
+model IntegrationConnection {
+  id                String            @id @default(cuid())
+  companyId         String
+  providerKey       String
+  status            IntegrationStatus @default(NOT_CONNECTED)
+  accountLabel      String?
+  externalAccountId String?
+  scopes            String[]          @default([])
+  lastSyncAt        DateTime?
+  lastHealthAt      DateTime?
+  healthMessage     String?
+  errorMessage      String?
+  disabledAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  company     Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  credentials IntegrationCredential?
+  syncs       IntegrationSync[]
+  events      IntegrationEvent[]
+
+  @@unique([companyId, providerKey])
+  @@index([companyId])
+  @@index([companyId, status])
+}
+
+model IntegrationCredential {
+  id             String   @id @default(cuid())
+  companyId      String
+  connectionId   String   @unique
+  ciphertext     Bytes
+  iv             Bytes
+  authTag        Bytes
+  keyVersion     Int      @default(1)
+  tokenExpiresAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model IntegrationSync {
+  id           String    @id @default(cuid())
+  companyId    String
+  connectionId String
+  kind         String
+  status       String    @default("PENDING")
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  recordsIn    Int       @default(0)
+  recordsOut   Int       @default(0)
+  errorMessage String?
+
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, connectionId])
+}
+
+model IntegrationEvent {
+  id           String    @id @default(cuid())
+  companyId    String
+  connectionId String
+  externalId   String?
+  eventType    String
+  payload      Json?
+  receivedAt   DateTime  @default(now())
+  processedAt  DateTime?
+
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, connectionId])
+  @@index([companyId, eventType])
+}
+
+model Lead {
+  id                           String     @id @default(cuid())
+  companyId                    String
+  customerId                   String?
+  propertyId                   String?
+  source                       LeadSource @default(MANUAL)
+  sourceDetail                 String?
+  provider                     String?
+  externalLeadId               String?
+  campaignId                   String?
+  campaignName                 String?
+  medium                       String?
+  firstTouch                   String?
+  lastTouch                    String?
+  firstName                    String
+  lastName                     String
+  phone                        String?
+  email                        String?
+  message                      String?
+  receivedAt                   DateTime   @default(now())
+  status                       LeadStatus @default(NEW)
+  assignedUserId               String?
+  bookingStatus                String?
+  estimateId                   String?
+  jobId                        String?
+  convertedAt                  DateTime?
+  lostReason                   String?
+  attributedRevenueCents       Int?
+  attributedGrossProfitCents   Int?
+  firstRespondedAt             DateTime?
+  lastContactAt                DateTime?
+  nextActionAt                 DateTime?
+  nextAction                   String?
+  estimatedOpportunityCents    Int?
+  utmSource                    String?
+  utmMedium                    String?
+  utmCampaign                  String?
+  utmContent                   String?
+  utmTerm                      String?
+  landingPage                  String?
+  referrer                     String?
+  submissionPage               String?
+  visitorId                    String?
+  createdAt                    DateTime   @default(now())
+  updatedAt                    DateTime   @updatedAt
+
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  property   Property?          @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedUser User?            @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  estimate   Estimate?          @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  job        Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  campaign   Campaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  activities LeadActivity[]
+  attributionEvents AttributionEvent[]
+  callRecords CallRecord[]
+  formSubmissions FormSubmission[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, source])
+  @@index([companyId, receivedAt])
+  @@index([companyId, assignedUserId])
+  @@index([companyId, email])
+  @@index([companyId, phone])
+  @@unique([companyId, provider, externalLeadId])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  companyId String
+  leadId    String
+  actorId   String?
+  kind      String
+  body      String?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, leadId])
+}
+
+model AttributionEvent {
+  id              String           @id @default(cuid())
+  companyId       String
+  leadId          String?
+  customerId      String?
+  jobId           String?
+  invoiceId       String?
+  estimateId      String?
+  model           AttributionModel @default(PRIMARY_SOURCE)
+  source          String
+  campaignId      String?
+  revenueCents    Int?
+  costCents       Int?
+  note            String?
+  overriddenById  String?
+  createdAt       DateTime         @default(now())
+
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job          Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  invoice      Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  estimate     Estimate? @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  overriddenBy User?     @relation("AttributionOverride", fields: [overriddenById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, source])
+  @@index([companyId, leadId])
+}
+
+model MarketingSpend {
+  id            String   @id @default(cuid())
+  companyId     String
+  source        String
+  campaignName  String?
+  provider      String?
+  periodStart   DateTime
+  periodEnd     DateTime
+  amountCents   Int
+  externalId    String?
+  createdAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, periodStart, periodEnd])
+  @@index([companyId, source])
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  companyId   String
+  name        String
+  type        CampaignType
+  status      CampaignStatus @default(DRAFT)
+  channel     String?
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leads   Lead[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+}
+
+model Review {
+  id            String    @id @default(cuid())
+  companyId     String
+  provider      String
+  externalId    String?
+  rating        Int?
+  authorName    String?
+  body          String?
+  reviewedAt    DateTime?
+  respondedAt   DateTime?
+  needsResponse Boolean   @default(false)
+  customerId    String?
+  jobId         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job      Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, needsResponse])
+  @@unique([companyId, provider, externalId])
+}
+
+model ReviewRequest {
+  id         String    @id @default(cuid())
+  companyId  String
+  customerId String?
+  jobId      String?
+  channel    String
+  status     String    @default("DRAFT")
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job      Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+}
+
+model CallRecord {
+  id              String    @id @default(cuid())
+  companyId       String
+  direction       String
+  trackingNumber  String?
+  source          String?
+  campaign        String?
+  caller          String?
+  leadId          String?
+  customerId      String?
+  jobId           String?
+  startedAt       DateTime
+  durationSeconds Int?
+  answered        Boolean?
+  missed          Boolean?
+  recordingRef    String?
+  transcriptRef   String?
+  booked          Boolean?
+  createdAt       DateTime  @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  job      Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, startedAt])
+  @@index([companyId, missed])
+}
+
+model Automation {
+  id         String   @id @default(cuid())
+  companyId  String
+  name       String
+  trigger    String
+  conditions Json?
+  action     String
+  enabled    Boolean  @default(false)
+  status     String   @default("DRAFT")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model Insight {
+  id                 String    @id @default(cuid())
+  companyId          String
+  insightType        String
+  category           String
+  severity           String
+  title              String
+  summary            String
+  metric             String?
+  currentValue       String?
+  comparisonValue    String?
+  changePercent      Float?
+  period             String?
+  confidence         String?
+  supportingData     Json?
+  recommendedAction  String?
+  dataSource         String?
+  metricDefinition   String?
+  timeRange          String?
+  calculation        String?
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime?
+  acknowledgedAt     DateTime?
+  resolvedAt         DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, category])
+}
+
+model MetricSnapshot {
+  id          String   @id @default(cuid())
+  companyId   String
+  metricKey   String
+  periodStart DateTime
+  periodEnd   DateTime
+  grain       String
+  value       Float
+  sampleSize  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, metricKey, periodStart, periodEnd, grain])
+  @@index([companyId, metricKey])
+}
+
+model SocialPost {
+  id          String    @id @default(cuid())
+  companyId   String
+  channel     String
+  status      String    @default("DRAFT")
+  body        String
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+}
+
+model FormSubmission {
+  id             String   @id @default(cuid())
+  companyId      String
+  leadId         String?
+  customerId     String?
+  landingPage    String?
+  referrer       String?
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  utmContent     String?
+  utmTerm        String?
+  firstTouch     String?
+  lastTouch      String?
+  submissionPage String?
+  visitorId      String?
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, createdAt])
 }
