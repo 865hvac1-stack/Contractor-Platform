@@ -123,7 +123,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `DATABASE_URL` | Yes | Provided by Railway Postgres when linked |
-| `SESSION_SECRET` | Yes | 32+ random characters |
+| `SESSION_SECRET` | Yes | 32+ random characters. Account create/login will fail without this. |
 | `APP_URL` | Yes | Public HTTPS URL of the service |
 | `UPLOAD_DIR` | Yes | e.g. `/data/uploads` with a volume |
 | `NODE_ENV` | Yes | `production` |

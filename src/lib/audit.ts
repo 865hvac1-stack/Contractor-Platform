@@ -42,14 +42,18 @@ export async function writeAudit(params: {
   entityId?: string | null;
   metadata?: Prisma.InputJsonValue;
 }): Promise<void> {
-  await prisma.auditLog.create({
-    data: {
-      companyId: params.companyId ?? null,
-      actorId: params.actorId ?? null,
-      action: params.action,
-      entityType: params.entityType,
-      entityId: params.entityId ?? null,
-      metadata: params.metadata,
-    },
-  });
+  try {
+    await prisma.auditLog.create({
+      data: {
+        companyId: params.companyId ?? null,
+        actorId: params.actorId ?? null,
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId ?? null,
+        metadata: params.metadata,
+      },
+    });
+  } catch (error) {
+    console.error("[audit] failed", error);
+  }
 }

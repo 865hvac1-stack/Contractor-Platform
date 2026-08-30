@@ -13,6 +13,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { isNextRedirect, publicActionError } from "@/lib/action-errors";
 import {
   companyOnboardingSchema,
   forgotPasswordSchema,
@@ -27,42 +28,49 @@ export async function loginAction(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
-  const parsed = loginSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-  });
-  if (!parsed.success) return { ok: false, error: "Invalid email or password." };
+  try {
+    const parsed = loginSchema.safeParse({
+      email: formData.get("email"),
+      password: formData.get("password"),
+    });
+    if (!parsed.success) return { ok: false, error: "Invalid email or password." };
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
-  if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
-    return { ok: false, error: "Invalid email or password." };
-  }
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email.toLowerCase() },
+    });
+    if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+      return { ok: false, error: "Invalid email or password." };
+    }
 
-  await createSession(user.id);
-  await writeAudit({
-    actorId: user.id,
-    action: "user.login",
-    entityType: "User",
-    entityId: user.id,
-  });
+    await createSession(user.id);
+    await writeAudit({
+      actorId: user.id,
+      action: "user.login",
+      entityType: "User",
+      entityId: user.id,
+    });
 
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id, status: "ACTIVE" },
-    include: { company: true },
-    orderBy: { createdAt: "asc" },
-  });
+    const membership = await prisma.membership.findFirst({
+      where: { userId: user.id, status: "ACTIVE" },
+      include: { company: true },
+      orderBy: { createdAt: "asc" },
+    });
 
-  if (user.isPlatformAdmin && !membership) {
-    redirect("/platform");
+    if (user.isPlatformAdmin && !membership) {
+      redirect("/platform");
+    }
+    if (!membership) {
+      redirect("/onboarding");
+    }
+    await setActiveCompany(membership.companyId, user.id);
+    if (membership.company.status === "ONBOARDING") {
+      redirect("/onboarding");
+    }
+    redirect("/dashboard");
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    return { ok: false, error: publicActionError(error) };
   }
-  if (!membership) {
-    redirect("/onboarding");
-  }
-  await setActiveCompany(membership.companyId, user.id);
-  if (membership.company.status === "ONBOARDING") {
-    redirect("/onboarding");
-  }
-  redirect("/dashboard");
 }
 
 export async function logoutAction(): Promise<void> {
@@ -83,39 +91,52 @@ export async function registerAction(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
-  const parsed = registerSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  try {
+    if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+      return {
+        ok: false,
+        error:
+          "Server is missing SESSION_SECRET. Add a 32+ character secret in Railway Variables, then redeploy.",
+      };
+    }
+
+    const parsed = registerSchema.safeParse({
+      email: formData.get("email"),
+      password: formData.get("password"),
+      firstName: formData.get("firstName"),
+      lastName: formData.get("lastName"),
+    });
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return { ok: false, error: "An account with this email already exists." };
+
+    const passwordHash = await hashPassword(parsed.data.password);
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+      },
+    });
+
+    await createSession(user.id);
+    await writeAudit({
+      actorId: user.id,
+      action: "user.registered",
+      entityType: "User",
+      entityId: user.id,
+    });
+
+    redirect("/onboarding");
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    return { ok: false, error: publicActionError(error) };
   }
-
-  const email = parsed.data.email.toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { ok: false, error: "An account with this email already exists." };
-
-  const passwordHash = await hashPassword(parsed.data.password);
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      firstName: parsed.data.firstName,
-      lastName: parsed.data.lastName,
-    },
-  });
-
-  await createSession(user.id);
-  await writeAudit({
-    actorId: user.id,
-    action: "user.registered",
-    entityType: "User",
-    entityId: user.id,
-  });
-
-  redirect("/onboarding");
 }
 
 export async function completeOnboardingAction(
