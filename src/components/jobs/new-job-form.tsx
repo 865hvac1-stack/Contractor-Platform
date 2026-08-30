@@ -28,15 +28,22 @@ type MemberOption = {
   label: string;
 };
 
+type PlaybookOption = {
+  id: string;
+  label: string;
+};
+
 export function NewJobForm({
   customers,
   properties,
   members,
+  playbooks,
   defaultCustomerId,
 }: {
   customers: CustomerOption[];
   properties: PropertyOption[];
   members: MemberOption[];
+  playbooks: PlaybookOption[];
   defaultCustomerId?: string;
 }) {
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
@@ -91,8 +98,25 @@ export function NewJobForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="jobType">Job type</Label>
-          <Input id="jobType" name="jobType" placeholder="Service call, install…" />
+          <Label htmlFor="playbookId">Job type / playbook</Label>
+          {playbooks.length > 0 ? (
+            <select id="playbookId" name="playbookId" className={selectClassName} defaultValue="">
+              <option value="">No playbook — keep it simple</option>
+              {playbooks.map((playbook) => (
+                <option key={playbook.id} value={playbook.id}>
+                  {playbook.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              No playbooks yet. Jobs still work without one.
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="jobType">Short label</Label>
+          <Input id="jobType" name="jobType" placeholder="Optional, if you are not using a playbook" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="trade">Trade</Label>

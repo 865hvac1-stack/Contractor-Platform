@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission, jobAccessFilter } from "@/lib/tenant";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
+import { JobWorkflowPanel } from "@/components/playbooks/job-workflow";
 import { scheduleJobAction } from "@/server/actions/jobs";
 import { ActionForm } from "@/components/action-form";
 import { JobStatusControls } from "@/components/jobs/job-status-controls";
@@ -61,9 +64,14 @@ export default async function JobDetailPage({
 
   if (!job) notFound();
 
+  const workflow = await loadJobWorkflowView(ctx.company.id, job.id);
+  const canAct =
+    can(ctx.role, "jobs:manage") || job.assignments.some((a) => a.userId === ctx.user.id);
+
   const customerName =
     job.customer.businessName?.trim() ||
     `${job.customer.firstName} ${job.customer.lastName}`.trim();
+  const propertyAddress = `${job.property.address}, ${job.property.city}, ${job.property.state} ${job.property.zip}`;
 
   return (
     <div className="space-y-8">
@@ -81,10 +89,27 @@ export default async function JobDetailPage({
             <StatusBadge status={job.priority} />
           </div>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {job.jobType || job.trade || "Job"} · {customerName}
+            {workflow?.playbookName || job.jobType || job.trade || "Job"} · {customerName}
           </p>
         </div>
       </div>
+
+      {workflow ? (
+        <JobWorkflowPanel
+          jobId={job.id}
+          playbookName={workflow.playbookName}
+          customerName={customerName}
+          scheduledLabel={formatDateTime(job.scheduledStart)}
+          definition={workflow.definition}
+          currentStageKey={workflow.currentStageKey}
+          completedStepIds={workflow.completedStepIds}
+          remaining={workflow.remaining}
+          checklist={workflow.checklist}
+          customerPhone={job.customer.phone}
+          propertyAddress={propertyAddress}
+          canAct={canAct && job.status !== "COMPLETED" && job.status !== "CANCELED"}
+        />
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

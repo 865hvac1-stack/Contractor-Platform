@@ -112,6 +112,7 @@ export const jobSchema = z.object({
   scheduledStart: z.string().datetime().optional().or(z.literal("")),
   scheduledEnd: z.string().datetime().optional().or(z.literal("")),
   assigneeIds: z.array(z.string().cuid()).optional(),
+  playbookId: z.string().cuid().optional().or(z.literal("")),
 });
 
 export const lineItemSchema = z.object({

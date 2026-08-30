@@ -36,6 +36,7 @@ export default async function JobsPage() {
       customer: true,
       property: true,
       assignments: { include: { user: true } },
+      playbook: { select: { name: true } },
     },
     orderBy: [{ scheduledStart: "asc" }, { createdAt: "desc" }],
     take: 200,
@@ -85,7 +86,7 @@ export default async function JobsPage() {
                         {job.jobNumber}
                       </Link>
                       <p className="text-xs text-[var(--muted-foreground)]">
-                        {job.jobType || job.trade || job.property.address}
+                        {job.playbook?.name || job.jobType || job.trade || job.property.address}
                       </p>
                     </TableCell>
                     <TableCell>

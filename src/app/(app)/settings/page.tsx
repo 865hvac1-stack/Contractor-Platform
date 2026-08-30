@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
+import { can } from "@/lib/permissions";
 import { industries } from "@/lib/brand";
 
 export default async function SettingsPage() {
@@ -31,6 +33,22 @@ export default async function SettingsPage() {
           Company profile for {company.businessName}.
         </p>
       </div>
+
+      {can(ctx.role, "playbooks:view") ? (
+        <Link
+          href="/settings/playbooks"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Your way
+          </p>
+          <h2 className="mt-2 font-medium">Playbooks</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Tell ContractorYou how each type of work should run — messages, stages, and required
+            steps. Existing jobs keep working without one.
+          </p>
+        </Link>
+      ) : null}
 
       <div className="rounded-xl border border-[var(--border)] bg-white p-6">
         <h2 className="font-medium">Company profile</h2>

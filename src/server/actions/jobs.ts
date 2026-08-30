@@ -11,6 +11,8 @@ import { can } from "@/lib/permissions";
 import { jobSchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
 import type { JobStatus } from "@prisma/client";
+import { assignPlaybookToJob } from "@/lib/playbooks/assign";
+import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -36,6 +38,7 @@ export async function createJobAction(
       scheduledStart: formData.get("scheduledStart") || "",
       scheduledEnd: formData.get("scheduledEnd") || "",
       assigneeIds: assigneeRaw,
+      playbookId: formData.get("playbookId") || "",
     });
     if (!parsed.success) {
       return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid job." };
@@ -81,6 +84,14 @@ export async function createJobAction(
       },
     });
 
+    if (emptyToNull(d.playbookId)) {
+      await assignPlaybookToJob({
+        companyId: ctx.company.id,
+        jobId: job.id,
+        playbookId: d.playbookId!,
+      });
+    }
+
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
@@ -123,6 +134,27 @@ export async function updateJobStatusAction(
       where: { id: jobId, companyId: ctx.company.id },
     }));
     if (!target) return { ok: false, error: "Job not found." };
+
+    if (status === "COMPLETED") {
+      const snapshot = await prisma.jobPlaybookSnapshot.findFirst({
+        where: { jobId: target.id, companyId: ctx.company.id },
+      });
+      if (snapshot) {
+        const remaining = await remainingRequiredItems({
+          companyId: ctx.company.id,
+          jobId: target.id,
+          definition: parseDefinition(snapshot.definition),
+        });
+        if (remaining.length > 0) {
+          return {
+            ok: false,
+            error: `${remaining.length} item${remaining.length === 1 ? "" : "s"} remaining: ${remaining
+              .map((r) => r.title)
+              .join(", ")}`,
+          };
+        }
+      }
+    }
 
     const updated = await prisma.job.update({
       where: { id: target.id },

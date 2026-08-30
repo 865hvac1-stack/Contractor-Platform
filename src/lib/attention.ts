@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
 
 /**
  * Reusable Needs Attention architecture.
@@ -272,6 +273,47 @@ registerAttentionDetector(async (companyId) => {
     entityId: lead.id,
     createdAt: lead.receivedAt,
   }));
+});
+
+registerAttentionDetector(async (companyId) => {
+  const jobs = await prisma.job.findMany({
+    where: {
+      companyId,
+      status: { in: ["DISPATCHED", "IN_PROGRESS"] },
+      playbookSnapshot: { isNot: null },
+    },
+    include: { playbookSnapshot: true },
+    orderBy: { updatedAt: "desc" },
+    take: 12,
+  });
+
+  const items: AttentionItem[] = [];
+  for (const job of jobs) {
+    if (!job.playbookSnapshot) continue;
+    let remaining;
+    try {
+      remaining = await remainingRequiredItems({
+        companyId,
+        jobId: job.id,
+        definition: parseDefinition(job.playbookSnapshot.definition),
+      });
+    } catch {
+      continue;
+    }
+    if (remaining.length === 0) continue;
+    items.push({
+      id: `playbook-remaining-${job.id}`,
+      type: "playbook_required_remaining",
+      title: `${remaining.length} item${remaining.length === 1 ? "" : "s"} remaining`,
+      description: `${job.jobNumber} · ${remaining.map((item) => item.title).join(", ")}`,
+      severity: remaining.length >= 3 ? "warning" : "info",
+      href: `/jobs/${job.id}`,
+      entityType: "Job",
+      entityId: job.id,
+      createdAt: job.updatedAt,
+    });
+  }
+  return items;
 });
 
 function formatCents(cents: number): string {

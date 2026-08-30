@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { createAutomationDraftAction } from "@/server/actions/marketing";
@@ -47,9 +48,13 @@ export default async function AutomationsPage() {
           Automations
         </h1>
         <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
-          TRIGGER → CONDITIONS → ACTIONS → OUTCOME. Drafts can be saved. Enabling send actions
-          is blocked until communications are configured. Financial or customer-facing actions
-          will require approval.
+          Drafts can be saved. Enabling send actions is blocked until communications are
+          configured. Job follow-up that belongs to a type of work should be set on the{" "}
+          <Link href="/settings/playbooks" className="underline">
+            playbook
+          </Link>{" "}
+          (When this happens → then do this). Those steps are not sent until a provider is
+          connected.
         </p>
       </header>
 

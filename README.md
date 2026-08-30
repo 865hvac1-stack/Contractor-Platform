@@ -22,6 +22,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Money:** integer cents only (`src/lib/money.ts`).
 - **Needs Attention:** pluggable detectors in `src/lib/attention.ts` (dashboard consumes them).
 - **Marketing Hub:** tenant-scoped leads, channel catalog, attribution, and Intelligence foundations. Provider OAuth is not live; cards stay Coming Soon / not configured. Metrics are calculated from recorded leads and advertising expenses only.
+- **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
 - **Receipts:** upload + storage + processing status fields; no fake AI extraction.
@@ -97,7 +98,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 
 1. Register → onboarding (company + industry) → Command Center  
 2. Create customer → add property  
-3. Create job → schedule  
+3. Create job → choose a playbook (optional) → schedule  
 4. Create estimate → approve  
 5. Complete job → create invoice → record payment  
 6. Log expense + upload receipt  
@@ -154,6 +155,10 @@ Critical coverage includes:
 - Expense tenant scope
 - Audit log writes
 - Empty dashboard aggregates = `$0`
+- Playbook tenant isolation (Company A cannot read or mutate Company B playbooks, versions, snapshots, or form templates)
+- Playbook snapshots stay frozen when the live playbook is edited
+- Jobs without a playbook continue to function
+- Message merge fields never execute code
 
 ## Project layout
 
@@ -166,9 +171,17 @@ src/server/actions/ server mutations
 tests/              vitest suites
 ```
 
+## Playbooks
+
+Settings → Playbooks. Starters (Residential Service, Residential Maintenance, Commercial Maintenance, Residential Changeout, Estimate / Sales Call) are examples you can rename, duplicate, or ignore.
+
+**Your process. Your business. Your way.**
+
+Changing a playbook creates a new version. Jobs already started keep the snapshot they were assigned.
+
 ## Phase 2 (intentionally deferred)
 
-AI receptionist, SMS/email inbox, automations, memberships, pricebook, inventory, payroll, QuickBooks, Stripe live payments, GPS/routing, native/PWA apps, customer portal, OCR receipt extraction.
+AI receptionist, live SMS/email send, connected automation execution, memberships, pricebook, inventory, payroll, QuickBooks, Stripe live payments, GPS/routing, native/PWA apps, customer portal, OCR receipt extraction, full custom form builder, photo library uploads.
 
 ## License
 

@@ -17,6 +17,7 @@ const allowedOrigins = [
 ].filter((value): value is string => Boolean(value));
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     serverActions: {
       allowedOrigins: [...allowedOrigins, "*.up.railway.app", "*.railway.app"],

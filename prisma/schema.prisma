@@ -212,6 +212,12 @@ enum CampaignStatus {
   CANCELED
 }
 
+enum PlaybookStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 // ============================================================
 // PLATFORM / AUTH
 // ============================================================
@@ -238,6 +244,8 @@ model User {
   assignedLeads        Lead[]               @relation("LeadAssignee")
   leadActivities       LeadActivity[]
   attributionOverrides AttributionEvent[]   @relation("AttributionOverride")
+  playbookVersionsCreated PlaybookVersion[] @relation("PlaybookVersionAuthor")
+  jobWorkflowEvents JobWorkflowEvent[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -325,6 +333,12 @@ model Company {
   metricSnapshots MetricSnapshot[]
   socialPosts SocialPost[]
   formSubmissions FormSubmission[]
+  playbooks Playbook[]
+  playbookVersions PlaybookVersion[]
+  jobPlaybookSnapshots JobPlaybookSnapshot[]
+  jobWorkflowEvents JobWorkflowEvent[]
+  jobChecklistItems JobChecklistItem[]
+  formTemplates FormTemplate[]
 
   @@index([status])
   @@index([industry])
@@ -442,10 +456,14 @@ model Equipment {
   customerId  String?
   propertyId  String?
   name        String
+  equipmentType String?
   manufacturer String?
   model       String?
   serialNumber String?
   installDate DateTime?
+  location    String?
+  warrantyExpiresAt DateTime?
+  warrantyNotes String?
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -485,10 +503,17 @@ model Job {
   // Financial readiness (cents) — populated as invoices/expenses link
   // Do not invent values; calculated from related records when available
   estimateId          String?     @unique
+  playbookId          String?
+  playbookVersionId   String?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
   company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook   Playbook?       @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  playbookVersion PlaybookVersion? @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
+  playbookSnapshot JobPlaybookSnapshot?
+  workflowEvents JobWorkflowEvent[]
+  checklistItems JobChecklistItem[]
   customer   Customer        @relation(fields: [customerId], references: [id])
   property   Property        @relation(fields: [propertyId], references: [id])
   estimate   Estimate?       @relation("JobEstimate", fields: [estimateId], references: [id])
@@ -508,6 +533,7 @@ model Job {
   @@index([companyId, scheduledStart])
   @@index([companyId, customerId])
   @@index([companyId, propertyId])
+  @@index([companyId, playbookId])
 }
 
 model JobAssignment {
@@ -1051,6 +1077,7 @@ model CallRecord {
 model Automation {
   id         String   @id @default(cuid())
   companyId  String
+  playbookId String?
   name       String
   trigger    String
   conditions Json?
@@ -1060,9 +1087,11 @@ model Automation {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
+  @@index([companyId, playbookId])
 }
 
 model Insight {
@@ -1154,4 +1183,130 @@ model FormSubmission {
 
   @@index([companyId])
   @@index([companyId, createdAt])
+}
+
+// ============================================================
+// PLAYBOOKS — company-owned workflows. Jobs may have no playbook.
+// Versions freeze the definition so later edits do not rewrite history.
+// ============================================================
+
+model Playbook {
+  id               String         @id @default(cuid())
+  companyId        String
+  name             String
+  description      String?
+  status           PlaybookStatus @default(ACTIVE)
+  sortOrder        Int            @default(0)
+  currentVersionId String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  versions PlaybookVersion[]
+  jobs     Job[]
+  snapshots JobPlaybookSnapshot[]
+  formTemplates FormTemplate[]
+  automations Automation[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, sortOrder])
+}
+
+model PlaybookVersion {
+  id            String   @id @default(cuid())
+  companyId     String
+  playbookId    String
+  versionNumber Int
+  definition    Json
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook Playbook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("PlaybookVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  jobs     Job[]
+  snapshots JobPlaybookSnapshot[]
+
+  @@unique([playbookId, versionNumber])
+  @@index([companyId])
+}
+
+model JobPlaybookSnapshot {
+  id              String   @id @default(cuid())
+  companyId       String
+  jobId           String   @unique
+  playbookId      String
+  versionId       String
+  definition      Json
+  currentStageKey String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job      Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  playbook Playbook        @relation(fields: [playbookId], references: [id], onDelete: Restrict)
+  version  PlaybookVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([companyId, playbookId])
+}
+
+model JobWorkflowEvent {
+  id          String   @id @default(cuid())
+  companyId   String
+  jobId       String
+  stepId      String
+  actorId     String?
+  kind        String
+  note        String?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, jobId])
+}
+
+model JobChecklistItem {
+  id          String   @id @default(cuid())
+  companyId   String
+  jobId       String
+  itemId      String
+  section     String?
+  label       String
+  required    Boolean  @default(false)
+  fieldType   String   @default("CHECKBOX")
+  completed   Boolean  @default(false)
+  value       String?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, itemId])
+  @@index([companyId, jobId])
+}
+
+// Configurable forms for a later builder. Fields are JSON so new field types
+// do not require a migration. Every template is company-scoped.
+model FormTemplate {
+  id          String   @id @default(cuid())
+  companyId   String
+  playbookId  String?
+  name        String
+  description String?
+  fields      Json
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, playbookId])
 }

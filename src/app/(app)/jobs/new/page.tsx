@@ -12,7 +12,7 @@ export default async function NewJobPage({
   const ctx = await requirePermission("jobs:manage");
   const { customerId } = await searchParams;
 
-  const [customers, properties, memberships] = await Promise.all([
+  const [customers, properties, memberships, playbooks] = await Promise.all([
     prisma.customer.findMany({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -25,6 +25,10 @@ export default async function NewJobPage({
       where: { companyId: ctx.company.id, status: "ACTIVE" },
       include: { user: true },
       orderBy: { createdAt: "asc" },
+    }),
+    prisma.playbook.findMany({
+      where: { companyId: ctx.company.id, status: "ACTIVE" },
+      orderBy: { sortOrder: "asc" },
     }),
   ]);
 
@@ -77,6 +81,7 @@ export default async function NewJobPage({
                 id: m.user.id,
                 label: `${m.user.firstName} ${m.user.lastName} · ${m.role.replaceAll("_", " ")}`,
               }))}
+              playbooks={playbooks.map((p) => ({ id: p.id, label: p.name }))}
             />
           )}
         </CardContent>
