@@ -14,7 +14,20 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 48) || `form-${Date.now()}`;
+    .slice(0, 40) || `form-${Date.now()}`;
+}
+
+async function uniqueSlug(companyId: string, table: "websiteForm" | "landingPage", name: string) {
+  const base = slugify(name);
+  for (let n = 0; n < 20; n += 1) {
+    const slug = n === 0 ? base : `${base}-${n}`;
+    const existing =
+      table === "websiteForm"
+        ? await prisma.websiteForm.findFirst({ where: { companyId, slug }, select: { id: true } })
+        : await prisma.landingPage.findFirst({ where: { companyId, slug }, select: { id: true } });
+    if (!existing) return slug;
+  }
+  return `${base}-${Date.now().toString(36)}`;
 }
 
 export async function createWebsiteFormAction(
@@ -29,7 +42,7 @@ export async function createWebsiteFormAction(
       data: {
         companyId: ctx.company.id,
         name,
-        slug: slugify(name),
+        slug: await uniqueSlug(ctx.company.id, "websiteForm", name),
         fields: DEFAULT_FORM_FIELDS,
         status: "ACTIVE",
       },
@@ -67,7 +80,7 @@ export async function createLandingPageAction(
         companyId: ctx.company.id,
         formId,
         name,
-        slug: slugify(name),
+        slug: await uniqueSlug(ctx.company.id, "landingPage", name),
         headline,
         body: body || "Tell us what you need. We will call you back.",
         ctaLabel: String(formData.get("ctaLabel") || "Request service"),

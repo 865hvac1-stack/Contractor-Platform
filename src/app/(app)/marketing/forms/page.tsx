@@ -42,7 +42,11 @@ export default async function WebsiteMarketingPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {canManage ? (
-          <ActionForm action={createWebsiteFormAction} className="space-y-3 rounded-2xl border bg-white p-5">
+          <ActionForm
+            action={createWebsiteFormAction}
+            className="space-y-3 rounded-2xl border bg-white p-5"
+            successMessage="Form created. Use the hosted URL and embed code below."
+          >
             <h2 className="font-semibold">Create a lead form</h2>
             <Input name="name" required placeholder="Request service" />
             <Button type="submit">Create form</Button>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/server/actions/auth";
 
 type Action = (prev: ActionResult | null, formData: FormData) => Promise<ActionResult>;
@@ -16,7 +17,12 @@ export function ActionForm({
   className?: string;
   successMessage?: string;
 }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(action, null);
+
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
 
   return (
     <form action={formAction} className={className}>
