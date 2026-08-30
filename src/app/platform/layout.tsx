@@ -34,6 +34,12 @@ export default async function PlatformLayout({
               Integrations
             </Link>
             <Link
+              href="/platform/intelligence"
+              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              Intelligence
+            </Link>
+            <Link
               href="/dashboard"
               className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
             >

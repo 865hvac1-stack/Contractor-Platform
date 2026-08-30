@@ -324,6 +324,47 @@ registerAttentionDetector(async (companyId) => {
   return items;
 });
 
+registerAttentionDetector(async (companyId) => {
+  const jobs = await prisma.job.findMany({
+    where: {
+      companyId,
+      status: "SCHEDULED",
+      assignments: { none: {} },
+    },
+    take: 20,
+  });
+  return jobs.map((job) => ({
+    id: `job-unassigned-${job.id}`,
+    type: "job_missing_technician",
+    title: "Scheduled job has no technician",
+    description: job.jobNumber,
+    severity: "warning" as const,
+    href: `/jobs/${job.id}`,
+    entityType: "Job",
+    entityId: job.id,
+    createdAt: job.scheduledStart ?? job.updatedAt,
+  }));
+});
+
+registerAttentionDetector(async (companyId) => {
+  const calls = await prisma.callRecord.findMany({
+    where: { companyId, missed: true, booked: { not: true } },
+    orderBy: { startedAt: "desc" },
+    take: 15,
+  });
+  return calls.map((call) => ({
+    id: `call-missed-${call.id}`,
+    type: "missed_call_no_follow_up",
+    title: "Missed call not followed up",
+    description: call.caller || call.trackingNumber || "Missed call",
+    severity: "warning" as const,
+    href: "/marketing/communications",
+    entityType: "CallRecord",
+    entityId: call.id,
+    createdAt: call.startedAt,
+  }));
+});
+
 function formatCents(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

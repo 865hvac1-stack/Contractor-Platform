@@ -30,3 +30,32 @@ export function percentChange(current: number, previous: number): number | null 
   if (previous === 0) return null;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
+
+export type ComparedTrend = {
+  metricKey: string;
+  current: number;
+  previous: number;
+  changePercent: number | null;
+  label: TrendLabel;
+  sampleSize: number;
+};
+
+export function compareMetric(input: {
+  metricKey: string;
+  current: number;
+  previous: number;
+  sampleSize: number;
+}): ComparedTrend {
+  return {
+    metricKey: input.metricKey,
+    current: input.current,
+    previous: input.previous,
+    changePercent: percentChange(input.current, input.previous),
+    label: classifyTrend({
+      current: input.current,
+      previous: input.previous,
+      sampleSize: input.sampleSize,
+    }),
+    sampleSize: input.sampleSize,
+  };
+}

@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AskContractorYou } from "@/components/ask-contractoryou";
+import { suggestedQuestions } from "@/lib/intelligence/intent";
 import {
   Table,
   TableBody,
@@ -93,6 +95,10 @@ export default async function JobDetailPage({
           </p>
         </div>
       </div>
+
+      {can(ctx.role, "intelligence:view") ? (
+        <AskContractorYou suggestions={suggestedQuestions(ctx.role, job.id)} jobId={job.id} compact />
+      ) : null}
 
       {workflow ? (
         <JobWorkflowPanel

@@ -23,6 +23,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Needs Attention:** pluggable detectors in `src/lib/attention.ts` (dashboard consumes them).
 - **Marketing Hub:** tenant-scoped leads, channels, attribution, and Intelligence. Website forms, landing pages, and UTM capture are live. OAuth for Google / Meta / TikTok / LinkedIn is implemented; connections stay disconnected until real credentials and provider approval exist. Metrics use recorded leads, expenses, and imported spend only.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
+- **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
 - **Receipts:** upload + storage + processing status fields; no fake AI extraction.
@@ -173,6 +174,7 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `APP_URL` | Yes | Public HTTPS URL of the service |
 | `UPLOAD_DIR` | Yes | e.g. `/data/uploads` with a volume |
 | `NODE_ENV` | Yes | `production` |
+| `OPENAI_API_KEY` | No | Server-side Intelligence wording. Without it, Ask still answers from records. Never expose to the browser. |
 | `ALLOW_SEED` | No | Must be `false` or unset in production |
 | `SEED_*` | No | Leave empty in production |
 

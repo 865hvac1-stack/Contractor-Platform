@@ -253,6 +253,9 @@ model User {
   playbookVersionsCreated PlaybookVersion[] @relation("PlaybookVersionAuthor")
   jobWorkflowEvents JobWorkflowEvent[]
   oauthStates OAuthState[]
+  aiConversations AIConversation[]
+  aiUsageEvents AIUsageEvent[]
+  aiActionDrafts AIActionDraft[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -352,6 +355,11 @@ model Company {
   jobWorkflowEvents JobWorkflowEvent[]
   jobChecklistItems JobChecklistItem[]
   formTemplates FormTemplate[]
+  aiConversations AIConversation[]
+  aiMessages AIMessage[]
+  aiUsageEvents AIUsageEvent[]
+  aiActionDrafts AIActionDraft[]
+  intelligenceSetting CompanyIntelligenceSetting?
 
   @@index([status])
   @@index([industry])
@@ -1236,6 +1244,89 @@ model Insight {
 
   @@index([companyId, createdAt])
   @@index([companyId, category])
+}
+
+model CompanyIntelligenceSetting {
+  id                 String   @id @default(cuid())
+  companyId          String   @unique
+  dailyBriefEnabled  Boolean  @default(true)
+  insightCategories  String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  title     String?
+  scope     String   @default("COMPANY")
+  jobId     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AIMessage[]
+  usages   AIUsageEvent[]
+
+  @@index([companyId, userId])
+  @@index([companyId, updatedAt])
+}
+
+model AIMessage {
+  id             String   @id @default(cuid())
+  companyId      String
+  conversationId String
+  role           String
+  content        String
+  grounding      Json?
+  createdAt      DateTime @default(now())
+
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, conversationId])
+}
+
+model AIUsageEvent {
+  id                    String   @id @default(cuid())
+  companyId             String
+  userId                String?
+  conversationId        String?
+  feature               String
+  model                 String
+  inputTokens           Int      @default(0)
+  outputTokens          Int      @default(0)
+  estimatedCostMicrousd Int      @default(0)
+  latencyMs             Int?
+  status                String   @default("OK")
+  errorKind             String?
+  createdAt             DateTime @default(now())
+
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversation AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+}
+
+model AIActionDraft {
+  id         String    @id @default(cuid())
+  companyId  String
+  userId     String
+  actionType String
+  status     String    @default("DRAFT")
+  payload    Json
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
 }
 
 model MetricSnapshot {

@@ -60,6 +60,7 @@ const groups: NavGroup[] = [
     title: "Command Center",
     items: [
       { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+      { href: "/intelligence", label: "Intelligence", icon: CircleHelp },
       { label: "Inbox", icon: Inbox, comingSoon: true },
     ],
   },

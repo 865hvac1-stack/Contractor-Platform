@@ -34,6 +34,22 @@ export default async function SettingsPage() {
         </p>
       </div>
 
+      {can(ctx.role, "intelligence:view") ? (
+        <Link
+          href="/settings/intelligence"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Intelligence
+          </p>
+          <h2 className="mt-2 font-medium">ContractorYou Intelligence</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Status, daily brief, and usage. Provider keys stay on ContractorYou — not in your
+            settings form.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "playbooks:view") ? (
         <Link
           href="/settings/playbooks"

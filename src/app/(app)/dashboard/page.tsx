@@ -10,6 +10,10 @@ import {
 import { requirePermission } from "@/lib/tenant";
 import { getCommandCenterData } from "@/lib/dashboard";
 import { getBusinessPulse } from "@/lib/intelligence/pulse";
+import { listActiveInsights } from "@/lib/intelligence/insights";
+import { refreshCompanyInsights } from "@/lib/intelligence/generate";
+import { suggestedQuestions } from "@/lib/intelligence/intent";
+import { can } from "@/lib/permissions";
 import { formatMoney } from "@/lib/money";
 import { StatusBadge } from "@/components/status-badge";
 import { AskContractorYou } from "@/components/ask-contractoryou";
@@ -34,9 +38,10 @@ const severityTone: Record<string, string> = {
 
 export default async function DashboardPage() {
   const ctx = await requirePermission("dashboard:view");
-  const [data, pulse] = await Promise.all([
+  const [data, pulse, insights] = await Promise.all([
     getCommandCenterData(ctx.company.id),
     getBusinessPulse(ctx.company.id),
+    refreshCompanyInsights(ctx.company.id).catch(() => listActiveInsights(ctx.company.id)),
   ]);
   const greeting = greetingForHour(new Date().getHours());
 
@@ -120,6 +125,46 @@ export default async function DashboardPage() {
           );
         })}
       </section>
+
+      {can(ctx.role, "intelligence:view") ? (
+        <AskContractorYou suggestions={suggestedQuestions(ctx.role)} />
+      ) : null}
+
+      {insights.length > 0 ? (
+        <section className="space-y-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">
+                ContractorYou Intelligence
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Top items from recorded work — not invented metrics.
+              </p>
+            </div>
+            <Link href="/intelligence" className="text-sm font-medium text-[var(--cy-orange)]">
+              Brief
+            </Link>
+          </div>
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {insights.slice(0, 6).map((insight) => (
+              <li key={insight.id}>
+                <Link
+                  href={
+                    insight.recommendedAction?.startsWith("/") ? insight.recommendedAction : "/intelligence"
+                  }
+                  className="block rounded-2xl border border-[var(--border)] bg-white p-4 hover:border-[var(--cy-navy)]/15"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+                    {insight.severity} · {insight.category}
+                  </p>
+                  <p className="mt-2 font-medium text-[var(--cy-navy)]">{insight.title}</p>
+                  <p className="mt-1 text-sm text-[var(--muted-foreground)]">{insight.summary}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {pulse.length > 0 ? (
         <section className="space-y-4">
@@ -312,7 +357,6 @@ export default async function DashboardPage() {
         </dl>
       </section>
 
-      <AskContractorYou />
     </div>
   );
 }
