@@ -13,8 +13,10 @@ export const brand = {
   colors: {
     navy: "#0B1220",
     navySoft: "#141C2E",
-    orange: "#F05A1A",
-    orangeHover: "#D94E14",
+    orange: "#F87000",
+    orangeHover: "#E03800",
+    orangeDeep: "#D83200",
+    orangeBright: "#FFC14D",
     orangeMuted: "#FFF1EA",
     white: "#FFFFFF",
     gray: "#F4F6F8",

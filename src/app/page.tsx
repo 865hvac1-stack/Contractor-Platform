@@ -22,10 +22,10 @@ export default async function HomePage() {
     <div className="relative flex min-h-screen flex-col bg-[var(--cy-navy)] text-white">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(240,90,26,0.22)_0%,_transparent_42%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(248,112,0,0.22)_0%,_transparent_42%)]"
       />
       <header className="relative z-10 flex items-center justify-between px-6 py-5 md:px-10">
-        <BrandMark variant="full" tone="light" />
+        <BrandMark variant="full" tone="light" priority />
         <Link
           href="/login"
           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-white/70 hover:bg-white/8 hover:text-white")}

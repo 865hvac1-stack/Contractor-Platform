@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
-import { brand } from "@/lib/brand";
 import { BrandMark } from "@/components/brand-mark";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -18,9 +17,8 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
           <Link href="/" className="inline-flex justify-center">
-            <BrandMark variant="full" tone="dark" />
+            <BrandMark variant="stacked" tone="dark" priority />
           </Link>
-          <p className="mt-3 text-sm text-[var(--muted-foreground)]">{brand.positioning}</p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm md:p-8">
           {children}
