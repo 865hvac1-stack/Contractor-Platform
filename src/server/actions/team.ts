@@ -8,8 +8,6 @@ import { AuthError } from "@/lib/auth";
 import type { ActionResult } from "@/server/actions/auth";
 import { requirePlatformAdmin } from "@/lib/auth";
 
-export { inviteTeamMemberAction, resendTeamInviteAction, revokeTeamInviteAction } from "@/server/actions/invites";
-
 export async function updateMemberRoleAction(
   membershipId: string,
   role: string

@@ -1,12 +1,12 @@
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { ROLE_LABELS, can } from "@/lib/permissions";
+import { updateMemberRoleAction } from "@/server/actions/team";
 import {
   inviteTeamMemberAction,
   resendTeamInviteAction,
   revokeTeamInviteAction,
-  updateMemberRoleAction,
-} from "@/server/actions/team";
+} from "@/server/actions/invites";
 import { inviteStatus } from "@/lib/team/invite-status";
 import { emailConfigured } from "@/lib/email/resend";
 import { updateLaborCostAction } from "@/server/actions/costing";
