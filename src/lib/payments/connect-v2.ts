@@ -182,4 +182,35 @@ export function connectIdempotencyKey(companyId: string) {
   return `cy-connect-v2-saas-${companyId}`;
 }
 
+/**
+ * Settings → Payments can later enable these Account Session components
+ * without leaving ContractorYou or creating a second payment system.
+ * Only `account_onboarding` is enabled in this slice.
+ */
+export const FUTURE_EMBEDDED_COMPONENTS = [
+  "account_management",
+  "notification_banner",
+  "payouts",
+  "balances",
+  "payments",
+  "payment_details",
+  "disputes_list",
+] as const;
+
+export function accountSessionOnboardingParams(stripeAccountId: string) {
+  return {
+    account: stripeAccountId,
+    components: {
+      account_onboarding: {
+        enabled: true,
+        features: {
+          // Stripe collects bank details inside the embed. Never set this false
+          // unless a third-party collector is actually wired.
+          external_account_collection: true,
+        },
+      },
+    },
+  };
+}
+
 export type { Stripe };

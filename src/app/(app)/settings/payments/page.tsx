@@ -15,7 +15,7 @@ import { PaymentsSettingsActions } from "@/app/(app)/settings/payments/payments-
 export default async function PaymentsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ returned?: string }>;
+  searchParams: Promise<{ returned?: string; onboard?: string }>;
 }) {
   const ctx = await requirePermission("company:settings");
   const query = await searchParams;
@@ -35,6 +35,8 @@ export default async function PaymentsSettingsPage({
     account,
   });
   const returned = query.returned === "1";
+  const startOpen = query.onboard === "1";
+  const publishableKey = stripePublishableKey();
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -50,7 +52,7 @@ export default async function PaymentsSettingsPage({
 
       {returned ? (
         <p className="rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-sm">
-          Returned from payment setup. Status below is verified with Stripe, not from the return link.
+          Setup progress was saved. Status below is verified with Stripe, not assumed from this page.
         </p>
       ) : null}
       {refreshError ? (
@@ -92,7 +94,9 @@ export default async function PaymentsSettingsPage({
           </dl>
         ) : null}
 
-        {canManage ? <PaymentsSettingsActions status={status} /> : (
+        {canManage ? (
+          <PaymentsSettingsActions status={status} publishableKey={publishableKey} startOpen={startOpen} />
+        ) : (
           <p className="mt-4 text-sm text-[var(--muted-foreground)]">
             An owner or admin can set up or manage ContractorYou Payments.
           </p>
@@ -100,8 +104,10 @@ export default async function PaymentsSettingsPage({
       </section>
 
       <p className="text-xs text-[var(--muted-foreground)]">
-        Secure payment processing powered by Stripe. ContractorYou never stores card numbers, CVV, or bank
-        credentials. Each company has its own Stripe connected account. Platform mode: {stripeModeLabel()}.
+        Secure payment processing powered by Stripe. ContractorYou never stores card numbers, CVV, bank
+        credentials, routing or account numbers, identity documents, or SSNs and tax IDs. Stripe collects
+        those inside the embedded setup form. Each company has its own Stripe connected account. Platform
+        mode: {stripeModeLabel()}.
       </p>
     </div>
   );
@@ -139,8 +145,9 @@ function StatusCopy({
       <div className="mt-3 space-y-2">
         <h2 className="text-xl font-semibold">Not set up</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Set up payments to accept cards and bank payments. You do not need a Stripe account first — setup
-          walks you through business verification and payout bank details securely.
+          Set up payments to accept cards and bank payments. You do not need a Stripe account first. Setup
+          stays in ContractorYou. Stripe securely collects business verification, identity, and payout bank
+          details — ContractorYou never stores them.
         </p>
       </div>
     );
@@ -150,7 +157,8 @@ function StatusCopy({
       <div className="mt-3 space-y-2">
         <h2 className="text-xl font-semibold">Setup in progress</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Finish business verification and payout setup. Payments stay off until Stripe confirms they are enabled.
+          Finish business verification and payout setup inside ContractorYou. Payments stay off until Stripe
+          confirms they are enabled.
         </p>
       </div>
     );

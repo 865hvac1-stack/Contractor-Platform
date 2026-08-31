@@ -65,8 +65,8 @@ export default async function SettingsPage() {
           </p>
           <h2 className="mt-2 font-medium">Payments</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Accept customer payments and receive deposits to your business bank account. Secure processing
-            powered by Stripe.
+            Accept customer payments and receive deposits to your business bank account. Setup stays in
+            ContractorYou. Stripe securely collects verification and bank details.
           </p>
         </Link>
       ) : null}

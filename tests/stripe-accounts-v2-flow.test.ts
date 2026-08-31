@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 const accountsCreate = vi.fn();
 const accountLinksCreate = vi.fn();
+const accountSessionsCreate = vi.fn();
 const accountsRetrieve = vi.fn();
 
 vi.mock("@/lib/payments/stripe-client", () => ({
@@ -16,13 +17,15 @@ vi.mock("@/lib/payments/stripe-client", () => ({
         accountLinks: { create: accountLinksCreate },
       },
     },
+    accountSessions: { create: accountSessionsCreate },
     accounts: { createLoginLink: vi.fn() },
     webhooks: { constructEvent: vi.fn() },
     parseEventNotification: vi.fn(),
   }),
 }));
 
-const { createOrResumeConnectAccount, refreshConnectAccount } = await import("@/lib/payments/connect");
+const { createOnboardingAccountSession, createOrResumeConnectAccount, refreshConnectAccount } =
+  await import("@/lib/payments/connect");
 
 const prisma = new PrismaClient();
 
@@ -36,9 +39,11 @@ describe("accounts v2 create-or-resume flow", () => {
     ids.companyId = company.id;
     accountsCreate.mockReset();
     accountLinksCreate.mockReset();
+    accountSessionsCreate.mockReset();
     accountsRetrieve.mockReset();
     accountsCreate.mockResolvedValue({ id: `acct_v2_${company.id}` });
     accountLinksCreate.mockResolvedValue({ url: "https://connect.stripe.com/v2/onboard/test" });
+    accountSessionsCreate.mockResolvedValue({ client_secret: "acs_secret_test" });
     accountsRetrieve.mockResolvedValue({
       id: `acct_v2_${company.id}`,
       configuration: {
@@ -72,10 +77,18 @@ describe("accounts v2 create-or-resume flow", () => {
     expect(JSON.stringify(createArgs)).not.toMatch(/"type"\s*:\s*"express"/);
     expect(first.created).toBe(true);
     expect(first.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);
-    expect(first.url).toContain("connect.stripe.com");
-    expect(accountLinksCreate).toHaveBeenCalledTimes(1);
-    const linkArgs = accountLinksCreate.mock.calls[0]?.[0] as { use_case?: { type?: string } };
-    expect(linkArgs.use_case?.type).toBe("account_onboarding");
+    expect(first).not.toHaveProperty("url");
+    expect(accountLinksCreate).not.toHaveBeenCalled();
+    const session = await createOnboardingAccountSession(first.stripeAccountId);
+    expect(session.client_secret).toBe("acs_secret_test");
+    expect(accountSessionsCreate).toHaveBeenCalledTimes(1);
+    const sessionArgs = accountSessionsCreate.mock.calls[0]?.[0] as {
+      account?: string;
+      components?: { account_onboarding?: { enabled?: boolean } };
+    };
+    expect(sessionArgs.account).toBe(first.stripeAccountId);
+    expect(sessionArgs.components?.account_onboarding?.enabled).toBe(true);
+    expect(JSON.stringify(sessionArgs)).not.toContain("companyId");
     const rows = await prisma.stripeConnectAccount.findMany({ where: { companyId: ids.companyId } });
     expect(rows).toHaveLength(1);
   });
@@ -83,6 +96,7 @@ describe("accounts v2 create-or-resume flow", () => {
   it("B/C. second click and incomplete onboarding reuse the same account", async () => {
     accountsCreate.mockClear();
     accountLinksCreate.mockClear();
+    accountSessionsCreate.mockClear();
     const second = await createOrResumeConnectAccount(prisma, {
       companyId: ids.companyId,
       email: "owner@865hvac.local",
@@ -91,7 +105,9 @@ describe("accounts v2 create-or-resume flow", () => {
     expect(accountsCreate).not.toHaveBeenCalled();
     expect(second.created).toBe(false);
     expect(second.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);
-    expect(accountLinksCreate).toHaveBeenCalledTimes(1);
+    expect(accountLinksCreate).not.toHaveBeenCalled();
+    await createOnboardingAccountSession(second.stripeAccountId);
+    expect(accountSessionsCreate).toHaveBeenCalledTimes(1);
     const rows = await prisma.stripeConnectAccount.findMany({ where: { companyId: ids.companyId } });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.onboardingStatus).not.toBe("CONNECTED");

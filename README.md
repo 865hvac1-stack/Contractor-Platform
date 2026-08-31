@@ -38,7 +38,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Receipts:** Money → Receipts inbox. Photo/PDF upload, optional AI suggestions, confirm before creating an expense or job cost.
 - **Job costing:** Confirmed costs and verified invoice revenue only. Technicians cannot see company profit.
 - **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
-- **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Connect **Accounts v2** merchant account (`POST /v2/core/accounts`, full Stripe Dashboard, Stripe-owned fees and losses). Stripe handles KYC, cards, bank payments, and payouts. ContractorYou never stores card numbers, CVV, or bank credentials. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
+- **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Connect **Accounts v2** merchant account (`POST /v2/core/accounts`, full Stripe Dashboard, Stripe-owned fees and losses). Onboarding is **embedded** in ContractorYou via Stripe Account Sessions and the Account Onboarding Connect component — contractors are not redirected to Stripe-hosted onboarding. Stripe handles KYC, identity, bank details, cards, and payouts. ContractorYou never stores card numbers, CVV, bank credentials, identity documents, or SSNs/tax IDs. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
 
 ## Local setup
 
@@ -205,7 +205,7 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `STRIPE_SECRET_KEY` | No | Server-only Stripe secret. Required for ContractorYou Payments. App still deploys without it. |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | No | Publishable key for Payment Element. Safe for the browser. |
 | `STRIPE_WEBHOOK_SECRET` | No | Webhook signing secret for `{APP_URL}/api/webhooks/stripe` |
-| `STRIPE_CONNECT_CLIENT_ID` | No | Optional. Express Account Links do not require it. |
+| `STRIPE_CONNECT_CLIENT_ID` | No | Optional. Embedded Account Sessions do not require it. |
 | `STRIPE_PLATFORM_FEE_BPS` | No | Future platform fee in basis points. Default `0`. Do not invent fees. |
 | `RESEND_API_KEY` | No | Required to send team / technician invite emails. Without it, Team shows “Email is not configured.” |
 | `EMAIL_FROM` or `RESEND_FROM` | No | Verified Resend from-address |
@@ -297,7 +297,9 @@ Stripe does **not** allow `dashboard=express` with Stripe-owned fees/losses (`ac
 
 New Connect platforms must use Accounts v2. ContractorYou does **not** call legacy `POST /v1/accounts` and does not require enabling Accounts v1 compatibility in Stripe.
 
-**Onboarding:** Stripe-hosted Account Links via `POST /v2/core/account_links` (`use_case.type = account_onboarding`). ContractorYou never collects KYC or bank credentials.
+**Onboarding:** Stripe Connect **embedded Account Onboarding** inside Settings → Payments. ContractorYou creates or resumes the Accounts v2 merchant, then creates an Account Session (`POST /v1/account_sessions` with only `components.account_onboarding.enabled`). Connect.js renders Stripe’s form in-app. Continue Setup and required-information updates reuse the same stored account and a fresh Account Session. ContractorYou never collects or stores KYC, bank credentials, identity documents, or SSNs/tax IDs.
+
+Later Account Session components (account management, payouts, balances, payments, refunds/disputes, notification banner) can be enabled on this same Payments screen without a second payment system. They are not shipped in this slice.
 
 **Status:** `CONNECTED` only when Accounts v2 reports card payments **active**, payouts **active**, and no user-due requirements. An account ID alone is not Connected.
 
@@ -309,9 +311,9 @@ New Connect platforms must use Accounts v2. ContractorYou does **not** call lega
 2. Add the webhook endpoint `{APP_URL}/api/webhooks/stripe` (legacy alias: `{APP_URL}/api/payments/stripe`). ContractorYou verifies Stripe signatures and accepts both snapshot events (`object: event`) and Accounts v2 thin events (`object: v2.core.event`).
 3. Subscribe to payment events: `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `checkout.session.completed`, `charge.refunded`, `refund.updated`, `charge.dispute.created`.
 4. Subscribe to Accounts v2 events: `v2.core.account.updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account.closed`, `v2.core.account_link.returned`. Also keep `account.updated` if Stripe still emits it.
-5. Set `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET` on Railway. Never commit keys. `STRIPE_CONNECT_CLIENT_ID` is optional and not required for Account Links.
+5. Set `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET` on Railway. Never commit keys. `STRIPE_CONNECT_CLIENT_ID` is optional and not required for embedded Account Sessions.
 
-**Verify a connected contractor:** Settings → Payments must show **Payments Active** only after Stripe confirms charges and payouts. Retry Set Up Payments always resumes the same stored account (idempotency key `cy-connect-v2-saas-{companyId}`).
+**Verify a connected contractor:** Settings → Payments → Set Up Payments must open the Stripe form **inside ContractorYou**. The page shows **Payments Active** only after Stripe confirms charges and payouts. Retry / Continue Setup always resumes the same stored account (idempotency key `cy-connect-v2-saas-{companyId}`) and issues a new Account Session. Never treat onboarding as successful from the embed exit alone.
 
 **Troubleshoot onboarding:** If setup fails, contractors see a generic message. Owners can expand the administrator reference (never a secret). Check Railway logs for the Stripe request id, not card or bank data.
 

@@ -11,6 +11,8 @@ import {
   publicPaymentsError,
   v2AccountCreateParams,
   v2OnboardingLinkParams,
+  accountSessionOnboardingParams,
+  FUTURE_EMBEDDED_COMPONENTS,
 } from "@/lib/payments/connect-v2";
 import { createInvoicePaymentIntent, resolveInvoicePaymentDestination } from "@/lib/payments/intents";
 import { collectedAmountCents, reconcileInvoiceFromPayments, recordConfirmedProviderPayment } from "@/lib/payments/record";
@@ -116,6 +118,18 @@ describe("stripe accounts v2 helpers", () => {
     expect(v2OnboardingLinkParams("acct_123", { refreshUrl: "https://a/r", returnUrl: "https://a/return" }).use_case.type).toBe(
       "account_onboarding"
     );
+    const session = accountSessionOnboardingParams("acct_123");
+    expect(session.account).toBe("acct_123");
+    expect(session.components.account_onboarding.enabled).toBe(true);
+    expect(session.components.account_onboarding.features.external_account_collection).toBe(true);
+    expect(session.components.account_onboarding.features).not.toHaveProperty("disable_stripe_user_authentication");
+    expect(session.components).not.toHaveProperty("account_management");
+    expect(session.components).not.toHaveProperty("payouts");
+    expect(JSON.stringify(session)).not.toContain("companyId");
+    expect(JSON.stringify(session)).not.toMatch(/routing|ssn|tax_id|bank_account_number/i);
+    for (const name of FUTURE_EMBEDDED_COMPONENTS) {
+      expect(session.components).not.toHaveProperty(name);
+    }
     expect(connectIdempotencyKey("co_865")).toBe("cy-connect-v2-saas-co_865");
   });
 

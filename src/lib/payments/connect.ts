@@ -4,12 +4,12 @@ import { upsertConnection } from "@/lib/integrations/store";
 import { appUrl, STRIPE_CONNECT_PROVIDER_KEY } from "@/lib/payments/config";
 import {
   CONNECT_ACCOUNT_INCLUDES,
+  accountSessionOnboardingParams,
   connectIdempotencyKey,
   mapV2AccountCapabilities,
   publicPaymentsError,
   v2AccountCreateParams,
   v2AccountUpdateLinkParams,
-  v2OnboardingLinkParams,
   type V2AccountLike,
 } from "@/lib/payments/connect-v2";
 import { requireStripe } from "@/lib/payments/stripe-client";
@@ -155,13 +155,12 @@ export async function createOrResumeConnectAccount(
       data: { disabledAt: null, onboardingStatus: "ONBOARDING" },
     });
   }
-  const link = await stripe.v2.core.accountLinks.create(
-    v2OnboardingLinkParams(stripeAccountId, {
-      refreshUrl: `${appUrl()}/api/payments/connect/refresh`,
-      returnUrl: `${appUrl()}/settings/payments?returned=1`,
-    })
-  );
-  return { url: link.url, stripeAccountId, created };
+  return { stripeAccountId, created };
+}
+
+export async function createOnboardingAccountSession(stripeAccountId: string) {
+  const stripe = requireStripe();
+  return stripe.accountSessions.create(accountSessionOnboardingParams(stripeAccountId));
 }
 
 export async function createAccountUpdateLink(stripeAccountId: string) {

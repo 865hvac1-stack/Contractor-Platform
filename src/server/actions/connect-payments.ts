@@ -1,14 +1,10 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { AuthError } from "@/lib/auth";
-import { isNextRedirect } from "@/lib/action-errors";
 import { missingStripeEnvVars, stripeConfigured } from "@/lib/payments/config";
 import {
-  createAccountLoginLink,
-  createAccountUpdateLink,
   createOrResumeConnectAccount,
   publicPaymentsError,
   refreshConnectAccount,
@@ -37,9 +33,8 @@ export async function startPaymentsOnboardingAction(): Promise<ActionResult> {
       entityType: "StripeConnectAccount",
       entityId: started.stripeAccountId,
     });
-    redirect(started.url);
+    return { ok: true };
   } catch (error) {
-    if (isNextRedirect(error)) throw error;
     if (error instanceof AuthError) return { ok: false, error: error.message };
     const safe = publicPaymentsError(error);
     console.error("[payments.connect]", safe.diagnostic);
@@ -64,31 +59,11 @@ export async function refreshPaymentsStatusAction(): Promise<ActionResult> {
 }
 
 export async function manageStripeAccountAction(): Promise<ActionResult> {
-  try {
-    const ctx = await requirePermission("payments:manage");
-    const account = await prisma.stripeConnectAccount.findUnique({ where: { companyId: ctx.company.id } });
-    if (!account) return { ok: false, error: "Payments are not set up." };
-    const link = await createAccountLoginLink(account.stripeAccountId);
-    redirect(link.url);
-  } catch (error) {
-    if (isNextRedirect(error)) throw error;
-    if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: publicPaymentsError(error).user };
-  }
+  return startPaymentsOnboardingAction();
 }
 
 export async function updateStripePayoutAccountAction(): Promise<ActionResult> {
-  try {
-    const ctx = await requirePermission("payments:manage");
-    const account = await prisma.stripeConnectAccount.findUnique({ where: { companyId: ctx.company.id } });
-    if (!account) return { ok: false, error: "Payments are not set up." };
-    const link = await createAccountUpdateLink(account.stripeAccountId);
-    redirect(link.url);
-  } catch (error) {
-    if (isNextRedirect(error)) throw error;
-    if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: publicPaymentsError(error).user };
-  }
+  return startPaymentsOnboardingAction();
 }
 
 export async function disconnectPaymentsAction(): Promise<ActionResult> {
