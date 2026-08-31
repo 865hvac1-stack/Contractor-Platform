@@ -27,9 +27,10 @@ export async function assignPlaybookToJob(input: {
 
   const job = await prisma.job.findFirst({
     where: { id: input.jobId, companyId: input.companyId },
-    select: { jobType: true },
+    select: { jobType: true, importMode: true },
   });
   if (!job) return null;
+  if (job.importMode === "HISTORICAL") return null;
 
   await prisma.job.update({
     where: { id: input.jobId },

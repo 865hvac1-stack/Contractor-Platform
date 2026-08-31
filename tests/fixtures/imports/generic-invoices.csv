@@ -1,0 +1,2 @@
+Invoice Number,Invoice ID,Customer Email,Total,Amount Paid,Balance,Status,Due Date
+INV-9001,inv-9001,ada@import.test,$500.00,$0.00,$500.00,Open,2024-03-01

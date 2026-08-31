@@ -69,14 +69,19 @@ export function evaluateRows(input: {
     let action: ImportRowAction = actionForDuplicate(verdict.verdict, input.policy);
     if (status === "ERROR") action = "ERROR";
     if (priorInFile && verdict.match?.reason.includes("more than once") && status !== "ERROR") {
-      action = "CREATE";
+      action = "MERGE";
+      issues.push({
+        level: "WARNING",
+        code: "merged_row",
+        message: "This row belongs to a customer already in this file. We will add the extra location, not a second customer.",
+      });
     }
 
     if (status === "ERROR") errors += 1;
     else if (status === "WARNING") warnings += 1;
-    if (verdict.verdict !== "NEW") duplicates += 1;
+    if (verdict.verdict !== "NEW" && action !== "MERGE") duplicates += 1;
     if (action === "SKIP") skippedByPolicy += 1;
-    if (action === "CREATE" || action === "UPDATE") ready += 1;
+    if (action === "CREATE" || action === "UPDATE" || action === "MERGE") ready += 1;
     if (action === "CREATE") newCustomers += 1;
     if (action === "UPDATE") existingCustomers += 1;
 
@@ -106,6 +111,19 @@ export function evaluateRows(input: {
       properties,
       tags: tagSet.size,
       skippedByPolicy,
+      accounting: {
+        sourceRows: input.rows.length,
+        created: evaluated.filter((row) => row.action === "CREATE" && row.status === "VALID").length,
+        updated: evaluated.filter((row) => row.action === "UPDATE" && row.status !== "ERROR").length,
+        merged: evaluated.filter((row) => row.action === "MERGE" && row.status !== "ERROR").length,
+        duplicates: evaluated.filter((row) => row.action === "SKIP" && row.duplicateVerdict !== "NEW").length,
+        skipped: evaluated.filter((row) => row.action === "SKIP" && row.duplicateVerdict === "NEW").length,
+        warningImported: evaluated.filter(
+          (row) => row.status === "WARNING" && ["CREATE", "UPDATE", "MERGE"].includes(row.action)
+        ).length,
+        errors: evaluated.filter((row) => row.action === "ERROR" || row.status === "ERROR").length,
+        other: 0,
+      },
     },
   };
 }
@@ -135,7 +153,15 @@ export async function persistPreview(input: {
   prisma: PrismaClient;
   companyId: string;
   sessionId: string;
-  evaluated: PreviewRow[];
+  evaluated: Array<{
+    id: string;
+    status: ImportRowStatus;
+    action: ImportRowAction;
+    duplicateVerdict?: PreviewRow["duplicateVerdict"];
+    mappedData: unknown;
+    issues: RowIssue[];
+    targetRecordId: string | null;
+  }>;
   summary: PreviewSummary;
 }) {
   for (const row of input.evaluated) {
@@ -144,7 +170,7 @@ export async function persistPreview(input: {
       data: {
         status: row.status,
         action: row.action,
-        duplicateVerdict: row.duplicateVerdict,
+        duplicateVerdict: row.duplicateVerdict ?? "NEW",
         mappedData: row.mappedData ?? undefined,
         issues: row.issues,
         targetRecordId: row.targetRecordId,
@@ -155,6 +181,7 @@ export async function persistPreview(input: {
     where: { id: input.sessionId, companyId: input.companyId },
     data: {
       previewSummary: input.summary,
+      rowAccounting: input.summary.accounting ?? undefined,
       status: input.summary.errors === input.summary.totalRows ? "FAILED" : "READY_TO_IMPORT",
     },
   });

@@ -23,17 +23,28 @@ import { describeDetection } from "@/lib/imports/presets";
 import { hasIdentityMapping, incompatibleMappings, mappingFromForm } from "@/lib/imports/map";
 import { evaluateRows, loadExistingCustomers, persistPreview } from "@/lib/imports/preview";
 import { executeImportBatch, summarizeImportedCustomers } from "@/lib/imports/execute";
+import { emptyAccounting, executeEntityBatch, previewEntityRows, summarizeEntityImport } from "@/lib/imports/engine";
+import { catalogAliases, FOUNDATION_ENTITY_TYPES, FOUNDATION_REASON, isLiveImportType } from "@/lib/imports/catalog";
+import { detectRecordType } from "@/lib/imports/detect-record";
 import { rollbackImportSession } from "@/lib/imports/rollback";
 import { suggestUnmappedColumns } from "@/lib/imports/suggest";
-import type { ImportRowAction, ImportSourceType } from "@prisma/client";
+import { computeQualityScore } from "@/lib/imports/quality";
+import { headerFingerprint } from "@/lib/imports/normalize";
+import type { ImportRecordType, ImportRowAction, ImportSourceType } from "@prisma/client";
 
 export type ImportActionResult = ActionResult & { sessionId?: string; remaining?: number; done?: boolean };
 
 function asRecordType(value: FormDataEntryValue | null): ImportRecordTypeId | null {
+  const text = String(value || "") as ImportRecordTypeId;
+  return LIVE_IMPORT_RECORD_TYPES.includes(text) ? text : null;
+}
+
+function foundationMessage(value: FormDataEntryValue | null): string | null {
   const text = String(value || "");
-  return LIVE_IMPORT_RECORD_TYPES.includes(text as ImportRecordTypeId)
-    ? (text as ImportRecordTypeId)
-    : (text as ImportRecordTypeId) || null;
+  if (FOUNDATION_ENTITY_TYPES.includes(text as ImportRecordTypeId)) {
+    return FOUNDATION_REASON[text] ?? "That record type is not open yet.";
+  }
+  return null;
 }
 
 function asSourceType(value: FormDataEntryValue | null): ImportSourceTypeId {
@@ -57,14 +68,10 @@ export async function uploadImportFileAction(
 ): Promise<ImportActionResult> {
   try {
     const ctx = await requirePermission("imports:manage");
+    const foundation = foundationMessage(formData.get("recordType"));
+    if (foundation) return { ok: false, error: foundation };
     const recordType = asRecordType(formData.get("recordType"));
     if (!recordType) return { ok: false, error: "Choose what you want to import." };
-    if (!LIVE_IMPORT_RECORD_TYPES.includes(recordType)) {
-      return {
-        ok: false,
-        error: "That record type is not open yet. Customer import is ready — other types are coming next.",
-      };
-    }
     const sourceType = asSourceType(formData.get("sourceType"));
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
@@ -78,22 +85,45 @@ export async function uploadImportFileAction(
     });
     const columns = analyzeColumns(parsed.headers, parsed.rows);
     const detection = describeDetection(sourceType, parsed.headers);
-    let mapping = autoMapColumns(columns, detection.presetMapping);
-    mapping = await suggestUnmappedColumns({ columns, mapping });
+    const recordGuess = detectRecordType(parsed.headers);
+    const fingerprint = headerFingerprint(parsed.headers);
+    const saved = await prisma.importMappingProfile.findFirst({
+      where: {
+        companyId: ctx.company.id,
+        recordType: recordType as ImportRecordType,
+        headerFingerprint: fingerprint,
+      },
+    });
+    let mapping = saved
+      ? (saved.mapping as ImportMapping)
+      : autoMapColumns(columns, detection.presetMapping, catalogAliases(recordType));
+    if (!saved) mapping = await suggestUnmappedColumns({ columns, mapping });
     const analysis: FileAnalysis = analysisFromParsed(parsed, {
       columns,
       detectedSource: detection.detectedSource,
       detectedSourceLabel: detection.detectedSourceLabel,
       detectedSourceConfidence: detection.detectedSourceConfidence,
       presetName: detection.presetName,
-      message: detection.message,
+      message: [recordGuess.message, detection.message].filter(Boolean).join(" "),
     });
+    let migrationProjectId = String(formData.get("migrationProjectId") || "") || null;
+    const newProject = String(formData.get("newMigrationName") || "").trim();
+    if (newProject) {
+      const project = await prisma.migrationProject.create({
+        data: {
+          companyId: ctx.company.id,
+          name: newProject.slice(0, 120),
+          sourceType: sourceType as ImportSourceType,
+        },
+      });
+      migrationProjectId = project.id;
+    }
 
     const session = await prisma.importSession.create({
       data: {
         companyId: ctx.company.id,
         userId: ctx.user.id,
-        recordType: "CUSTOMERS",
+        recordType: recordType as ImportRecordType,
         sourceType: sourceType as ImportSourceType,
         fileName: file.name.slice(0, 255),
         fileHash: parsed.fileHash,
@@ -103,6 +133,9 @@ export async function uploadImportFileAction(
         rowCount: parsed.rows.length,
         analysis: analysis as object,
         mapping: mapping as object,
+        importMode: "HISTORICAL",
+        detectedRecordType: recordGuess.type,
+        migrationProjectId,
       },
     });
 
@@ -151,8 +184,12 @@ export async function saveImportMappingAction(
       selected[header] = String(formData.get(`map:${header}`) || "ignore");
     }
     const mapping = mappingFromForm(headers, selected, session.mapping as ImportMapping | null);
-    if (!hasIdentityMapping(mapping)) {
+    if (session.recordType === "CUSTOMERS" && !hasIdentityMapping(mapping)) {
       return { ok: false, error: "Match at least a customer name, full name, or company name." };
+    }
+    const mappedTargets = new Set(mapping.columns.map((column) => column.target));
+    if (session.recordType !== "CUSTOMERS" && mappedTargets.size <= 1) {
+      return { ok: false, error: "Match at least one column so we know what this file contains." };
     }
     const kinds = Object.fromEntries((analysis?.columns ?? []).map((column) => [column.header, column.inferredKind]));
     const conflicts = incompatibleMappings(mapping, kinds);
@@ -188,27 +225,67 @@ export async function buildImportPreviewAction(
       where: { companyId: ctx.company.id, importSessionId: session.id },
       orderBy: { rowNumber: "asc" },
     });
-    const existing = await loadExistingCustomers(prisma, ctx.company.id);
-    const { evaluated, summary } = evaluateRows({
-      rows: rows.map((row) => ({
-        id: row.id,
-        rowNumber: row.rowNumber,
-        rawData: row.rawData as Record<string, string>,
-      })),
-      mapping,
-      existing,
-      policy,
+    const prepared = rows.map((row) => ({
+      id: row.id,
+      rowNumber: row.rowNumber,
+      rawData: row.rawData as Record<string, string>,
+    }));
+    if (session.recordType === "CUSTOMERS") {
+      const existing = await loadExistingCustomers(prisma, ctx.company.id);
+      const { evaluated, summary } = evaluateRows({ rows: prepared, mapping, existing, policy });
+      await persistPreview({
+        prisma,
+        companyId: ctx.company.id,
+        sessionId: session.id,
+        evaluated,
+        summary,
+      });
+    } else if (isLiveImportType(session.recordType)) {
+      const { evaluated, summary } = await previewEntityRows({
+        prisma,
+        companyId: ctx.company.id,
+        sourceSystem: session.sourceType,
+        recordType: session.recordType,
+        mapping,
+        rows: prepared,
+      });
+      await persistPreview({
+        prisma,
+        companyId: ctx.company.id,
+        sessionId: session.id,
+        evaluated,
+        summary: {
+          totalRows: summary.totalRows,
+          ready: summary.ready,
+          warnings: summary.warnings,
+          errors: summary.errors,
+          duplicates: summary.duplicates,
+          newCustomers: 0,
+          existingCustomers: 0,
+          properties: 0,
+          tags: 0,
+          skippedByPolicy: 0,
+          unmatchedCustomers: summary.unmatchedCustomers,
+          unmatchedProperties: summary.unmatchedProperties,
+          unmatchedRelations: summary.unmatchedRelations,
+          unknownTechnicians: summary.unknownTechnicians,
+          accounting: summary.accounting,
+        },
+      });
+    } else {
+      return { ok: false, error: "That record type is not open yet." };
+    }
+    const refreshed = await prisma.importSession.findFirst({
+      where: { id: session.id, companyId: ctx.company.id },
     });
-    await persistPreview({
-      prisma,
-      companyId: ctx.company.id,
-      sessionId: session.id,
-      evaluated,
-      summary,
+    const qualityScore = computeQualityScore({
+      totalRows: session.rowCount,
+      preview: refreshed?.previewSummary as never,
+      accounting: refreshed?.rowAccounting as never,
     });
     await prisma.importSession.update({
       where: { id: session.id, companyId: ctx.company.id },
-      data: { duplicatePolicy: policy },
+      data: { duplicatePolicy: policy, qualityScore },
     });
     revalidatePath(`/settings/import/${session.id}`);
     return { ok: true, sessionId: session.id };
@@ -237,20 +314,42 @@ export async function confirmImportAction(
       where: { id: session.id, companyId: ctx.company.id },
       data: { confirmedAt: new Date(), status: "IMPORTING", startedAt: session.startedAt ?? new Date() },
     });
-    const result = await executeImportBatch({
-      prisma,
-      companyId: ctx.company.id,
-      sessionId: session.id,
-    });
+    const result =
+      session.recordType === "CUSTOMERS"
+        ? await executeImportBatch({
+            prisma,
+            companyId: ctx.company.id,
+            sessionId: session.id,
+          })
+        : await executeEntityBatch({
+            prisma,
+            companyId: ctx.company.id,
+            userId: ctx.user.id,
+            sessionId: session.id,
+          });
     if (result.done) {
-      const intelligence = await summarizeImportedCustomers({
-        prisma,
-        companyId: ctx.company.id,
-        sessionId: session.id,
+      const refreshed = await prisma.importSession.findFirst({
+        where: { id: session.id, companyId: ctx.company.id },
+      });
+      const intelligence =
+        session.recordType === "CUSTOMERS"
+          ? await summarizeImportedCustomers({
+              prisma,
+              companyId: ctx.company.id,
+              sessionId: session.id,
+            })
+          : summarizeEntityImport(
+              session.recordType,
+              "accounting" in result ? result.accounting : emptyAccounting()
+            );
+      const qualityScore = computeQualityScore({
+        totalRows: session.rowCount,
+        preview: refreshed?.previewSummary as never,
+        accounting: (refreshed?.rowAccounting as never) ?? ("accounting" in result ? result.accounting : null),
       });
       await prisma.importSession.update({
         where: { id: session.id, companyId: ctx.company.id },
-        data: { intelligence },
+        data: { intelligence, qualityScore },
       });
     }
     await writeAudit({
@@ -259,7 +358,7 @@ export async function confirmImportAction(
       action: result.done ? "import.completed" : "import.batch",
       entityType: "ImportSession",
       entityId: session.id,
-      metadata: { ...result.summary, remaining: result.remaining },
+      metadata: { remaining: result.remaining, done: result.done },
     });
     revalidatePath("/customers");
     revalidatePath("/settings/import");
@@ -280,20 +379,42 @@ export async function continueImportAction(
     const sessionId = String(formData.get("sessionId") || "");
     const session = await loadOwnedSession(ctx.company.id, sessionId);
     if (!session.confirmedAt) return { ok: false, error: "Confirm this import before continuing." };
-    const result = await executeImportBatch({
-      prisma,
-      companyId: ctx.company.id,
-      sessionId: session.id,
-    });
+    const result =
+      session.recordType === "CUSTOMERS"
+        ? await executeImportBatch({
+            prisma,
+            companyId: ctx.company.id,
+            sessionId: session.id,
+          })
+        : await executeEntityBatch({
+            prisma,
+            companyId: ctx.company.id,
+            userId: ctx.user.id,
+            sessionId: session.id,
+          });
     if (result.done) {
-      const intelligence = await summarizeImportedCustomers({
-        prisma,
-        companyId: ctx.company.id,
-        sessionId: session.id,
+      const refreshed = await prisma.importSession.findFirst({
+        where: { id: session.id, companyId: ctx.company.id },
+      });
+      const intelligence =
+        session.recordType === "CUSTOMERS"
+          ? await summarizeImportedCustomers({
+              prisma,
+              companyId: ctx.company.id,
+              sessionId: session.id,
+            })
+          : summarizeEntityImport(
+              session.recordType,
+              "accounting" in result ? result.accounting : emptyAccounting()
+            );
+      const qualityScore = computeQualityScore({
+        totalRows: session.rowCount,
+        preview: refreshed?.previewSummary as never,
+        accounting: (refreshed?.rowAccounting as never) ?? ("accounting" in result ? result.accounting : null),
       });
       await prisma.importSession.update({
         where: { id: session.id, companyId: ctx.company.id },
-        data: { intelligence },
+        data: { intelligence, qualityScore },
       });
     }
     revalidatePath("/customers");
@@ -346,7 +467,7 @@ export async function rollbackImportAction(
       return { ok: false, error: "Only a company owner can undo an import." };
     }
     if (String(formData.get("confirmText") || "") !== "ROLLBACK") {
-      return { ok: false, error: "Type ROLLBACK to confirm. This only removes customers created by this import." };
+      return { ok: false, error: "Type ROLLBACK to confirm. This only removes records created by this import." };
     }
     const sessionId = String(formData.get("sessionId") || "");
     const session = await loadOwnedSession(ctx.company.id, sessionId);
@@ -401,6 +522,58 @@ export async function updateRowActionAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: "Could not update that row." };
+  }
+}
+
+export async function saveCompanyMappingAction(
+  _prev: ImportActionResult | null,
+  formData: FormData
+): Promise<ImportActionResult> {
+  try {
+    const ctx = await requirePermission("imports:manage");
+    const sessionId = String(formData.get("sessionId") || "");
+    const label = String(formData.get("name") || "Saved mapping").trim().slice(0, 80) || "Saved mapping";
+    const session = await loadOwnedSession(ctx.company.id, sessionId);
+    const analysis = session.analysis as FileAnalysis | null;
+    const fingerprint = headerFingerprint(analysis?.headers ?? []);
+    const existing = await prisma.importMappingProfile.findFirst({
+      where: {
+        companyId: ctx.company.id,
+        recordType: session.recordType,
+        headerFingerprint: fingerprint,
+      },
+    });
+    if (existing) {
+      await prisma.importMappingProfile.update({
+        where: { id: existing.id },
+        data: { name: label, mapping: session.mapping ?? {}, sourceType: session.sourceType },
+      });
+    } else {
+      await prisma.importMappingProfile.create({
+        data: {
+          companyId: ctx.company.id,
+          name: label,
+          sourceType: session.sourceType,
+          recordType: session.recordType,
+          headerFingerprint: fingerprint,
+          mapping: session.mapping ?? {},
+          isSystem: false,
+        },
+      });
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "import.mapping_saved",
+      entityType: "ImportSession",
+      entityId: session.id,
+      metadata: { name: label, recordType: session.recordType },
+    });
+    revalidatePath(`/settings/import/${session.id}`);
+    return { ok: true, sessionId };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save that mapping." };
   }
 }
 

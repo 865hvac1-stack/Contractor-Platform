@@ -1,7 +1,8 @@
 import type { ImportSourceType, Prisma, PrismaClient } from "@prisma/client";
-import type { ImportSummary, MappedCustomer } from "@/lib/imports/types";
+import type { ImportSummary, MappedCustomer, RowAccounting } from "@/lib/imports/types";
 import { customerGroupKey } from "@/lib/imports/map";
 import { IMPORT_BATCH_SIZE } from "@/lib/imports/types";
+import { finalizeAccounting } from "@/lib/imports/quality";
 
 function emptySummary(): ImportSummary {
   return {
@@ -17,8 +18,12 @@ function emptySummary(): ImportSummary {
 }
 
 function addSummary(target: ImportSummary, add: Partial<ImportSummary>) {
-  for (const [key, value] of Object.entries(add) as [keyof ImportSummary, number][]) {
-    target[key] += value;
+  for (const [key, value] of Object.entries(add)) {
+    if (typeof value !== "number") continue;
+    const current = target[key as keyof ImportSummary];
+    if (typeof current === "number") {
+      (target as unknown as Record<string, number>)[key] = current + value;
+    }
   }
 }
 
@@ -81,6 +86,7 @@ async function createProperties(
         zip: property.zip,
         isPrimary: property.isPrimary && input.existingAddresses.size === 0,
         importSessionId: input.sessionId,
+        importMode: "HISTORICAL",
       },
     });
     input.existingAddresses.add(key);
@@ -250,6 +256,7 @@ export async function executeImportBatch(input: {
             sourceSystem: session.sourceType,
             externalId: mapped.externalId,
             importSessionId: input.sessionId,
+            importMode: "HISTORICAL",
           },
         });
         const propertiesCreated = await createProperties(tx, {
@@ -280,7 +287,7 @@ export async function executeImportBatch(input: {
         },
       });
       addSummary(summary, {
-        customersCreated: result.created ? 1 : 0,
+        customersCreated: result.created && row.status !== "WARNING" ? 1 : 0,
         customersUpdated: result.created ? 0 : row.action === "UPDATE" ? 1 : 0,
         propertiesCreated: result.propertiesCreated,
         warnings: row.status === "WARNING" ? 1 : 0,
@@ -304,11 +311,30 @@ export async function executeImportBatch(input: {
   const processed = session.processedRows + pending.length;
   const done = remaining === 0;
   const failedAny = summary.failed > 0 || summary.errors > 0;
+  const outcomeRows = await input.prisma.importRow.findMany({
+    where: { companyId: input.companyId, importSessionId: input.sessionId },
+    select: { status: true, action: true, duplicateVerdict: true },
+  });
+  const accounting = finalizeAccounting(
+    {
+      sourceRows: session.rowCount,
+      created: outcomeRows.filter((row) => row.status === "IMPORTED" && row.action === "CREATE").length,
+      updated: outcomeRows.filter((row) => row.status === "IMPORTED" && row.action === "UPDATE").length,
+      merged: outcomeRows.filter((row) => row.status === "IMPORTED" && row.action === "MERGE").length,
+      duplicates: outcomeRows.filter((row) => row.status === "SKIPPED" && row.duplicateVerdict !== "NEW").length,
+      skipped: outcomeRows.filter((row) => row.status === "SKIPPED" && row.duplicateVerdict === "NEW").length,
+      warningImported: summary.warnings,
+      errors: outcomeRows.filter((row) => row.status === "FAILED" || row.action === "ERROR").length,
+      other: 0,
+    } satisfies RowAccounting,
+    session.rowCount
+  );
   await input.prisma.importSession.update({
     where: { id: input.sessionId, companyId: input.companyId },
     data: {
       processedRows: processed,
-      importSummary: summary,
+      importSummary: { ...summary, accounting },
+      rowAccounting: accounting,
       status: done ? (failedAny || summary.customersSkipped > 0 ? "PARTIAL" : "COMPLETED") : "IMPORTING",
       startedAt: session.startedAt ?? new Date(),
       completedAt: done ? new Date() : null,

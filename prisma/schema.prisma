@@ -365,6 +365,7 @@ model Company {
   importRows ImportRow[]
   importExternalRefs ImportExternalRef[]
   importProfiles ImportMappingProfile[]
+  migrationProjects MigrationProject[]
 
   @@index([status])
   @@index([industry])
@@ -426,6 +427,7 @@ model Customer {
   sourceSystem           String?
   externalId             String?
   importSessionId        String?
+  importMode             String                 @default("LIVE")
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 
@@ -466,7 +468,10 @@ model Property {
   accessNotes  String?
   gateCodeNotes String? // treat as sensitive operational note
   isPrimary    Boolean      @default(false)
+  sourceSystem    String?
+  externalId      String?
   importSessionId String?
+  importMode      String       @default("LIVE")
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -483,6 +488,7 @@ model Property {
   @@index([companyId, customerId])
   @@index([customerId])
   @@index([companyId, importSessionId])
+  @@index([companyId, sourceSystem, externalId])
 }
 
 model Equipment {
@@ -500,16 +506,23 @@ model Equipment {
   warrantyExpiresAt DateTime?
   warrantyNotes String?
   notes       String?
+  sourceSystem String?
+  externalId   String?
+  importSessionId String?
+  importMode  String   @default("LIVE")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, customerId])
   @@index([companyId, propertyId])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 // ============================================================
@@ -540,6 +553,11 @@ model Job {
   estimateId          String?     @unique
   playbookId          String?
   playbookVersionId   String?
+  sourceSystem        String?
+  externalId          String?
+  importSessionId     String?
+  importMode          String      @default("LIVE")
+  importedTechnicianName String?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -561,6 +579,7 @@ model Job {
   reviewRequests ReviewRequest[]
   callRecords CallRecord[]
   attributionEvents AttributionEvent[]
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, jobNumber])
   @@index([companyId])
@@ -569,6 +588,8 @@ model Job {
   @@index([companyId, customerId])
   @@index([companyId, propertyId])
   @@index([companyId, playbookId])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 model JobAssignment {
@@ -607,6 +628,10 @@ model Estimate {
   followUpAt     DateTime?
   approvedAt     DateTime?
   declinedAt     DateTime?
+  sourceSystem   String?
+  externalId     String?
+  importSessionId String?
+  importMode     String         @default("LIVE")
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -618,12 +643,15 @@ model Estimate {
   lineItems EstimateLineItem[]
   leads     Lead[]
   attributionEvents AttributionEvent[]
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, estimateNumber])
   @@index([companyId])
   @@index([companyId, status])
   @@index([companyId, customerId])
   @@index([companyId, followUpAt])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 model EstimateLineItem {
@@ -663,6 +691,10 @@ model Invoice {
   amountPaidCents Int          @default(0)
   balanceCents   Int           @default(0)
   notes          String?
+  sourceSystem   String?
+  externalId     String?
+  importSessionId String?
+  importMode     String        @default("LIVE")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -673,12 +705,15 @@ model Invoice {
   lineItems InvoiceLineItem[]
   payments  Payment[]
   attributionEvents AttributionEvent[]
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
   @@index([companyId, status])
   @@index([companyId, customerId])
   @@index([companyId, dueDate])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 model InvoiceLineItem {
@@ -708,13 +743,20 @@ model Payment {
   paidAt         DateTime       @default(now())
   externalRef    String? // future Stripe payment intent id etc.
   notes          String?
+  sourceSystem   String?
+  externalId     String?
+  importSessionId String?
+  importMode     String         @default("LIVE")
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([invoiceId])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 // ============================================================
@@ -736,6 +778,10 @@ model Expense {
   status          ExpenseStatus   @default(DRAFT)
   createdById     String
   receiptId       String?         @unique
+  sourceSystem    String?
+  externalId      String?
+  importSessionId String?
+  importMode      String          @default("LIVE")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -744,12 +790,15 @@ model Expense {
   customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   createdBy User     @relation("ExpenseCreator", fields: [createdById], references: [id])
   receipt   Receipt? @relation(fields: [receiptId], references: [id])
+  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, category])
   @@index([companyId, date])
   @@index([companyId, jobId])
   @@index([companyId, status])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, importSessionId])
 }
 
 model Receipt {
@@ -1628,40 +1677,66 @@ enum ImportDuplicateVerdict {
   NEEDS_REVIEW
 }
 
+model MigrationProject {
+  id         String           @id @default(cuid())
+  companyId  String
+  name       String
+  sourceType ImportSourceType @default(UNKNOWN)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessions   ImportSession[]
+
+  @@index([companyId, createdAt])
+}
+
 model ImportSession {
-  id                String              @id @default(cuid())
-  companyId         String
-  userId            String
-  recordType        ImportRecordType
-  sourceType        ImportSourceType
-  fileName          String
-  fileHash          String
-  mimeType          String?
-  encoding          String?
-  status            ImportSessionStatus @default(UPLOADED)
-  rowCount          Int                 @default(0)
-  analysis          Json?
-  mapping           Json?
-  previewSummary    Json?
-  importSummary     Json?
-  intelligence      String?
-  errorMessage      String?
-  duplicatePolicy   String              @default("SKIP")
-  confirmedAt       DateTime?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  processedRows     Int                 @default(0)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rows              ImportRow[]
-  externalRefs      ImportExternalRef[]
-  createdCustomers  Customer[]
-  createdProperties Property[]
+  id                 String              @id @default(cuid())
+  companyId          String
+  userId             String
+  recordType         ImportRecordType
+  sourceType         ImportSourceType
+  fileName           String
+  fileHash           String
+  mimeType           String?
+  encoding           String?
+  status             ImportSessionStatus @default(UPLOADED)
+  rowCount           Int                 @default(0)
+  analysis           Json?
+  mapping            Json?
+  previewSummary     Json?
+  importSummary      Json?
+  intelligence       String?
+  errorMessage       String?
+  duplicatePolicy    String              @default("SKIP")
+  importMode         String              @default("HISTORICAL")
+  detectedRecordType ImportRecordType?
+  rowAccounting      Json?
+  qualityScore       Json?
+  migrationProjectId String?
+  confirmedAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  processedRows      Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  migrationProject   MigrationProject?   @relation(fields: [migrationProjectId], references: [id], onDelete: SetNull)
+  rows               ImportRow[]
+  externalRefs       ImportExternalRef[]
+  createdCustomers   Customer[]
+  createdProperties  Property[]
+  createdJobs        Job[]
+  createdEstimates   Estimate[]
+  createdInvoices    Invoice[]
+  createdPayments    Payment[]
+  createdEquipment   Equipment[]
+  createdExpenses    Expense[]
 
   @@index([companyId, createdAt])
   @@index([companyId, status])
+  @@index([companyId, migrationProjectId])
 }
 
 model ImportRow {

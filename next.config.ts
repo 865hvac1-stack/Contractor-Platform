@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: [...allowedOrigins, "*.up.railway.app", "*.railway.app"],
-      bodySizeLimit: "12mb",
+      bodySizeLimit: "22mb",
     },
   },
 };

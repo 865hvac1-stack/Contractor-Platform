@@ -118,6 +118,41 @@ const PRESETS: Preset[] = [
       balance: "lifetimeValue",
     },
   },
+  {
+    id: "housecall_pro_jobs",
+    name: "Housecall Pro jobs export",
+    sourceType: "HOUSECALL_PRO",
+    headers: ["job id", "job number", "customer", "email", "address", "city", "zip", "status", "job type", "scheduled", "technician"],
+    mapping: {
+      "job id": "externalId",
+      "job number": "jobNumber",
+      customer: "customerName",
+      email: "customerEmail",
+      address: "address",
+      city: "city",
+      zip: "zip",
+      status: "status",
+      "job type": "jobType",
+      scheduled: "scheduledStart",
+      technician: "technicianName",
+    },
+  },
+  {
+    id: "generic_invoices",
+    name: "Invoice spreadsheet",
+    sourceType: "SPREADSHEET",
+    headers: ["invoice number", "invoice id", "customer", "email", "due date", "total", "amount paid", "balance"],
+    mapping: {
+      "invoice number": "documentNumber",
+      "invoice id": "externalId",
+      customer: "customerName",
+      email: "customerEmail",
+      "due date": "dueDate",
+      total: "total",
+      "amount paid": "paidAmount",
+      balance: "balance",
+    },
+  },
 ];
 
 function jaccard(a: Set<string>, b: Set<string>): number {
@@ -147,6 +182,9 @@ export function matchVendorPreset(headers: string[]): {
     "province",
     "created on",
     "postal code",
+    "job number",
+    "invoice number",
+    "work order",
   ]);
   const distinctiveHits = best
     ? best.preset.headers.filter((header) => incoming.has(header) && distinctive.has(header)).length

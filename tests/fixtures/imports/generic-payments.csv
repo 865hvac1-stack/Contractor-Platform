@@ -1,0 +1,2 @@
+Payment ID,Invoice Number,Amount,Payment Date,Payment Method,Reference
+pay-1,INV-9001,$125.00,2024-03-15,Check,1009

@@ -227,9 +227,9 @@ tests/              vitest suites
 
 Settings → Import Data. Owners, admins, managers, and office can import. Technicians and installers cannot.
 
-Customer import is live. Jobs, invoices, and other record types show as coming soon on the same engine.
+The Import Center is one source-agnostic engine. Live types: customers, properties, jobs, estimates, invoices, payments, equipment, expenses, notes, tags, and lead sources. Memberships and pricebook items stay foundation-ready until those models exist.
 
-Supported files: CSV, XLSX, XLS (8 MB / 8,000 rows in this phase). The importer does not execute spreadsheet formulas. Nothing is written to customers until you confirm.
+Supported files: CSV, XLSX, XLS (20 MB / 25,000 rows). Vendor names are optional presets, not separate importers. A file import is not a live connection. Historical imports do not send messages or take payments. Nothing is written until you confirm.
 
 ## Playbooks
 

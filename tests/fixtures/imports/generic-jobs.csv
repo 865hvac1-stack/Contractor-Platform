@@ -1,0 +1,3 @@
+Job ID,Job Number,Customer Email,Address,City,Zip,Status,Job Type,Technician,Scheduled,Completed,Total,Description
+j-1001,1001,ada@import.test,10 Oak St,Knoxville,37902,Completed,Service Call,John Smith,2024-01-15,2024-01-15,$250.00,No heat
+j-1002,1002,missing@import.test,11 Oak St,Knoxville,37902,Almost Done,Maintenance,,2024-02-01,,$80.00,Filter change

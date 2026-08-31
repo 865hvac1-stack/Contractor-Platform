@@ -11,7 +11,7 @@ import {
 } from "@/lib/imports/types";
 import { normalizeEmail, normalizeHeader, normalizeText, parseBoolean, parseCurrencyToCents, parseDate } from "@/lib/imports/normalize";
 
-type Alias = { target: TargetField; tokens: string[]; confidence: MappingConfidence };
+export type Alias = { target: TargetField; tokens: string[]; confidence: MappingConfidence };
 
 const ALIASES: Alias[] = [
   { target: "firstName", tokens: ["first name", "firstname", "first", "given name", "fname", "cust fname", "customer first name"], confidence: "high" },
@@ -75,10 +75,14 @@ export function inferKindFromSamples(samples: string[]): FieldKind {
   return "text";
 }
 
-export function detectTarget(header: string, samples: string[]): Omit<ColumnMapping, "sourceColumn" | "suggestedBy"> {
+export function detectTarget(
+  header: string,
+  samples: string[],
+  extraAliases: Alias[] = []
+): Omit<ColumnMapping, "sourceColumn" | "suggestedBy"> {
   const normalized = normalizeHeader(header);
   let best: { target: TargetField; score: number; confidence: MappingConfidence } | null = null;
-  for (const alias of ALIASES) {
+  for (const alias of [...extraAliases, ...ALIASES]) {
     const score = scoreAlias(normalized, alias);
     if (score > 0 && (!best || score > best.score)) {
       best = { target: alias.target, score, confidence: alias.confidence };
@@ -98,7 +102,7 @@ export function detectTarget(header: string, samples: string[]): Omit<ColumnMapp
 
 export function mappingCompatible(target: TargetField, inferred: FieldKind): boolean {
   if (target === "ignore" || inferred === "text") return true;
-  const expected = FIELD_KIND[target];
+  const expected = FIELD_KIND[target] ?? "text";
   if (expected === inferred) return true;
   if (expected === "name" && inferred === "id") return false;
   if (expected === "contact_email" && inferred !== "contact_email") return false;
@@ -126,7 +130,11 @@ export function analyzeColumns(headers: string[], rows: Record<string, string>[]
   });
 }
 
-export function autoMapColumns(columns: SampleColumn[], preset?: ImportMapping | null): ImportMapping {
+export function autoMapColumns(
+  columns: SampleColumn[],
+  preset?: ImportMapping | null,
+  extraAliases: Alias[] = []
+): ImportMapping {
   const used = new Set<TargetField>();
   const fromPreset = new Map((preset?.columns ?? []).map((column) => [normalizeHeader(column.sourceColumn), column]));
   const mapped: ColumnMapping[] = columns.map((column) => {
@@ -139,7 +147,7 @@ export function autoMapColumns(columns: SampleColumn[], preset?: ImportMapping |
       used.add(presetHit.target);
       return { ...presetHit, sourceColumn: column.header, suggestedBy: "preset" };
     }
-    const detected = detectTarget(column.header, column.samples);
+    const detected = detectTarget(column.header, column.samples, extraAliases);
     let target = detected.target;
     if (target !== "ignore" && used.has(target)) {
       if (target === "phone") target = used.has("secondaryPhone") ? "ignore" : "secondaryPhone";

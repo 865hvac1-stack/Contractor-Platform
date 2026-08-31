@@ -157,7 +157,7 @@ export async function parseImportFile(input: {
 }): Promise<ParsedSheet> {
   if (input.buffer.length === 0) throw new Error("That file is empty.");
   if (input.buffer.length > MAX_FILE_BYTES) {
-    throw new Error("That file is larger than 8 MB. Split it into a smaller export and try again.");
+    throw new Error("That file is larger than 20 MB. Split it into a smaller export and try again.");
   }
   const fileKind = detectFileKind(input.fileName, input.mimeType, input.buffer);
   const fileHash = hashFile(input.buffer);

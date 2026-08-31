@@ -13,7 +13,16 @@ import { validateMappedCustomer } from "@/lib/imports/validate";
 import { actionForDuplicate, buildCustomerIndex, detectDuplicate } from "@/lib/imports/duplicates";
 import { evaluateRows } from "@/lib/imports/preview";
 import { executeImportBatch } from "@/lib/imports/execute";
+import { executeEntityBatch, previewEntityRows } from "@/lib/imports/engine";
+import { catalogAliases } from "@/lib/imports/catalog";
+import { detectRecordType } from "@/lib/imports/detect-record";
+import { mapJobStatus, mapInvoiceStatus } from "@/lib/imports/status";
+import { accountedTotal, finalizeAccounting } from "@/lib/imports/quality";
+import { isHistoricalImport } from "@/lib/imports/safety";
+import { assignPlaybookToJob } from "@/lib/playbooks/assign";
+import { getStarterTemplate } from "@/lib/playbooks/templates";
 import { rollbackImportSession } from "@/lib/imports/rollback";
+import type { ImportRecordTypeId } from "@/lib/imports/types";
 import { neutralizeCell, csvEscape } from "@/lib/imports/security";
 import { normalizePhone, parseCurrencyToCents, parseDate } from "@/lib/imports/normalize";
 import type { ImportMapping } from "@/lib/imports/types";
@@ -83,9 +92,9 @@ describe("file parsing", () => {
     await expect(
       parseImportFile({
         fileName: "big.csv",
-        buffer: Buffer.alloc(8 * 1024 * 1024 + 10, 97),
-      })
-    ).rejects.toThrow(/8 MB/);
+      buffer: Buffer.alloc(20 * 1024 * 1024 + 10, 97),
+    })
+    ).rejects.toThrow(/20 MB/);
     await expect(
       parseImportFile({
         fileName: "evil.csv",
@@ -456,5 +465,299 @@ describe("import tenant isolation and execution", () => {
     await prisma.importExternalRef.deleteMany({ where: { importSessionId: session.id } });
     await prisma.importRow.deleteMany({ where: { importSessionId: session.id } });
     await prisma.importSession.delete({ where: { id: session.id } });
+  });
+});
+
+function entityMapping(csv: string, recordType: ImportRecordTypeId) {
+  const grid = parseCsvText(csv);
+  const headers = grid[0] ?? [];
+  const rows = grid.slice(1).map((line) => {
+    const record: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      record[header] = (line[index] ?? "").trim();
+    });
+    return record;
+  });
+  const columns = analyzeColumns(headers, rows);
+  return { mapping: autoMapColumns(columns, null, catalogAliases(recordType)), rows, headers };
+}
+
+describe("record type, status, and row accounting", () => {
+  it("suggests jobs from headers and lets the user keep another choice", () => {
+    const guess = detectRecordType(["Job Number", "Job Status", "Technician", "Scheduled"]);
+    expect(guess.type).toBe("JOBS");
+    expect(guess.message).toMatch(/jobs/i);
+  });
+
+  it("maps known job statuses and never silently completes unknown ones", () => {
+    expect(mapJobStatus("Finished").status).toBe("COMPLETED");
+    const unknown = mapJobStatus("Almost Done");
+    expect(unknown.status).toBe("NEW");
+    expect(unknown.recognized).toBe(false);
+    expect(mapInvoiceStatus("Paid").status).toBe("PAID");
+  });
+
+  it("accounts for every source row without double-counting skips", () => {
+    const accounting = finalizeAccounting(
+      {
+        sourceRows: 10,
+        created: 6,
+        updated: 1,
+        merged: 1,
+        duplicates: 1,
+        skipped: 0,
+        warningImported: 0,
+        errors: 1,
+        other: 0,
+      },
+      10
+    );
+    expect(accountedTotal(accounting)).toBe(10);
+    expect(isHistoricalImport("HISTORICAL")).toBe(true);
+    expect(isHistoricalImport("LIVE")).toBe(false);
+  });
+});
+
+describe("entity imports stay historical and tenant-safe", () => {
+  const prisma = new PrismaClient();
+  const ids = {
+    companyId: "",
+    userId: "",
+    customerId: "",
+    propertyId: "",
+    invoiceId: "",
+    playbookId: "",
+  };
+
+  beforeAll(async () => {
+    const hash = await bcrypt.hash("TestPassword-123!", 10);
+    const stamp = Date.now();
+    const user = await prisma.user.create({
+      data: { email: `entity-import-${stamp}@test.local`, passwordHash: hash, firstName: "Eve", lastName: "Import" },
+    });
+    const company = await prisma.company.create({
+      data: {
+        businessName: `Entity Import ${stamp}`,
+        industry: "HVAC",
+        status: "ACTIVE",
+        memberships: { create: { userId: user.id, role: "COMPANY_OWNER", status: "ACTIVE", joinedAt: new Date() } },
+      },
+    });
+    ids.userId = user.id;
+    ids.companyId = company.id;
+    const customer = await prisma.customer.create({
+      data: {
+        companyId: company.id,
+        firstName: "Ada",
+        lastName: "Import",
+        email: "ada@import.test",
+        phone: "(423) 555-0100",
+      },
+    });
+    const property = await prisma.property.create({
+      data: {
+        companyId: company.id,
+        customerId: customer.id,
+        address: "10 Oak St",
+        city: "Knoxville",
+        state: "TN",
+        zip: "37902",
+        isPrimary: true,
+      },
+    });
+    const invoice = await prisma.invoice.create({
+      data: {
+        companyId: company.id,
+        customerId: customer.id,
+        propertyId: property.id,
+        invoiceNumber: "INV-9001",
+        status: "SENT",
+        totalCents: 50000,
+        balanceCents: 50000,
+      },
+    });
+    ids.customerId = customer.id;
+    ids.propertyId = property.id;
+    ids.invoiceId = invoice.id;
+    const playbook = await prisma.playbook.create({
+      data: { companyId: company.id, name: "Residential Service", status: "ACTIVE", sortOrder: 1 },
+    });
+    const version = await prisma.playbookVersion.create({
+      data: {
+        companyId: company.id,
+        playbookId: playbook.id,
+        versionNumber: 1,
+        definition: getStarterTemplate("residential_service")!.definition,
+        createdById: user.id,
+      },
+    });
+    await prisma.playbook.update({
+      where: { id: playbook.id },
+      data: { currentVersionId: version.id },
+    });
+    ids.playbookId = playbook.id;
+  });
+
+  afterAll(async () => {
+    await prisma.payment.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.importExternalRef.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.importRow.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.expense.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.equipment.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.job.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.invoice.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.property.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.customer.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.importSession.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.playbookVersion.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.playbook.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.membership.deleteMany({ where: { companyId: ids.companyId } });
+    await prisma.company.deleteMany({ where: { id: ids.companyId } });
+    await prisma.user.deleteMany({ where: { id: ids.userId } });
+    await prisma.$disconnect();
+  });
+
+  async function runEntityImport(recordType: ImportRecordTypeId, csvName: string) {
+    const { mapping, rows } = entityMapping(fixture(csvName), recordType);
+    const session = await prisma.importSession.create({
+      data: {
+        companyId: ids.companyId,
+        userId: ids.userId,
+        recordType,
+        sourceType: "UNKNOWN",
+        fileName: csvName,
+        fileHash: `${recordType}-${Date.now()}-${Math.random()}`,
+        status: "READY_TO_IMPORT",
+        rowCount: rows.length,
+        mapping: mapping as object,
+        importMode: "HISTORICAL",
+        confirmedAt: new Date(),
+      },
+    });
+    const createdRows = await prisma.importRow.createManyAndReturn({
+      data: rows.map((row, index) => ({
+        companyId: ids.companyId,
+        importSessionId: session.id,
+        rowNumber: index + 1,
+        rawData: row,
+      })),
+    });
+    const preview = await previewEntityRows({
+      prisma,
+      companyId: ids.companyId,
+      sourceSystem: "UNKNOWN",
+      recordType,
+      mapping,
+      rows: createdRows.map((row) => ({
+        id: row.id,
+        rowNumber: row.rowNumber,
+        rawData: row.rawData as Record<string, string>,
+      })),
+    });
+    for (const row of preview.evaluated) {
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: {
+          status: row.status as "ERROR" | "WARNING" | "VALID",
+          action: row.action,
+          mappedData: row.mappedData as object,
+          issues: row.issues,
+          targetRecordId: row.targetRecordId,
+        },
+      });
+    }
+    const result = await executeEntityBatch({
+      prisma,
+      companyId: ids.companyId,
+      userId: ids.userId,
+      sessionId: session.id,
+    });
+    return { session, preview, result };
+  }
+
+  it("maps job spreadsheet columns through the catalog", () => {
+    const { mapping } = entityMapping(fixture("generic-jobs.csv"), "JOBS");
+    const targets = Object.fromEntries(mapping.columns.map((column) => [column.sourceColumn, column.target]));
+    expect(targets).toMatchObject({
+      "Job ID": "externalId",
+      "Customer Email": "customerEmail",
+      Status: "status",
+      Address: "address",
+    });
+  });
+
+  it("imports a historical job without assigning a playbook or creating a login", async () => {
+    const { preview, result } = await runEntityImport("JOBS", "generic-jobs.csv");
+    expect(preview.summary.unknownTechnicians).toBeGreaterThan(0);
+    expect(preview.evaluated.some((row) => row.issues.some((issue) => issue.code === "unknown_status"))).toBe(true);
+    expect(result.done).toBe(true);
+    const jobs = await prisma.job.findMany({ where: { companyId: ids.companyId, importSessionId: { not: null } } });
+    expect(jobs.length).toBeGreaterThanOrEqual(1);
+    const completed = jobs.find((job) => job.externalId === "j-1001");
+    expect(completed?.importMode).toBe("HISTORICAL");
+    expect(completed?.playbookId).toBeNull();
+    expect(completed?.importedTechnicianName).toBe("John Smith");
+    expect(completed?.customerId).toBe(ids.customerId);
+    const assigned = await assignPlaybookToJob({
+      companyId: ids.companyId,
+      jobId: completed!.id,
+      playbookId: ids.playbookId,
+    });
+    expect(assigned).toBeNull();
+    const afterAssign = await prisma.job.findFirst({ where: { id: completed!.id } });
+    expect(afterAssign?.playbookId).toBeNull();
+    expect(result.accounting.sourceRows).toBe(preview.summary.totalRows);
+    expect(accountedTotal(result.accounting)).toBe(result.accounting.sourceRows);
+  });
+
+  it("imports a historical invoice and a recorded payment without charging", async () => {
+    const invoiceImport = await runEntityImport("INVOICES", "generic-invoices.csv");
+    expect(invoiceImport.result.done).toBe(true);
+    const importedInvoice = await prisma.invoice.findFirst({
+      where: { companyId: ids.companyId, externalId: "inv-9001" },
+    });
+    expect(importedInvoice?.importMode).toBe("HISTORICAL");
+    const paymentImport = await runEntityImport("PAYMENTS", "generic-payments.csv");
+    expect(paymentImport.result.done).toBe(true);
+    const payment = await prisma.payment.findFirst({
+      where: { companyId: ids.companyId, externalId: "pay-1" },
+    });
+    expect(payment?.status).toBe("RECORDED");
+    expect(payment?.importMode).toBe("HISTORICAL");
+    expect(payment?.notes).toMatch(/did not send messages|no charge|Historical/i);
+  });
+
+  it("imports trade-agnostic equipment and an operational expense", async () => {
+    const equipment = await runEntityImport("EQUIPMENT", "generic-equipment.csv");
+    expect(equipment.result.done).toBe(true);
+    const asset = await prisma.equipment.findFirst({
+      where: { companyId: ids.companyId, serialNumber: "SN-7788" },
+    });
+    expect(asset?.equipmentType).toBe("Water heater");
+    expect(asset?.importMode).toBe("HISTORICAL");
+    const expense = await runEntityImport("EXPENSES", "generic-expenses.csv");
+    expect(expense.result.done).toBe(true);
+    const recorded = await prisma.expense.findFirst({
+      where: { companyId: ids.companyId, vendor: "Parts House" },
+    });
+    expect(recorded?.importMode).toBe("HISTORICAL");
+    expect(recorded?.status).toBe("POSTED");
+  });
+
+  it("rolls back only records created by the session", async () => {
+    const propertyImport = await runEntityImport("PROPERTIES", "generic-properties.csv");
+    expect(propertyImport.result.done).toBe(true);
+    const created = await prisma.property.findFirst({
+      where: { companyId: ids.companyId, externalId: "loc-1" },
+    });
+    expect(created?.address).toBe("99 Pine St");
+    const rollback = await rollbackImportSession({
+      prisma,
+      companyId: ids.companyId,
+      sessionId: propertyImport.session.id,
+    });
+    expect(rollback.propertiesRemoved).toBeGreaterThanOrEqual(1);
+    const original = await prisma.property.findFirst({ where: { id: ids.propertyId } });
+    expect(original?.address).toBe("10 Oak St");
   });
 });

@@ -60,8 +60,8 @@ export default async function SettingsPage() {
           </p>
           <h2 className="mt-2 font-medium">Import data</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Upload a customer list from almost any software or spreadsheet. Match the columns, preview,
-            then import safely.
+            Upload customers, jobs, invoices, and the rest of your history from almost any software or
+            spreadsheet. Match the columns, preview, then import safely.
           </p>
         </Link>
       ) : null}
