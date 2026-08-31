@@ -37,7 +37,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Audit log:** `writeAudit()` for create/status/security events.
 - **Receipts:** Money → Receipts inbox. Photo/PDF upload, optional AI suggestions, confirm before creating an expense or job cost.
 - **Job costing:** Confirmed costs and verified invoice revenue only. Technicians cannot see company profit.
-- **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
+- **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Paste your Intuit Client ID and Secret on that page (encrypted at rest) or set Railway variables. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
 - **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Connect **Accounts v2** merchant account (`POST /v2/core/accounts`, full Stripe Dashboard, Stripe-owned fees and losses). Onboarding is **embedded** in ContractorYou via Stripe Account Sessions and the Account Onboarding Connect component — contractors are not redirected to Stripe-hosted onboarding. Stripe handles KYC, identity, bank details, cards, and payouts. ContractorYou never stores card numbers, CVV, bank credentials, identity documents, or SSNs/tax IDs. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
 
 ## Local setup
@@ -120,7 +120,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 8. Dashboard / reports update from **real** data only  
 9. Marketing Hub → record a lead → pipeline. Channel cards stay disconnected until OAuth is configured.
 10. Settings → Import Data → upload a customer export → match columns → preview → confirm.
-11. Settings → QuickBooks → Connect (after Intuit credentials) → optionally Sync to QuickBooks on an invoice.
+11. Settings → QuickBooks → save Intuit Client ID / Secret (or set Railway vars) → Connect → optionally Sync to QuickBooks on an invoice.
 
 Invoice numbers are server-generated per company (`INV-00001`, `INV-00002`, …) from `NumberSequence` with a row-locked increment. Existing invoices are never renumbered. Service types (what kind of work) live on the company and are distinct from Pricebook items (what you charge). New HVAC companies get the HVAC starter list; other trades get a generic list. Settings expose primary trade, invoice prefix / next number, and service-type add/rename/reorder/deactivate.
 
@@ -200,7 +200,7 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `UPLOAD_DIR` | Yes | e.g. `/data/uploads` with a volume |
 | `NODE_ENV` | Yes | `production` |
 | `OPENAI_API_KEY` | No | Server-side Intelligence wording and receipt suggestions. Receipts still work without it. Never expose to the browser. |
-| `QUICKBOOKS_CLIENT_ID` | No | Required to connect QuickBooks. Without it the card stays Not connected. |
+| `QUICKBOOKS_CLIENT_ID` | No | Optional server-wide Intuit Client ID. Owners can also paste keys on Settings → QuickBooks. |
 | `QUICKBOOKS_CLIENT_SECRET` | No | Intuit client secret |
 | `QUICKBOOKS_ENVIRONMENT` | No | `sandbox` or `production`. Default `sandbox`. |
 | `QUICKBOOKS_REDIRECT_URI` | No | Defaults from `APP_URL` |

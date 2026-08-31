@@ -14,6 +14,11 @@ import { actionForDuplicate, buildCustomerIndex, detectDuplicate } from "@/lib/i
 import { evaluateRows } from "@/lib/imports/preview";
 import { executeImportBatch } from "@/lib/imports/execute";
 import { executeEntityBatch, previewEntityRows } from "@/lib/imports/engine";
+import {
+  matchCustomerFromIndex,
+  matchPropertyFromIndex,
+  type CompanyLinkIndex,
+} from "@/lib/imports/resolve";
 import { catalogAliases } from "@/lib/imports/catalog";
 import { detectRecordType } from "@/lib/imports/detect-record";
 import { mapJobStatus, mapInvoiceStatus } from "@/lib/imports/status";
@@ -674,6 +679,44 @@ describe("entity imports stay historical and tenant-safe", () => {
     });
     return { session, preview, result };
   }
+
+  it("matches job customers and locations from a loaded index", () => {
+    const customer = {
+      id: "c1",
+      firstName: "Pat",
+      lastName: "Smith",
+      businessName: null,
+      email: "pat@test.local",
+      phone: "(865) 555-0100",
+      externalId: null,
+    };
+    const property = {
+      id: "p1",
+      customerId: "c1",
+      address: "10 Oak St",
+      city: "Knoxville",
+      zip: "37902",
+      isPrimary: true,
+      externalId: null,
+    };
+    const index: CompanyLinkIndex = {
+      refs: new Map(),
+      customersById: new Map([["c1", customer]]),
+      customersByExternalId: new Map(),
+      customersByEmail: new Map([["pat@test.local", "c1"]]),
+      customers: [customer],
+      propertiesByCustomerId: new Map([["c1", [property]]]),
+      propertiesByExternalId: new Map(),
+      jobsByKey: new Map(),
+      estimatesByKey: new Map(),
+      invoicesByKey: new Map(),
+      team: [],
+    };
+    expect(matchCustomerFromIndex(index, { email: "pat@test.local" }).verdict).toBe("MATCHED");
+    expect(matchCustomerFromIndex(index, { phone: "8655550100" }).id).toBe("c1");
+    expect(matchPropertyFromIndex(index, "c1", { address: "10 Oak St", city: "Knoxville", zip: "37902" }).id).toBe("p1");
+    expect(matchCustomerFromIndex(index, { name: "Nobody Here" }).verdict).toBe("MISSING");
+  });
 
   it("maps job spreadsheet columns through the catalog", () => {
     const { mapping } = entityMapping(fixture("generic-jobs.csv"), "JOBS");

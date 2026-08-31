@@ -7,7 +7,8 @@ import { AuthError } from "@/lib/auth";
 import { requirePermission } from "@/lib/tenant";
 import { deleteConnectionCredentials, getCompanyConnection, upsertConnection } from "@/lib/integrations/store";
 import type { ActionResult } from "@/server/actions/auth";
-import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
+import { parseQuickBooksEnvironment, QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
+import { clearCompanyQuickBooksApp, loadQuickBooksAppCredentials, saveCompanyQuickBooksApp } from "@/lib/quickbooks/app";
 import { getQuickBooksSettings, loadQuickBooksTransport } from "@/lib/quickbooks/connection";
 import { revokeQuickBooksToken } from "@/lib/quickbooks/oauth";
 import { loadConnectionTokens } from "@/lib/integrations/store";
@@ -49,14 +50,62 @@ export async function saveQuickBooksSettingsAction(
   }
 }
 
+export async function saveQuickBooksAppAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const clientId = String(formData.get("clientId") || "");
+    const clientSecret = String(formData.get("clientSecret") || "");
+    const environment = parseQuickBooksEnvironment(String(formData.get("environment") || "sandbox"));
+    await saveCompanyQuickBooksApp(prisma, ctx.company.id, {
+      clientId,
+      clientSecret: clientSecret || undefined,
+      environment,
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.app_saved",
+      entityType: "QuickBooksSettings",
+      metadata: { environment, clientIdPresent: Boolean(clientId.trim()) },
+    });
+    revalidatePath("/settings/quickbooks");
+    return { ok: true, message: "Intuit app keys saved. You can connect QuickBooks now." };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save those Intuit keys." };
+  }
+}
+
+export async function clearQuickBooksAppAction(): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    await clearCompanyQuickBooksApp(prisma, ctx.company.id);
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.app_cleared",
+      entityType: "QuickBooksSettings",
+    });
+    revalidatePath("/settings/quickbooks");
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not remove those Intuit keys." };
+  }
+}
+
 export async function disconnectQuickBooksAction(): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("accounting:manage");
     const connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
+    const app = await loadQuickBooksAppCredentials(prisma, ctx.company.id);
     if (connection) {
       const tokens = await loadConnectionTokens(ctx.company.id, connection.id);
-      if (tokens?.refreshToken) await revokeQuickBooksToken(tokens.refreshToken);
-      else if (tokens?.accessToken) await revokeQuickBooksToken(tokens.accessToken);
+      if (tokens?.refreshToken) await revokeQuickBooksToken(tokens.refreshToken, app);
+      else if (tokens?.accessToken) await revokeQuickBooksToken(tokens.accessToken, app);
       await deleteConnectionCredentials(ctx.company.id, connection.id);
     }
     await upsertConnection({

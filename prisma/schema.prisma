@@ -1224,11 +1224,17 @@ model JobCost {
 }
 
 model QuickBooksSettings {
-  id                 String                   @id @default(cuid())
-  companyId          String                   @unique
-  invoiceSyncTrigger QuickBooksInvoiceTrigger @default(MANUAL_ONLY)
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  id                  String                   @id @default(cuid())
+  companyId           String                   @unique
+  invoiceSyncTrigger  QuickBooksInvoiceTrigger @default(MANUAL_ONLY)
+  appClientId         String?
+  appSecretCipher     Bytes?
+  appSecretIv         Bytes?
+  appSecretAuthTag    Bytes?
+  appSecretKeyVersion Int?
+  appEnvironment      String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }

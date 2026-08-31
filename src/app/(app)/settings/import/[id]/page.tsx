@@ -22,6 +22,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+export const maxDuration = 120;
+
 function stepForStatus(status: string, hasPreview: boolean): number {
   if (status === "MAPPING_REQUIRED" || status === "UPLOADED" || status === "ANALYZING") return 5;
   if (status === "READY_FOR_PREVIEW") return 6;
@@ -161,7 +163,7 @@ export default async function ImportSessionPage({ params }: { params: Promise<{ 
         </section>
       ) : null}
 
-      {session.status === "READY_FOR_PREVIEW" || session.status === "READY_TO_IMPORT" ? (
+      {["READY_FOR_PREVIEW", "READY_TO_IMPORT", "FAILED"].includes(session.status) ? (
         <PreviewForm
           sessionId={session.id}
           defaultPolicy={session.duplicatePolicy}

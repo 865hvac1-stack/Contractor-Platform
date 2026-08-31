@@ -1,26 +1,33 @@
 import { createHash, randomBytes } from "crypto";
 import {
   QUICKBOOKS_SCOPES,
+  envQuickBooksCredentials,
   quickbooksAuthorizeUrl,
-  quickbooksClientId,
-  quickbooksClientSecret,
   quickbooksRedirectUri,
   quickbooksRevokeUrl,
   quickbooksTokenUrl,
+  type QuickBooksAppCredentials,
 } from "@/lib/quickbooks/config";
 import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
 
-function basicAuth() {
-  return Buffer.from(`${quickbooksClientId()}:${quickbooksClientSecret()}`).toString("base64");
+function basicAuth(app: QuickBooksAppCredentials) {
+  return Buffer.from(`${app.clientId}:${app.clientSecret}`).toString("base64");
+}
+
+function requireApp(app?: QuickBooksAppCredentials | null): QuickBooksAppCredentials {
+  const resolved = app ?? envQuickBooksCredentials();
+  if (!resolved) throw new Error("QuickBooks app credentials are not configured.");
+  return resolved;
 }
 
 export function createQuickBooksState() {
   return randomBytes(24).toString("hex");
 }
 
-export function quickbooksAuthorizeHref(state: string) {
+export function quickbooksAuthorizeHref(state: string, app?: QuickBooksAppCredentials | null) {
+  const resolved = requireApp(app);
   const params = new URLSearchParams({
-    client_id: quickbooksClientId(),
+    client_id: resolved.clientId,
     redirect_uri: quickbooksRedirectUri(),
     response_type: "code",
     scope: QUICKBOOKS_SCOPES.join(" "),
@@ -29,7 +36,11 @@ export function quickbooksAuthorizeHref(state: string) {
   return `${quickbooksAuthorizeUrl()}?${params.toString()}`;
 }
 
-export async function exchangeQuickBooksCode(code: string): Promise<ProviderTokenPayload> {
+export async function exchangeQuickBooksCode(
+  code: string,
+  app?: QuickBooksAppCredentials | null
+): Promise<ProviderTokenPayload> {
+  const resolved = requireApp(app);
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -38,7 +49,7 @@ export async function exchangeQuickBooksCode(code: string): Promise<ProviderToke
   const response = await fetch(quickbooksTokenUrl(), {
     method: "POST",
     headers: {
-      Authorization: `Basic ${basicAuth()}`,
+      Authorization: `Basic ${basicAuth(resolved)}`,
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
@@ -61,7 +72,11 @@ export async function exchangeQuickBooksCode(code: string): Promise<ProviderToke
   };
 }
 
-export async function refreshQuickBooksToken(refreshToken: string): Promise<ProviderTokenPayload> {
+export async function refreshQuickBooksToken(
+  refreshToken: string,
+  app?: QuickBooksAppCredentials | null
+): Promise<ProviderTokenPayload> {
+  const resolved = requireApp(app);
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -69,7 +84,7 @@ export async function refreshQuickBooksToken(refreshToken: string): Promise<Prov
   const response = await fetch(quickbooksTokenUrl(), {
     method: "POST",
     headers: {
-      Authorization: `Basic ${basicAuth()}`,
+      Authorization: `Basic ${basicAuth(resolved)}`,
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
@@ -90,11 +105,13 @@ export async function refreshQuickBooksToken(refreshToken: string): Promise<Prov
   };
 }
 
-export async function revokeQuickBooksToken(token: string) {
+export async function revokeQuickBooksToken(token: string, app?: QuickBooksAppCredentials | null) {
+  const resolved = envQuickBooksCredentials() ?? app;
+  if (!resolved) return;
   await fetch(quickbooksRevokeUrl(), {
     method: "POST",
     headers: {
-      Authorization: `Basic ${basicAuth()}`,
+      Authorization: `Basic ${basicAuth(resolved)}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },

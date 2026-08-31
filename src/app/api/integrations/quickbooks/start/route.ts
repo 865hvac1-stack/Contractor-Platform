@@ -1,16 +1,23 @@
-import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { createOAuthState } from "@/lib/integrations/oauth/state";
 import { upsertConnection } from "@/lib/integrations/store";
-import { QUICKBOOKS_PROVIDER_KEY, quickbooksConfigured } from "@/lib/quickbooks/config";
+import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
+import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { createQuickBooksState, quickbooksAuthorizeHref } from "@/lib/quickbooks/oauth";
 
-export async function GET() {
+function originOf(request: Request) {
+  return new URL(request.url).origin;
+}
+
+export async function GET(request: Request) {
   try {
     const ctx = await requirePermission("accounting:manage");
-    if (!quickbooksConfigured()) {
-      redirect("/settings/quickbooks?error=missing_credentials");
+    const app = await loadQuickBooksAppCredentials(prisma, ctx.company.id);
+    if (!app) {
+      return NextResponse.redirect(new URL("/settings/quickbooks?error=missing_credentials", originOf(request)));
     }
     const state = createQuickBooksState();
     await createOAuthState({
@@ -26,9 +33,11 @@ export async function GET() {
       status: "CONNECTING",
       healthMessage: "Waiting for QuickBooks authorization.",
     });
-    redirect(quickbooksAuthorizeHref(state));
+    return NextResponse.redirect(quickbooksAuthorizeHref(state, app));
   } catch (error) {
-    if (error instanceof AuthError) redirect("/login?next=/settings/quickbooks");
+    if (error instanceof AuthError) {
+      return NextResponse.redirect(new URL("/login?next=/settings/quickbooks", originOf(request)));
+    }
     throw error;
   }
 }

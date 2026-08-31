@@ -3,13 +3,21 @@ import { requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { getCompanyConnection } from "@/lib/integrations/store";
-import { QUICKBOOKS_PROVIDER_KEY, quickbooksConfigured } from "@/lib/quickbooks/config";
+import { describeSavedQuickBooksApp } from "@/lib/quickbooks/app";
+import { QUICKBOOKS_PROVIDER_KEY, quickbooksConfigured, quickbooksSetupSnapshot } from "@/lib/quickbooks/config";
 import { getQuickBooksSettings } from "@/lib/quickbooks/connection";
 import { INVOICE_TRIGGER_COPY, QUICKBOOKS_STATUS_COPY, publicQuickBooksStatus } from "@/lib/quickbooks/status";
-import { disconnectQuickBooksAction, saveQuickBooksSettingsAction } from "@/server/actions/quickbooks";
+import {
+  clearQuickBooksAppAction,
+  disconnectQuickBooksAction,
+  saveQuickBooksAppAction,
+  saveQuickBooksSettingsAction,
+} from "@/server/actions/quickbooks";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 export default async function QuickBooksSettingsPage({
@@ -29,7 +37,9 @@ export default async function QuickBooksSettingsPage({
     }),
   ]);
   const status = publicQuickBooksStatus(connection);
-  const configured = quickbooksConfigured();
+  const savedApp = describeSavedQuickBooksApp(settings);
+  const setup = quickbooksSetupSnapshot(savedApp);
+  const configured = quickbooksConfigured(savedApp);
   const canManage = can(ctx.role, "accounting:manage");
 
   return (
@@ -48,7 +58,7 @@ export default async function QuickBooksSettingsPage({
       {error ? (
         <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
           {error === "missing_credentials"
-            ? "QuickBooks credentials are not on this server yet. Add them in Railway, then try again."
+            ? "Add your Intuit Client ID and Client Secret below, or set them on the server, then try Connect again."
             : decodeURIComponent(error)}
         </p>
       ) : null}
@@ -83,11 +93,11 @@ export default async function QuickBooksSettingsPage({
           {canManage && status !== "CONNECTED" ? (
             configured ? (
               <Link href="/api/integrations/quickbooks/start" className={cn(buttonVariants())}>
-                {status === "REAUTH_REQUIRED" ? "Reconnect" : "Connect"}
+                {status === "REAUTH_REQUIRED" ? "Reconnect QuickBooks" : "Connect QuickBooks"}
               </Link>
             ) : (
               <p className="text-sm text-[var(--muted-foreground)]">
-                Connect QuickBooks to sync invoices. An owner still needs to add Intuit app credentials on the server.
+                Save Intuit app keys below, then Connect will send you to QuickBooks to approve access.
               </p>
             )
           ) : null}
@@ -111,6 +121,96 @@ export default async function QuickBooksSettingsPage({
           </p>
         ) : null}
       </section>
+
+      {canManage ? (
+        <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-white p-6">
+          <div>
+            <h2 className="font-medium">Intuit app keys</h2>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Create a QuickBooks Online app at developer.intuit.com, add the redirect URI below, then paste the Client
+              ID and Client Secret here. Keys are encrypted on this server. We never show the secret again after you
+              save it.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="redirectUri">Redirect URI to paste in Intuit</Label>
+            <Input id="redirectUri" readOnly value={setup.redirectUri} className="font-mono text-xs" />
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {setup.appUrlSet
+                ? "This comes from APP_URL on the server. It must match Intuit exactly, including https."
+                : "APP_URL is not set. Set it to your public site URL in Railway so this URI matches production."}
+            </p>
+          </div>
+          <ActionForm action={saveQuickBooksAppAction} successMessage="Intuit app keys saved. You can connect QuickBooks now." className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clientId">Client ID</Label>
+              <Input
+                id="clientId"
+                name="clientId"
+                defaultValue={savedApp.clientId}
+                autoComplete="off"
+                required
+                placeholder="Intuit Client ID"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clientSecret">Client secret</Label>
+              <Input
+                id="clientSecret"
+                name="clientSecret"
+                type="password"
+                autoComplete="new-password"
+                placeholder={savedApp.hasSecret ? "Saved — leave blank to keep it" : "Intuit Client Secret"}
+                required={!savedApp.hasSecret}
+              />
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Environment</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="environment"
+                  value="sandbox"
+                  defaultChecked={savedApp.environment !== "production"}
+                />
+                Sandbox (use this until Intuit approves production)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="environment"
+                  value="production"
+                  defaultChecked={savedApp.environment === "production"}
+                />
+                Production
+              </label>
+            </fieldset>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit">Save Intuit keys</Button>
+            </div>
+          </ActionForm>
+          {savedApp.hasClientId || savedApp.hasSecret ? (
+            <form
+              action={async () => {
+                "use server";
+                await clearQuickBooksAppAction();
+              }}
+            >
+              <Button type="submit" variant="outline" size="sm">
+                Remove saved keys
+              </Button>
+            </form>
+          ) : null}
+          <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--muted-foreground)]">
+            <li>Keys on this page override Railway variables when both are present.</li>
+            <li>
+              Railway fallback: Client ID {setup.hasEnvClientId ? "is set" : "is missing"}, Client Secret{" "}
+              {setup.hasEnvClientSecret ? "is set" : "is missing"}.
+            </li>
+            <li>Default invoice push stays manual. Imported history never goes to QuickBooks unless you press Sync.</li>
+          </ul>
+        </section>
+      ) : null}
 
       <ActionForm
         action={saveQuickBooksSettingsAction}

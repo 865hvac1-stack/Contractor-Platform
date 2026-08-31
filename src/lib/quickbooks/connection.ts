@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getCompanyConnection, getValidAccessToken } from "@/lib/integrations/store";
 import { liveQboTransport, type QboTransport } from "@/lib/quickbooks/client";
+import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 
 export async function loadQuickBooksTransport(companyId: string): Promise<
@@ -25,9 +26,14 @@ export async function loadQuickBooksTransport(companyId: string): Promise<
   if (!tokens) {
     return { ok: false, error: "Reconnect QuickBooks. Authorization expired.", reauth: true };
   }
+  const app = await loadQuickBooksAppCredentials(prisma, companyId);
   return {
     ok: true,
-    transport: liveQboTransport({ accessToken: tokens.accessToken, realmId: connection.externalAccountId }),
+    transport: liveQboTransport({
+      accessToken: tokens.accessToken,
+      realmId: connection.externalAccountId,
+      environment: app?.environment,
+    }),
     connectionId: connection.id,
     realmId: connection.externalAccountId,
   };

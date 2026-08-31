@@ -14,9 +14,13 @@ export type QboRefs = {
   invoiceDocNumber?: string;
 };
 
-export function liveQboTransport(input: { accessToken: string; realmId: string }): QboTransport {
+export function liveQboTransport(input: {
+  accessToken: string;
+  realmId: string;
+  environment?: "sandbox" | "production";
+}): QboTransport {
   return async ({ method, path, query, body }) => {
-    const url = new URL(`${quickbooksApiBase()}/v3/company/${input.realmId}${path}`);
+    const url = new URL(`${quickbooksApiBase(input.environment)}/v3/company/${input.realmId}${path}`);
     url.searchParams.set("minorversion", "65");
     if (query) url.searchParams.set("query", query);
     const response = await fetch(url, {

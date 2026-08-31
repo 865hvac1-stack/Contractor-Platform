@@ -2,7 +2,14 @@ import type { ImportRecordType, ImportRowAction, ImportRowStatus, ImportSourceTy
 import type { ImportMapping, ImportRecordTypeId, RowIssue } from "@/lib/imports/types";
 import { IMPORT_BATCH_SIZE } from "@/lib/imports/types";
 import { normalizeEmail, normalizePhone, normalizeText, parseCurrencyToCents, parseDate, splitFullName, splitTags } from "@/lib/imports/normalize";
-import { matchTeamMember, resolveByExternalOrNumber, resolveCustomer, resolveProperty } from "@/lib/imports/resolve";
+import {
+  loadCompanyLinkIndex,
+  matchCustomerFromIndex,
+  matchNumberedRecordFromIndex,
+  matchPropertyFromIndex,
+  matchTeamMemberFromIndex,
+  type CompanyLinkIndex,
+} from "@/lib/imports/resolve";
 import { mapEstimateStatus, mapExpenseCategory, mapInvoiceStatus, mapJobStatus, mapPaymentMethod } from "@/lib/imports/status";
 import { nextNumber } from "@/lib/sequences";
 import { finalizeAccounting } from "@/lib/imports/quality";
@@ -88,16 +95,10 @@ export function applyEntityMapping(row: Record<string, string>, mapping: ImportM
   return values;
 }
 
-async function attachLinks(
-  prisma: PrismaClient,
-  companyId: string,
-  sourceSystem: ImportSourceType,
-  values: Record<string, string>
-): Promise<MappedEntity> {
+function attachLinksFromIndex(index: CompanyLinkIndex, values: Record<string, string>): MappedEntity {
   const issues: RowIssue[] = [];
-  const customer = await resolveCustomer(prisma, companyId, {
+  const customer = matchCustomerFromIndex(index, {
     externalId: values.customerExternalId,
-    sourceSystem,
     email: values.customerEmail || values.email,
     phone: values.customerPhone || values.phone,
     firstName: values.firstName,
@@ -110,20 +111,15 @@ async function attachLinks(
   } else if (customer.verdict === "MISSING") {
     issues.push({ level: "ERROR", code: "customer_unmatched", message: customer.reason });
   }
-  const property = await resolveProperty(prisma, companyId, customer.id, {
+  const property = matchPropertyFromIndex(index, customer.id, {
     externalId: values.propertyExternalId,
     address: values.address,
     city: values.city,
     zip: values.zip,
   });
-  const job = await resolveByExternalOrNumber(prisma, companyId, "JOBS", values.jobExternalId || values.jobNumber);
-  const invoice = await resolveByExternalOrNumber(
-    prisma,
-    companyId,
-    "INVOICES",
-    values.invoiceExternalId || values.documentNumber
-  );
-  const tech = await matchTeamMember(prisma, companyId, values.technicianName);
+  const job = matchNumberedRecordFromIndex(index, "JOBS", values.jobExternalId || values.jobNumber);
+  const invoice = matchNumberedRecordFromIndex(index, "INVOICES", values.invoiceExternalId || values.documentNumber);
+  const tech = matchTeamMemberFromIndex(index, values.technicianName);
   return {
     values,
     issues,
@@ -162,10 +158,11 @@ export async function previewEntityRows(input: {
   const accounting = emptyAccounting();
   accounting.sourceRows = input.rows.length;
 
+  const index = await loadCompanyLinkIndex(input.prisma, input.companyId);
   const evaluated = [];
   for (const row of input.rows) {
     const values = applyEntityMapping(row.rawData, input.mapping);
-    const mapped = await attachLinks(input.prisma, input.companyId, input.sourceSystem, values);
+    const mapped = attachLinksFromIndex(index, values);
     if (input.recordType === "JOBS" && values.status) {
       const status = mapJobStatus(values.status);
       if (!status.recognized) {

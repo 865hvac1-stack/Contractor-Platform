@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 import { consumeOAuthState } from "@/lib/integrations/oauth/state";
 import { saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
 import { writeAudit } from "@/lib/audit";
+import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { exchangeQuickBooksCode } from "@/lib/quickbooks/oauth";
 
@@ -28,7 +30,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/settings/quickbooks?error=QuickBooks+did+not+return+a+company+id.", url.origin));
   }
   try {
-    const tokens = await exchangeQuickBooksCode(code);
+    const app = await loadQuickBooksAppCredentials(prisma, row.companyId);
+    const tokens = await exchangeQuickBooksCode(code, app);
     const connection = await upsertConnection({
       companyId: row.companyId,
       providerKey: QUICKBOOKS_PROVIDER_KEY,

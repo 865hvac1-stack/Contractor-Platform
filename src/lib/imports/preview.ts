@@ -164,18 +164,24 @@ export async function persistPreview(input: {
   }>;
   summary: PreviewSummary;
 }) {
-  for (const row of input.evaluated) {
-    await input.prisma.importRow.update({
-      where: { id: row.id },
-      data: {
-        status: row.status,
-        action: row.action,
-        duplicateVerdict: row.duplicateVerdict ?? "NEW",
-        mappedData: row.mappedData ?? undefined,
-        issues: row.issues,
-        targetRecordId: row.targetRecordId,
-      },
-    });
+  const chunkSize = 80;
+  for (let i = 0; i < input.evaluated.length; i += chunkSize) {
+    const chunk = input.evaluated.slice(i, i + chunkSize);
+    await input.prisma.$transaction(
+      chunk.map((row) =>
+        input.prisma.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: row.status,
+            action: row.action,
+            duplicateVerdict: row.duplicateVerdict ?? "NEW",
+            mappedData: row.mappedData ?? undefined,
+            issues: row.issues,
+            targetRecordId: row.targetRecordId,
+          },
+        })
+      )
+    );
   }
   await input.prisma.importSession.update({
     where: { id: input.sessionId, companyId: input.companyId },

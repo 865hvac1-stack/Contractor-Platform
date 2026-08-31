@@ -248,6 +248,12 @@ export function PreviewForm({
       <Button type="submit" disabled={pending}>
         {pending ? "Checking rows…" : "Check for problems and matches"}
       </Button>
+      {pending ? (
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Matching this file against customers and locations already in ContractorYou. This should finish in a few
+          seconds. If it does not, stay on this page — do not upload the file again.
+        </p>
+      ) : null}
     </form>
   );
 }

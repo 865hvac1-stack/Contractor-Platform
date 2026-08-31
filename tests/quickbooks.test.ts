@@ -4,6 +4,9 @@ import bcrypt from "bcryptjs";
 import { can } from "@/lib/permissions";
 import { canAutoSyncInvoice, syncInvoiceToQuickBooks, syncPaymentToQuickBooks } from "@/lib/quickbooks/sync";
 import { publicQuickBooksStatus } from "@/lib/quickbooks/status";
+import { quickbooksSetupSnapshot, resolveQuickBooksApp } from "@/lib/quickbooks/config";
+import { decryptCompanyQuickBooksApp, describeSavedQuickBooksApp, saveCompanyQuickBooksApp } from "@/lib/quickbooks/app";
+import { quickbooksAuthorizeHref } from "@/lib/quickbooks/oauth";
 import type { QboTransport } from "@/lib/quickbooks/client";
 
 const prisma = new PrismaClient();
@@ -45,6 +48,36 @@ describe("QuickBooks gates and status", () => {
     expect(canAutoSyncInvoice({ trigger: "MANUAL_ONLY", event: "created", importMode: "LIVE" }).allowed).toBe(false);
     expect(canAutoSyncInvoice({ trigger: "WHEN_SENT", event: "sent", importMode: "LIVE" }).allowed).toBe(true);
     expect(canAutoSyncInvoice({ trigger: "MANUAL_ONLY", event: "manual" }).allowed).toBe(true);
+  });
+
+  it("setup snapshot never includes secrets", () => {
+    const prevId = process.env.QUICKBOOKS_CLIENT_ID;
+    const prevSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
+    process.env.QUICKBOOKS_CLIENT_ID = "cid-public";
+    process.env.QUICKBOOKS_CLIENT_SECRET = "super-secret-value";
+    const snap = quickbooksSetupSnapshot();
+    expect(snap.hasEnvClientId).toBe(true);
+    expect(snap.hasEnvClientSecret).toBe(true);
+    expect(snap.configured).toBe(true);
+    expect(JSON.stringify(snap)).not.toMatch(/super-secret-value/);
+    if (prevId == null) delete process.env.QUICKBOOKS_CLIENT_ID;
+    else process.env.QUICKBOOKS_CLIENT_ID = prevId;
+    if (prevSecret == null) delete process.env.QUICKBOOKS_CLIENT_SECRET;
+    else process.env.QUICKBOOKS_CLIENT_SECRET = prevSecret;
+  });
+
+  it("prefers company Intuit keys over empty env", () => {
+    const resolved = resolveQuickBooksApp({
+      clientId: "company-cid",
+      clientSecret: "company-secret",
+      environment: "sandbox",
+      source: "company",
+    });
+    expect(resolved?.source).toBe("company");
+    expect(resolved?.clientId).toBe("company-cid");
+    expect(
+      quickbooksAuthorizeHref("state-test", resolved).includes("client_id=company-cid")
+    ).toBe(true);
   });
 
   it("keeps QuickBooks management off technician roles", () => {
@@ -147,12 +180,29 @@ describe("QuickBooks sync isolation and idempotency", () => {
     const companyIds = [ids.companyA, ids.companyB].filter(Boolean);
     await prisma.quickBooksSyncEvent.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.quickBooksMapping.deleteMany({ where: { companyId: { in: companyIds } } });
+    await prisma.quickBooksSettings.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.payment.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.invoice.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.customer.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
     if (ids.userA) await prisma.user.delete({ where: { id: ids.userA } });
     await prisma.$disconnect();
+  });
+
+  it("encrypts company Intuit keys and never stores the secret in plaintext", async () => {
+    await saveCompanyQuickBooksApp(prisma, ids.companyA, {
+      clientId: "intuit-cid",
+      clientSecret: "intuit-secret",
+      environment: "sandbox",
+    });
+    const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId: ids.companyA } });
+    const described = describeSavedQuickBooksApp(settings);
+    expect(described.hasClientId).toBe(true);
+    expect(described.hasSecret).toBe(true);
+    expect(JSON.stringify(settings)).not.toMatch(/intuit-secret/);
+    const decrypted = decryptCompanyQuickBooksApp(settings);
+    expect(decrypted?.clientSecret).toBe("intuit-secret");
+    expect(decrypted?.clientId).toBe("intuit-cid");
   });
 
   it("Company A cannot read Company B QuickBooks mappings", async () => {
