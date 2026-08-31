@@ -13,7 +13,10 @@ import { validateMappedCustomer } from "@/lib/imports/validate";
 import { actionForDuplicate, buildCustomerIndex, detectDuplicate } from "@/lib/imports/duplicates";
 import { evaluateRows } from "@/lib/imports/preview";
 import { executeImportBatch } from "@/lib/imports/execute";
-import { executeEntityBatch, previewEntityRows } from "@/lib/imports/engine";
+import { applyEntityMapping, executeEntityBatch, previewEntityRows } from "@/lib/imports/engine";
+import { persistPreview } from "@/lib/imports/preview";
+import { parseCombinedPersonAddress, unwrapSpreadsheetValue } from "@/lib/imports/normalize";
+import { publicActionError } from "@/lib/action-errors";
 import {
   matchCustomerFromIndex,
   matchPropertyFromIndex,
@@ -161,6 +164,25 @@ describe("normalization, validation, and duplicates", () => {
     expect(parseDate("03/15/2021")?.toISOString().startsWith("2021-03-15")).toBe(true);
     expect(neutralizeCell("=CMD()")).toBe("'=CMD()");
     expect(csvEscape("=1+1")).toBe("'=1+1");
+    expect(unwrapSpreadsheetValue('="34645915"')).toBe("34645915");
+    expect(unwrapSpreadsheetValue(`'="34645915"`)).toBe("34645915");
+  });
+
+  it("pulls a customer name out of a combined Housecall-style address", () => {
+    const parsed = parseCombinedPersonAddress(
+      "Ilona Demura 2309 Pleasant View Road Knoxville TN 37914 USA"
+    );
+    expect(parsed?.name).toBe("Ilona Demura");
+    expect(parsed?.address).toBe("2309 Pleasant View Road");
+    expect(parsed?.city).toBe("Knoxville");
+    expect(parsed?.state).toBe("TN");
+    expect(parsed?.zip).toBe("37914");
+  });
+
+  it("explains a busy database instead of dumping Prisma internals", () => {
+    expect(publicActionError(new Error("Too many database connections opened: FATAL: sorry, too many clients already"))).toMatch(
+      /Wait ten seconds/i
+    );
   });
 
   it("flags missing names and bad emails as errors, bad phones as warnings", () => {
@@ -716,6 +738,84 @@ describe("entity imports stay historical and tenant-safe", () => {
     expect(matchCustomerFromIndex(index, { phone: "8655550100" }).id).toBe("c1");
     expect(matchPropertyFromIndex(index, "c1", { address: "10 Oak St", city: "Knoxville", zip: "37902" }).id).toBe("p1");
     expect(matchCustomerFromIndex(index, { name: "Nobody Here" }).verdict).toBe("MISSING");
+  });
+
+  it("unwraps formula job numbers and combined address columns", () => {
+    const mapping = {
+      columns: [
+        { sourceColumn: "Job #", target: "jobNumber", confidence: "low", suggestedBy: "user" },
+        { sourceColumn: "Address", target: "address", confidence: "high", suggestedBy: "user" },
+      ],
+    } as ImportMapping;
+    const values = applyEntityMapping(
+      {
+        "Job #": '="34645915"',
+        Address: "Ilona Demura 2309 Pleasant View Road Knoxville TN 37914 USA",
+      },
+      mapping
+    );
+    expect(values.jobNumber).toBe("34645915");
+    expect(values.customerName).toBe("Ilona Demura");
+    expect(values.address).toBe("2309 Pleasant View Road");
+    expect(values.city).toBe("Knoxville");
+    expect(values.zip).toBe("37914");
+  });
+
+  it("writes preview rows in one SQL update", async () => {
+    const session = await prisma.importSession.create({
+      data: {
+        companyId: ids.companyId,
+        userId: ids.userId,
+        recordType: "JOBS",
+        sourceType: "UNKNOWN",
+        fileName: "persist-preview.csv",
+        fileHash: `persist-${Date.now()}`,
+        status: "READY_FOR_PREVIEW",
+        rowCount: 1,
+        importMode: "HISTORICAL",
+      },
+    });
+    const row = await prisma.importRow.create({
+      data: {
+        companyId: ids.companyId,
+        importSessionId: session.id,
+        rowNumber: 1,
+        rawData: { "Job #": "99" },
+      },
+    });
+    await persistPreview({
+      prisma,
+      companyId: ids.companyId,
+      sessionId: session.id,
+      evaluated: [
+        {
+          id: row.id,
+          status: "VALID",
+          action: "CREATE",
+          duplicateVerdict: "NEW",
+          mappedData: { values: { jobNumber: "99" } },
+          issues: [],
+          targetRecordId: ids.customerId,
+        },
+      ],
+      summary: {
+        totalRows: 1,
+        ready: 1,
+        warnings: 0,
+        errors: 0,
+        duplicates: 0,
+        newCustomers: 0,
+        existingCustomers: 0,
+        properties: 0,
+        tags: 0,
+        skippedByPolicy: 0,
+      },
+    });
+    const updated = await prisma.importRow.findFirst({ where: { id: row.id, companyId: ids.companyId } });
+    expect(updated?.status).toBe("VALID");
+    expect(updated?.targetRecordId).toBe(ids.customerId);
+    const refreshed = await prisma.importSession.findFirst({ where: { id: session.id, companyId: ids.companyId } });
+    expect(refreshed?.status).toBe("READY_TO_IMPORT");
   });
 
   it("maps job spreadsheet columns through the catalog", () => {

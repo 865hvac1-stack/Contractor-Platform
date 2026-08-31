@@ -22,6 +22,13 @@ export function publicActionError(error: unknown): string {
     return "Cannot reach the database. Confirm DATABASE_URL is set from the Railway Postgres plugin.";
   }
   if (
+    message.includes("too many clients") ||
+    message.includes("Too many database connections") ||
+    message.includes("remaining connection slots")
+  ) {
+    return "The database is busy. Wait ten seconds, then click Check for problems and matches once. Do not click again while it is working.";
+  }
+  if (
     code === "P2021" ||
     code === "P2022" ||
     message.includes("does not exist") ||

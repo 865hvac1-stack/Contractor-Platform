@@ -164,23 +164,44 @@ export async function persistPreview(input: {
   }>;
   summary: PreviewSummary;
 }) {
-  const chunkSize = 80;
+  const chunkSize = 400;
   for (let i = 0; i < input.evaluated.length; i += chunkSize) {
     const chunk = input.evaluated.slice(i, i + chunkSize);
-    await input.prisma.$transaction(
-      chunk.map((row) =>
-        input.prisma.importRow.update({
-          where: { id: row.id },
-          data: {
-            status: row.status,
-            action: row.action,
-            duplicateVerdict: row.duplicateVerdict ?? "NEW",
-            mappedData: row.mappedData ?? undefined,
-            issues: row.issues,
-            targetRecordId: row.targetRecordId,
-          },
-        })
-      )
+    const payload = JSON.stringify(
+      chunk.map((row) => ({
+        id: row.id,
+        status: row.status,
+        action: row.action,
+        duplicateVerdict: row.duplicateVerdict ?? "NEW",
+        mappedData: row.mappedData ?? null,
+        issues: row.issues,
+        targetRecordId: row.targetRecordId,
+      }))
+    );
+    await input.prisma.$executeRawUnsafe(
+      `UPDATE "ImportRow" AS r
+       SET
+         status = v.status::"ImportRowStatus",
+         action = v.action::"ImportRowAction",
+         "duplicateVerdict" = v."duplicateVerdict"::"ImportDuplicateVerdict",
+         "mappedData" = v."mappedData",
+         issues = v.issues,
+         "targetRecordId" = v."targetRecordId"
+       FROM jsonb_to_recordset($1::jsonb) AS v(
+         id text,
+         status text,
+         action text,
+         "duplicateVerdict" text,
+         "mappedData" jsonb,
+         issues jsonb,
+         "targetRecordId" text
+       )
+       WHERE r.id = v.id
+         AND r."companyId" = $2
+         AND r."importSessionId" = $3`,
+      payload,
+      input.companyId,
+      input.sessionId
     );
   }
   await input.prisma.importSession.update({

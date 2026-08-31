@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { AuthError } from "@/lib/auth";
 import { requirePermission } from "@/lib/tenant";
-import { isNextRedirect } from "@/lib/action-errors";
+import { isNextRedirect, publicActionError } from "@/lib/action-errors";
 import type { ActionResult } from "@/server/actions/auth";
 import {
   IMPORT_SOURCE_TYPES,
@@ -291,7 +291,15 @@ export async function buildImportPreviewAction(
     return { ok: true, sessionId: session.id };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: error instanceof Error ? error.message : "Could not preview this file." };
+    const message = error instanceof Error ? error.message : "";
+    if (
+      /too many clients|Too many database connections|remaining connection slots|Can't reach database/i.test(
+        message
+      )
+    ) {
+      return { ok: false, error: publicActionError(error) };
+    }
+    return { ok: false, error: message || "Could not preview this file." };
   }
 }
 

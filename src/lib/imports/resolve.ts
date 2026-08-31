@@ -49,45 +49,88 @@ function last10(phone: string) {
   return digitsOnly(phone).slice(-10);
 }
 
-export async function loadCompanyLinkIndex(prisma: PrismaClient, companyId: string): Promise<CompanyLinkIndex> {
-  const [refs, customers, properties, jobs, estimates, invoices, members] = await Promise.all([
-    prisma.importExternalRef.findMany({
-      where: { companyId },
-      select: { recordType: true, externalId: true, targetRecordId: true },
-    }),
-    prisma.customer.findMany({
-      where: { companyId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        businessName: true,
-        email: true,
-        phone: true,
-        externalId: true,
-      },
-    }),
-    prisma.property.findMany({
-      where: { companyId },
-      select: { id: true, customerId: true, address: true, city: true, zip: true, isPrimary: true, externalId: true },
-    }),
-    prisma.job.findMany({
-      where: { companyId },
-      select: { id: true, externalId: true, jobNumber: true },
-    }),
-    prisma.estimate.findMany({
-      where: { companyId },
-      select: { id: true, externalId: true, estimateNumber: true },
-    }),
-    prisma.invoice.findMany({
-      where: { companyId },
-      select: { id: true, externalId: true, invoiceNumber: true },
-    }),
-    prisma.membership.findMany({
-      where: { companyId, status: "ACTIVE" },
-      include: { user: { select: { id: true, firstName: true, lastName: true } } },
-    }),
-  ]);
+function indexNeeds(recordType?: string) {
+  const all = {
+    refs: true,
+    customers: true,
+    properties: true,
+    jobs: true,
+    estimates: true,
+    invoices: true,
+    team: true,
+  };
+  if (recordType === "JOBS" || recordType === "PROPERTIES" || recordType === "EQUIPMENT" || recordType === "NOTES") {
+    return { ...all, estimates: false, invoices: false };
+  }
+  if (recordType === "PAYMENTS") {
+    return { ...all, jobs: false, estimates: false, team: false };
+  }
+  if (recordType === "INVOICES") {
+    return { ...all, estimates: false };
+  }
+  if (recordType === "ESTIMATES") {
+    return { ...all, invoices: false };
+  }
+  return all;
+}
+
+export async function loadCompanyLinkIndex(
+  prisma: PrismaClient,
+  companyId: string,
+  recordType?: string
+): Promise<CompanyLinkIndex> {
+  const needs = indexNeeds(recordType);
+  // Sequential on purpose: Railway Postgres has a small connection cap.
+  const refs = needs.refs
+    ? await prisma.importExternalRef.findMany({
+        where: { companyId },
+        select: { recordType: true, externalId: true, targetRecordId: true },
+      })
+    : [];
+  const customers = needs.customers
+    ? await prisma.customer.findMany({
+        where: { companyId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          businessName: true,
+          email: true,
+          phone: true,
+          externalId: true,
+        },
+      })
+    : [];
+  const properties = needs.properties
+    ? await prisma.property.findMany({
+        where: { companyId },
+        select: { id: true, customerId: true, address: true, city: true, zip: true, isPrimary: true, externalId: true },
+      })
+    : [];
+  const jobs = needs.jobs
+    ? await prisma.job.findMany({
+        where: { companyId },
+        select: { id: true, externalId: true, jobNumber: true },
+      })
+    : [];
+  const estimates = needs.estimates
+    ? await prisma.estimate.findMany({
+        where: { companyId },
+        select: { id: true, externalId: true, estimateNumber: true },
+      })
+    : [];
+  const invoices = needs.invoices
+    ? await prisma.invoice.findMany({
+        where: { companyId },
+        select: { id: true, externalId: true, invoiceNumber: true },
+      })
+    : [];
+  const members = needs.team
+    ? await prisma.membership.findMany({
+        where: { companyId, status: "ACTIVE" },
+        include: { user: { select: { id: true, firstName: true, lastName: true } } },
+      })
+    : [];
 
   const index: CompanyLinkIndex = {
     refs: new Map(),

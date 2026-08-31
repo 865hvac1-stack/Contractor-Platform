@@ -80,6 +80,62 @@ export function normalizeText(value: unknown): string {
   return neutralizeCell(rawCell(value));
 }
 
+/** Undo CSV formula neutralization and Excel `="value"` wrappers. */
+export function unwrapSpreadsheetValue(value: unknown): string {
+  let text = normalizeText(value);
+  if (!text) return "";
+  if (text.startsWith("'") && text.length > 1 && "+=-@".includes(text[1] ?? "")) {
+    text = text.slice(1);
+  }
+  const quotedFormula = /^="([^"]*)"$/.exec(text);
+  if (quotedFormula) return quotedFormula[1] ?? "";
+  if (text.startsWith("=")) {
+    return text.slice(1).replace(/^["']|["']$/g, "");
+  }
+  return text;
+}
+
+/**
+ * Housecall / similar exports often put "First Last 123 Main St City ST 12345 USA"
+ * in a single Address column. Parse from the zip backward so street names stay intact.
+ */
+export function parseCombinedPersonAddress(value: unknown): {
+  name: string;
+  firstName: string;
+  lastName: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+} | null {
+  const cleaned = unwrapSpreadsheetValue(value).replace(/\s+USA?$/i, "").trim();
+  if (!cleaned) return null;
+  const zipMatch = cleaned.match(/^(.*?)\s+(\d{5}(?:-\d{4})?)$/);
+  if (!zipMatch) return null;
+  let rest = zipMatch[1] ?? "";
+  const zip = normalizePostal(zipMatch[2] ?? "");
+  const stateMatch = rest.match(/^(.*?)\s+([A-Za-z]{2})$/);
+  if (!stateMatch) return null;
+  rest = stateMatch[1] ?? "";
+  const state = normalizeState(stateMatch[2]).state;
+  const streetStart = rest.search(/\d/);
+  if (streetStart < 0) return null;
+  const name = rest.slice(0, streetStart).trim();
+  const streetAndCity = rest.slice(streetStart).trim();
+  const cityMatch = streetAndCity.match(/^(.*)\s+([A-Za-z][A-Za-z.'-]*)$/);
+  if (!cityMatch?.[1] || !cityMatch[2]) return null;
+  const split = splitFullName(name);
+  return {
+    name,
+    firstName: split.firstName,
+    lastName: split.lastName,
+    address: cityMatch[1].trim(),
+    city: cityMatch[2].trim(),
+    state,
+    zip,
+  };
+}
+
 export function normalizeEmail(value: unknown): string | null {
   const text = normalizeText(value).toLowerCase();
   if (!text) return null;

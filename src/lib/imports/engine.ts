@@ -1,7 +1,7 @@
 import type { ImportRecordType, ImportRowAction, ImportRowStatus, ImportSourceType, Prisma, PrismaClient } from "@prisma/client";
 import type { ImportMapping, ImportRecordTypeId, RowIssue } from "@/lib/imports/types";
 import { IMPORT_BATCH_SIZE } from "@/lib/imports/types";
-import { normalizeEmail, normalizePhone, normalizeText, parseCurrencyToCents, parseDate, splitFullName, splitTags } from "@/lib/imports/normalize";
+import { normalizeEmail, normalizePhone, normalizeText, parseCombinedPersonAddress, parseCurrencyToCents, parseDate, splitFullName, splitTags, unwrapSpreadsheetValue } from "@/lib/imports/normalize";
 import {
   loadCompanyLinkIndex,
   matchCustomerFromIndex,
@@ -79,8 +79,22 @@ export function applyEntityMapping(row: Record<string, string>, mapping: ImportM
   const values: Record<string, string> = {};
   for (const column of mapping.columns) {
     if (column.target === "ignore") continue;
-    const text = normalizeText(row[column.sourceColumn] ?? "");
+    const text = unwrapSpreadsheetValue(row[column.sourceColumn] ?? "");
     if (text) values[column.target] = text;
+  }
+  if (values.address && !values.city && !values.zip) {
+    const parsed = parseCombinedPersonAddress(values.address);
+    if (parsed) {
+      if (parsed.name && !values.customerName && !values.firstName) {
+        values.customerName = parsed.name;
+        values.firstName = parsed.firstName;
+        values.lastName = parsed.lastName;
+      }
+      values.address = parsed.address;
+      if (parsed.city) values.city = parsed.city;
+      if (parsed.state) values.state = parsed.state;
+      if (parsed.zip) values.zip = parsed.zip;
+    }
   }
   if (!values.customerName && (values.firstName || values.lastName)) {
     values.customerName = `${values.firstName ?? ""} ${values.lastName ?? ""}`.trim();
@@ -158,7 +172,7 @@ export async function previewEntityRows(input: {
   const accounting = emptyAccounting();
   accounting.sourceRows = input.rows.length;
 
-  const index = await loadCompanyLinkIndex(input.prisma, input.companyId);
+  const index = await loadCompanyLinkIndex(input.prisma, input.companyId, input.recordType);
   const evaluated = [];
   for (const row of input.rows) {
     const values = applyEntityMapping(row.rawData, input.mapping);
