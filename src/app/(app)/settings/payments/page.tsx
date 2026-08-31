@@ -10,6 +10,7 @@ import {
   stripeWebhookConfigured,
 } from "@/lib/payments/config";
 import { refreshConnectAccount, uxStatus } from "@/lib/payments/connect";
+import { paymentsStatusCopy } from "@/lib/payments/payments-ux";
 import { PaymentsSettingsActions } from "@/app/(app)/settings/payments/payments-actions";
 
 export default async function PaymentsSettingsPage({
@@ -39,7 +40,7 @@ export default async function PaymentsSettingsPage({
   const publishableKey = stripePublishableKey();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6">
       <div>
         <Link href="/settings" className="text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
           ← Settings
@@ -122,10 +123,11 @@ function StatusCopy({
   missing: string[];
   mode: string;
 }) {
+  const copy = paymentsStatusCopy(status);
   if (status === "NOT_CONFIGURED") {
     return (
       <div className="mt-3 space-y-2">
-        <h2 className="text-xl font-semibold">Payments not configured</h2>
+        <h2 className="text-xl font-semibold">{copy.title}</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
           Stripe credentials are not on this server. The app is running. Card collection stays off until these
           environment variables are set ({mode}):
@@ -140,56 +142,16 @@ function StatusCopy({
       </div>
     );
   }
-  if (status === "NOT_CONNECTED") {
-    return (
-      <div className="mt-3 space-y-2">
-        <h2 className="text-xl font-semibold">Not set up</h2>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Set up payments to accept cards and bank payments. You do not need a Stripe account first. Setup
-          stays in ContractorYou. Stripe securely collects business verification, identity, and payout bank
-          details — ContractorYou never stores them.
-        </p>
-      </div>
-    );
-  }
-  if (status === "ONBOARDING") {
-    return (
-      <div className="mt-3 space-y-2">
-        <h2 className="text-xl font-semibold">Setup in progress</h2>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Finish business verification and payout setup inside ContractorYou. Payments stay off until Stripe
-          confirms they are enabled.
-        </p>
-      </div>
-    );
-  }
-  if (status === "ACTION_REQUIRED" || status === "RESTRICTED") {
-    return (
-      <div className="mt-3 space-y-2">
-        <h2 className="text-xl font-semibold text-amber-800">Action required</h2>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Stripe needs additional information before payments or payouts can continue. This is not shown as
-          connected while charges or payouts are restricted.
-        </p>
-      </div>
-    );
-  }
-  if (status === "DISABLED") {
-    return (
-      <div className="mt-3 space-y-2">
-        <h2 className="text-xl font-semibold">Payments disabled</h2>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Payment collection is turned off for this company. Historical payments and invoices are unchanged.
-        </p>
-      </div>
-    );
-  }
   return (
     <div className="mt-3 space-y-2">
-      <h2 className="text-xl font-semibold">Payments Active</h2>
-      <p className="text-sm text-[var(--muted-foreground)]">
-        Accepting payments. Payouts go to your business bank account.
-      </p>
+      {copy.title !== "ContractorYou Payments" ? (
+        <h2
+          className={`text-xl font-semibold${status === "ACTION_REQUIRED" || status === "RESTRICTED" ? " text-amber-800" : ""}`}
+        >
+          {copy.title}
+        </h2>
+      ) : null}
+      <p className="text-sm text-[var(--muted-foreground)]">{copy.body}</p>
     </div>
   );
 }

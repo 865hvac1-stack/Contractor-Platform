@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PaymentsOnboardingEmbed } from "@/app/(app)/settings/payments/payments-onboarding-embed";
 import type { ConnectUxStatus } from "@/lib/payments/connect";
+import { EMBEDDED_SETUP_COPY, paymentsStatusCopy } from "@/lib/payments/payments-ux";
 import {
   disconnectPaymentsAction,
   refreshPaymentsStatusAction,
@@ -21,6 +22,7 @@ export function PaymentsSettingsActions({
   startOpen?: boolean;
 }) {
   const router = useRouter();
+  const copy = paymentsStatusCopy(status);
   const [error, setError] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -31,20 +33,20 @@ export function PaymentsSettingsActions({
     setError(null);
     setDiagnostic(null);
     if (!publishableKey) {
-      setError("Payments are not configured.");
+      setError(EMBEDDED_SETUP_COPY.failed);
       setPending(null);
       return;
     }
     try {
       const result = await startPaymentsOnboardingAction();
       if (result && !result.ok) {
-        setError(result.error ?? "ContractorYou Payments couldn't start setup. Please try again or contact your administrator.");
+        setError(result.error ?? EMBEDDED_SETUP_COPY.failed);
         setDiagnostic(result.diagnostic ?? null);
         return;
       }
       setShowEmbed(true);
     } catch {
-      setError("ContractorYou Payments couldn't start setup. Please try again or contact your administrator.");
+      setError(EMBEDDED_SETUP_COPY.failed);
     } finally {
       setPending(null);
     }
@@ -69,50 +71,29 @@ export function PaymentsSettingsActions({
           ) : null}
         </div>
       ) : null}
-      {/* Future Stripe embeds (account management, payouts, balances, payments,
-          refunds/disputes, notification banner) mount in this same Payments panel. */}
-      {showEmbed && publishableKey ? (
-        <PaymentsOnboardingEmbed publishableKey={publishableKey} onExit={() => void handleExit()} />
+      {showEmbed ? (
+        <div>
+          <h2 className="text-xl font-semibold">{EMBEDDED_SETUP_COPY.title}</h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{EMBEDDED_SETUP_COPY.body}</p>
+          {pending ? (
+            <p className="mt-3 text-sm text-[var(--muted-foreground)]">{EMBEDDED_SETUP_COPY.preparing}</p>
+          ) : null}
+          {/* Future Stripe embeds (account management, payouts, balances, payments,
+              refunds/disputes, notification banner) mount in this same Payments panel. */}
+          {publishableKey ? (
+            <PaymentsOnboardingEmbed publishableKey={publishableKey} onExit={() => void handleExit()} />
+          ) : null}
+        </div>
       ) : null}
-      {!showEmbed && (status === "NOT_CONNECTED" || status === "DISABLED") ? (
+      {!showEmbed && copy.action && status !== "NOT_CONFIGURED" ? (
         <Button
           type="button"
-          className="h-11 w-full sm:w-auto"
+          variant={status === "CONNECTED" ? "outline" : "default"}
+          className="h-11 w-full min-[375px]:w-full sm:w-auto"
           disabled={Boolean(pending)}
-          onClick={() => void openOnboarding("setup")}
+          onClick={() => void openOnboarding(status === "CONNECTED" ? "manage" : "setup")}
         >
-          {pending === "setup" ? "Starting…" : "Set Up Payments"}
-        </Button>
-      ) : null}
-      {!showEmbed && status === "ONBOARDING" ? (
-        <Button
-          type="button"
-          className="h-11 w-full sm:w-auto"
-          disabled={Boolean(pending)}
-          onClick={() => void openOnboarding("continue")}
-        >
-          {pending === "continue" ? "Opening…" : "Continue Setup"}
-        </Button>
-      ) : null}
-      {!showEmbed && (status === "ACTION_REQUIRED" || status === "RESTRICTED") ? (
-        <Button
-          type="button"
-          className="h-11 w-full sm:w-auto"
-          disabled={Boolean(pending)}
-          onClick={() => void openOnboarding("complete")}
-        >
-          {pending === "complete" ? "Opening…" : "Resolve With Stripe"}
-        </Button>
-      ) : null}
-      {!showEmbed && status === "CONNECTED" ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          disabled={Boolean(pending)}
-          onClick={() => void openOnboarding("manage")}
-        >
-          {pending === "manage" ? "Opening…" : "Update payment details"}
+          {pending ? EMBEDDED_SETUP_COPY.preparing : copy.action}
         </Button>
       ) : null}
       {showEmbed ? (
@@ -127,7 +108,11 @@ export function PaymentsSettingsActions({
           className="h-11 text-red-700"
           disabled={Boolean(pending)}
           onClick={() => {
-            if (!window.confirm("Disable ContractorYou Payments? Historical payments stay. Customers cannot pay by card until you set up again.")) {
+            if (
+              !window.confirm(
+                "Disable ContractorYou Payments? Historical payments stay. Customers cannot pay by card until you set up again."
+              )
+            ) {
               return;
             }
             void (async () => {

@@ -12,8 +12,10 @@ import {
   v2AccountCreateParams,
   v2OnboardingLinkParams,
   accountSessionOnboardingParams,
+  tenantAccountForSession,
   FUTURE_EMBEDDED_COMPONENTS,
 } from "@/lib/payments/connect-v2";
+import { EMBEDDED_SETUP_COPY, PAYMENTS_EMBED_FRAME_CLASS, paymentsStatusCopy } from "@/lib/payments/payments-ux";
 import { createInvoicePaymentIntent, resolveInvoicePaymentDestination } from "@/lib/payments/intents";
 import { collectedAmountCents, reconcileInvoiceFromPayments, recordConfirmedProviderPayment } from "@/lib/payments/record";
 import { constructStripeEvent, processStripeEvent } from "@/lib/payments/webhooks";
@@ -121,8 +123,9 @@ describe("stripe accounts v2 helpers", () => {
     const session = accountSessionOnboardingParams("acct_123");
     expect(session.account).toBe("acct_123");
     expect(session.components.account_onboarding.enabled).toBe(true);
-    expect(session.components.account_onboarding.features.external_account_collection).toBe(true);
-    expect(session.components.account_onboarding.features).not.toHaveProperty("disable_stripe_user_authentication");
+    expect(session.components.account_onboarding).not.toHaveProperty("features");
+    expect(JSON.stringify(session)).not.toContain("external_account_collection");
+    expect(JSON.stringify(session)).not.toContain("disable_stripe_user_authentication");
     expect(session.components).not.toHaveProperty("account_management");
     expect(session.components).not.toHaveProperty("payouts");
     expect(JSON.stringify(session)).not.toContain("companyId");
@@ -131,6 +134,32 @@ describe("stripe accounts v2 helpers", () => {
       expect(session.components).not.toHaveProperty(name);
     }
     expect(connectIdempotencyKey("co_865")).toBe("cy-connect-v2-saas-co_865");
+  });
+
+  it("D. never uses a browser-supplied company or Stripe account for the Account Session", () => {
+    const resolved = tenantAccountForSession({
+      authenticatedCompanyId: "co_a",
+      storedStripeAccountId: "acct_a",
+      requestedCompanyId: "co_b",
+      requestedStripeAccountId: "acct_b",
+    });
+    expect(resolved.companyId).toBe("co_a");
+    expect(resolved.stripeAccountId).toBe("acct_a");
+    expect(resolved.stripeAccountId).not.toBe("acct_b");
+  });
+
+  it("H/I/L. Payments copy and embed frame stay in-app and usable on mobile", () => {
+    expect(paymentsStatusCopy("NOT_CONNECTED").action).toBe("Set Up Payments");
+    expect(paymentsStatusCopy("NOT_CONNECTED").body).toMatch(/Accept cards and bank payments/);
+    expect(paymentsStatusCopy("ACTION_REQUIRED").title).toBe("Payments need attention");
+    expect(paymentsStatusCopy("ACTION_REQUIRED").action).toBe("Complete Required Information");
+    expect(paymentsStatusCopy("NOT_CONFIGURED").title).toMatch(/not configured/i);
+    expect(EMBEDDED_SETUP_COPY.failed).toBe("Unable to start payment setup. Please try again.");
+    expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("w-full");
+    expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("max-w-full");
+    expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("min-h-[32rem]");
+    expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("safe-area-inset-bottom");
+    expect(PAYMENTS_EMBED_FRAME_CLASS).not.toContain("overflow-hidden");
   });
 
   it("reuses the same idempotency key for one company", () => {

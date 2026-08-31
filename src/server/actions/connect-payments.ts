@@ -38,7 +38,7 @@ export async function startPaymentsOnboardingAction(): Promise<ActionResult> {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     const safe = publicPaymentsError(error);
     console.error("[payments.connect]", safe.diagnostic);
-    return { ok: false, error: safe.user, diagnostic: safe.diagnostic };
+    return { ok: false, error: "Unable to start payment setup. Please try again.", diagnostic: safe.diagnostic };
   }
 }
 

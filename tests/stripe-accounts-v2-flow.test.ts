@@ -24,19 +24,27 @@ vi.mock("@/lib/payments/stripe-client", () => ({
   }),
 }));
 
-const { createOnboardingAccountSession, createOrResumeConnectAccount, refreshConnectAccount } =
-  await import("@/lib/payments/connect");
+const {
+  createOnboardingAccountSession,
+  createOrResumeConnectAccount,
+  issueOnboardingAccountSession,
+  refreshConnectAccount,
+} = await import("@/lib/payments/connect");
 
 const prisma = new PrismaClient();
 
 describe("accounts v2 create-or-resume flow", () => {
-  const ids = { companyId: "" };
+  const ids = { companyId: "", companyBId: "" };
 
   beforeAll(async () => {
     const company = await prisma.company.create({
       data: { businessName: `V2 Flow ${Date.now()}`, industry: "HVAC", status: "ACTIVE" },
     });
+    const companyB = await prisma.company.create({
+      data: { businessName: `V2 Flow B ${Date.now()}`, industry: "HVAC", status: "ACTIVE" },
+    });
     ids.companyId = company.id;
+    ids.companyBId = companyB.id;
     accountsCreate.mockReset();
     accountLinksCreate.mockReset();
     accountSessionsCreate.mockReset();
@@ -57,9 +65,10 @@ describe("accounts v2 create-or-resume flow", () => {
   });
 
   afterAll(async () => {
-    await prisma.stripeWebhookEvent.deleteMany({ where: { companyId: ids.companyId } });
-    await prisma.stripeConnectAccount.deleteMany({ where: { companyId: ids.companyId } });
-    await prisma.company.deleteMany({ where: { id: ids.companyId } });
+    const companies = [ids.companyId, ids.companyBId].filter(Boolean);
+    await prisma.stripeWebhookEvent.deleteMany({ where: { companyId: { in: companies } } });
+    await prisma.stripeConnectAccount.deleteMany({ where: { companyId: { in: companies } } });
+    await prisma.company.deleteMany({ where: { id: { in: companies } } });
     await prisma.$disconnect();
   });
 
@@ -79,8 +88,13 @@ describe("accounts v2 create-or-resume flow", () => {
     expect(first.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);
     expect(first).not.toHaveProperty("url");
     expect(accountLinksCreate).not.toHaveBeenCalled();
-    const session = await createOnboardingAccountSession(first.stripeAccountId);
-    expect(session.client_secret).toBe("acs_secret_test");
+    const session = await issueOnboardingAccountSession(prisma, {
+      companyId: ids.companyId,
+      email: "owner@865hvac.local",
+      businessName: "865 HVAC",
+    });
+    expect(session.clientSecret).toBe("acs_secret_test");
+    expect(session.stripeAccountId).toBe(first.stripeAccountId);
     expect(accountSessionsCreate).toHaveBeenCalledTimes(1);
     const sessionArgs = accountSessionsCreate.mock.calls[0]?.[0] as {
       account?: string;
@@ -106,7 +120,13 @@ describe("accounts v2 create-or-resume flow", () => {
     expect(second.created).toBe(false);
     expect(second.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);
     expect(accountLinksCreate).not.toHaveBeenCalled();
-    await createOnboardingAccountSession(second.stripeAccountId);
+    const resumed = await issueOnboardingAccountSession(prisma, {
+      companyId: ids.companyId,
+      email: "owner@865hvac.local",
+      businessName: "865 HVAC",
+    });
+    expect(resumed.created).toBe(false);
+    expect(resumed.stripeAccountId).toBe(second.stripeAccountId);
     expect(accountSessionsCreate).toHaveBeenCalledTimes(1);
     const rows = await prisma.stripeConnectAccount.findMany({ where: { companyId: ids.companyId } });
     expect(rows).toHaveLength(1);
@@ -137,6 +157,45 @@ describe("accounts v2 create-or-resume flow", () => {
     expect(ready?.onboardingStatus).toBe("CONNECTED");
     expect(ready?.chargesEnabled).toBe(true);
     expect(ready?.payoutsEnabled).toBe(true);
+  });
+
+  it("D. Company A session never uses Company B's connected account", async () => {
+    await prisma.stripeConnectAccount.create({
+      data: {
+        companyId: ids.companyBId,
+        stripeAccountId: `acct_b_${ids.companyBId}`,
+        onboardingStatus: "ONBOARDING",
+      },
+    });
+    accountSessionsCreate.mockClear();
+    accountsCreate.mockClear();
+    accountSessionsCreate.mockResolvedValueOnce({ client_secret: "acs_secret_a" });
+    const issued = await issueOnboardingAccountSession(prisma, {
+      companyId: ids.companyId,
+      email: "owner@865hvac.local",
+      businessName: "865 HVAC",
+    });
+    expect(issued.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);
+    expect(issued.stripeAccountId).not.toBe(`acct_b_${ids.companyBId}`);
+    const sessionArgs = accountSessionsCreate.mock.calls[0]?.[0] as { account?: string };
+    expect(sessionArgs.account).toBe(`acct_v2_${ids.companyId}`);
+    expect(accountsCreate).not.toHaveBeenCalled();
+  });
+
+  it("E. expired Account Session issues another session for the same account", async () => {
+    accountSessionsCreate.mockClear();
+    accountsCreate.mockClear();
+    accountSessionsCreate
+      .mockResolvedValueOnce({ client_secret: "acs_expired" })
+      .mockResolvedValueOnce({ client_secret: "acs_refreshed" });
+    const first = await createOnboardingAccountSession(`acct_v2_${ids.companyId}`);
+    const second = await createOnboardingAccountSession(`acct_v2_${ids.companyId}`);
+    expect(first.client_secret).toBe("acs_expired");
+    expect(second.client_secret).toBe("acs_refreshed");
+    expect(accountSessionsCreate).toHaveBeenCalledTimes(2);
+    expect(accountSessionsCreate.mock.calls[0]?.[0]).toMatchObject({ account: `acct_v2_${ids.companyId}` });
+    expect(accountSessionsCreate.mock.calls[1]?.[0]).toMatchObject({ account: `acct_v2_${ids.companyId}` });
+    expect(accountsCreate).not.toHaveBeenCalled();
   });
 
   it("K. Stripe API failure stays contractor-safe", async () => {

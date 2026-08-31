@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   // Bumps the Next/webpack config hash so Railway's mounted .next/cache
   // cannot reuse the poisoned css-loader build from the failed deploys.
   env: {
-    CY_CONNECT_ARCH: "accounts-v2-saas-embed",
+    CY_CONNECT_ARCH: "accounts-v2-saas-embed-inapp",
   },
   experimental: {
     serverActions: {

@@ -197,19 +197,39 @@ export const FUTURE_EMBEDDED_COMPONENTS = [
   "disputes_list",
 ] as const;
 
+/**
+ * Official Accounts v2 / SaaS Account Session for embedded Account Onboarding.
+ * Do not set `external_account_collection: true` here: that forces Stripe user
+ * authentication and sends contractors to connect.stripe.com. For
+ * dashboard=full + Stripe-owned requirement collection, both that flag and
+ * `disable_stripe_user_authentication` default to false. Bank and identity
+ * fields still collect inside the embed as Stripe requirements.
+ * https://docs.stripe.com/connect/saas/tasks/onboard
+ * https://docs.stripe.com/connect/supported-embedded-components/account-onboarding
+ */
 export function accountSessionOnboardingParams(stripeAccountId: string) {
   return {
     account: stripeAccountId,
     components: {
       account_onboarding: {
         enabled: true,
-        features: {
-          // Stripe collects bank details inside the embed. Never set this false
-          // unless a third-party collector is actually wired.
-          external_account_collection: true,
-        },
       },
     },
+  };
+}
+
+/** Browser-supplied company or Stripe ids are ignored. Session is always the authenticated tenant. */
+export function tenantAccountForSession(input: {
+  authenticatedCompanyId: string;
+  storedStripeAccountId: string;
+  requestedCompanyId?: unknown;
+  requestedStripeAccountId?: unknown;
+}) {
+  void input.requestedCompanyId;
+  void input.requestedStripeAccountId;
+  return {
+    companyId: input.authenticatedCompanyId,
+    stripeAccountId: input.storedStripeAccountId,
   };
 }
 

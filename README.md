@@ -297,7 +297,7 @@ Stripe does **not** allow `dashboard=express` with Stripe-owned fees/losses (`ac
 
 New Connect platforms must use Accounts v2. ContractorYou does **not** call legacy `POST /v1/accounts` and does not require enabling Accounts v1 compatibility in Stripe.
 
-**Onboarding:** Stripe Connect **embedded Account Onboarding** inside Settings → Payments. ContractorYou creates or resumes the Accounts v2 merchant, then creates an Account Session (`POST /v1/account_sessions` with only `components.account_onboarding.enabled`). Connect.js renders Stripe’s form in-app. Continue Setup and required-information updates reuse the same stored account and a fresh Account Session. ContractorYou never collects or stores KYC, bank credentials, identity documents, or SSNs/tax IDs.
+**Onboarding:** Stripe Connect **embedded Account Onboarding** inside Settings → Payments. ContractorYou creates or resumes the Accounts v2 merchant, then creates an Account Session (`POST /v1/account_sessions` with only `components.account_onboarding.enabled`). Do not set `external_account_collection: true` — that forces Stripe user authentication and sends contractors to connect.stripe.com. Connect.js renders Stripe’s form in-app. Continue Setup and required-information updates reuse the same stored account and a fresh Account Session. ContractorYou never collects or stores KYC, bank credentials, identity documents, or SSNs/tax IDs.
 
 Later Account Session components (account management, payouts, balances, payments, refunds/disputes, notification banner) can be enabled on this same Payments screen without a second payment system. They are not shipped in this slice.
 

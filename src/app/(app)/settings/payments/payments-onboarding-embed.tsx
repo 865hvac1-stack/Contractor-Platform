@@ -3,6 +3,12 @@
 import { useMemo, useState } from "react";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { ConnectAccountOnboarding, ConnectComponentsProvider } from "@stripe/react-connect-js";
+import {
+  EMBEDDED_SETUP_COPY,
+  PAYMENTS_EMBED_FRAME_CLASS,
+  PAYMENTS_NAVY,
+  PAYMENTS_ORANGE,
+} from "@/lib/payments/payments-ux";
 
 export function PaymentsOnboardingEmbed({
   publishableKey,
@@ -12,11 +18,14 @@ export function PaymentsOnboardingEmbed({
   onExit: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const connectInstance = useMemo(
     () =>
       loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => {
+          // Connect.js calls this again when an Account Session expires.
+          // The server reuses the same connected account and issues a new session.
           const response = await fetch("/api/payments/connect/account-session", {
             method: "POST",
             credentials: "same-origin",
@@ -26,11 +35,8 @@ export function PaymentsOnboardingEmbed({
             error?: string;
           };
           if (!response.ok || !payload.clientSecret) {
-            const message =
-              payload.error ||
-              "ContractorYou Payments couldn't start setup. Please try again or contact your administrator.";
-            setError(message);
-            throw new Error(message);
+            setError(EMBEDDED_SETUP_COPY.failed);
+            throw new Error(EMBEDDED_SETUP_COPY.failed);
           }
           setError(null);
           return payload.clientSecret;
@@ -39,8 +45,10 @@ export function PaymentsOnboardingEmbed({
         appearance: {
           overlays: "dialog",
           variables: {
-            colorPrimary: "#f87000",
-            buttonPrimaryColorBackground: "#f87000",
+            colorPrimary: PAYMENTS_ORANGE,
+            colorText: PAYMENTS_NAVY,
+            colorBackground: "#ffffff",
+            buttonPrimaryColorBackground: PAYMENTS_ORANGE,
             buttonPrimaryColorText: "#ffffff",
           },
         },
@@ -49,16 +57,19 @@ export function PaymentsOnboardingEmbed({
   );
 
   return (
-    <div className="mt-5 min-h-[28rem] w-full overflow-hidden rounded-xl border border-[var(--border)] bg-white p-2 sm:p-4">
+    <div className={PAYMENTS_EMBED_FRAME_CLASS}>
       {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
+      {!loaded && !error ? (
+        <p className="mb-3 text-sm text-[var(--muted-foreground)]">{EMBEDDED_SETUP_COPY.loading}</p>
+      ) : null}
       <ConnectComponentsProvider connectInstance={connectInstance}>
         <ConnectAccountOnboarding
           collectionOptions={{ fields: "eventually_due", futureRequirements: "omit" }}
           onExit={onExit}
+          onLoaderStart={() => setLoaded(true)}
           onLoadError={() => {
-            setError(
-              "ContractorYou Payments couldn't load Stripe setup. Please try again or contact your administrator."
-            );
+            setLoaded(true);
+            setError(EMBEDDED_SETUP_COPY.failed);
           }}
         />
       </ConnectComponentsProvider>

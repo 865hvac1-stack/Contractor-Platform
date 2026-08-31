@@ -163,6 +163,20 @@ export async function createOnboardingAccountSession(stripeAccountId: string) {
   return stripe.accountSessions.create(accountSessionOnboardingParams(stripeAccountId));
 }
 
+/** Create or resume the tenant's connected account, then issue an Account Session for that same account. */
+export async function issueOnboardingAccountSession(
+  prisma: PrismaClient,
+  input: { companyId: string; email?: string | null; businessName: string }
+) {
+  const started = await createOrResumeConnectAccount(prisma, input);
+  const session = await createOnboardingAccountSession(started.stripeAccountId);
+  return {
+    stripeAccountId: started.stripeAccountId,
+    created: started.created,
+    clientSecret: session.client_secret ?? null,
+  };
+}
+
 export async function createAccountUpdateLink(stripeAccountId: string) {
   const stripe = requireStripe();
   return stripe.v2.core.accountLinks.create(
