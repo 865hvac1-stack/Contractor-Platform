@@ -63,6 +63,10 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
   if (/who sold|revenue by|produced/.test(q)) tools.add("getRevenueByTechnician");
   if (/margin by technician|gross profit/.test(q)) tools.add("getMarginByTechnician");
   if (/how are we|this month|this week|summary|happening/.test(q)) tools.add("getBusinessSummary");
+  if (/drive|route|unassigned|fit another|dispatch|late/.test(q)) {
+    tools.add("getDispatchWorkload");
+    tools.add("getRouteOptimizationSavings");
+  }
   if (tools.size === 0) {
     tools.add("getTopInsights");
     tools.add("getBusinessSummary");
@@ -70,7 +74,7 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
   return [...tools].slice(0, 4);
 }
 
-export function suggestedQuestions(role: string, jobId?: string | null) {
+export function suggestedQuestions(role: string, jobId?: string | null, workspace?: string) {
   if (jobId) {
     return [
       "What do I still need on this job?",
@@ -79,12 +83,28 @@ export function suggestedQuestions(role: string, jobId?: string | null) {
       "What should happen next?",
     ];
   }
-  if (role === "TECHNICIAN" || role === "INSTALLER") {
+  if (role === "TECHNICIAN" || role === "INSTALLER" || workspace === "field") {
     return [
       "What jobs do I have today?",
       "What is my scorecard this week?",
       "What incentives are pending?",
       "What does the Playbook require?",
+    ];
+  }
+  if (workspace === "dispatch") {
+    return [
+      "Which technician has the most jobs today?",
+      "Which jobs are still unassigned?",
+      "How much drive time did optimization save this week?",
+      "Who is running late?",
+    ];
+  }
+  if (workspace === "office") {
+    return [
+      "Which customers need follow-up?",
+      "Which estimates are still open?",
+      "Who has an unpaid invoice?",
+      "What should I do next for this customer?",
     ];
   }
   return [

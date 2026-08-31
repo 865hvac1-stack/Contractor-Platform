@@ -26,6 +26,9 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Memberships:** Operations → Memberships. Service-agreement records with attribution. Recurring billing is not configured.
 - **Compensation:** Team → Compensation. Configurable incentives. Not payroll. Pending is never paid.
 - **Scorecards:** My Performance and Team scorecards from verified jobs, invoices, estimates, and memberships.
+- **Role workspaces:** One platform, one database. After login, users land on the experience they can use: Owner/Admin/Manager → Command Center (`/dashboard`), Dispatcher → Dispatch Center (`/dispatch`), Office/CSR → Customer Hub (`/office`), Technician/Installer → Field (`/tech`). Users with more than one authorized workspace switch without signing out. Technicians cannot open owner, dispatch, or CSR workspaces. Marketing stays a module inside the Owner Hub — there is no separate Marketing dashboard.
+- **Dispatch Center:** Technician lanes, unassigned queue, drag-and-drop assignment, job lock, and **Optimize Route**. Route math comes from Google Directions when `GOOGLE_MAPS_API_KEY` (or `GOOGLE_ROUTES_API_KEY`) is set on the server. Missing credentials show “Route optimization is not configured.” Preview never applies until the dispatcher clicks Apply.
+- **Customer Hub:** Fast customer search, quick customer/job create, Customer 360, and send-to-Dispatch on the same Job record.
 - **Technician Portal:** `/tech` is a mobile-first field experience for TECHNICIAN and INSTALLER roles. Same jobs, playbooks, pricebook, estimates, invoices, payments, memberships, receipts, and scorecards — not a second system. Bottom nav: Home, Jobs, Performance, Inbox, More. Job workspace uses progressive sections + Next Step. Photos support camera capture and photo-library upload. Sign out clears the session cookie. Office customer search is server-side (not a client-only filter). Team invites send through Resend when `RESEND_API_KEY` is set.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
@@ -167,6 +170,7 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `RESEND_API_KEY` | Transactional email (team / technician invites) |
 | `EMAIL_FROM` or `RESEND_FROM` | Verified from-address for Resend |
 | `TWILIO_FROM_NUMBER` | Optional From number for On My Way SMS |
+| `GOOGLE_MAPS_API_KEY` or `GOOGLE_ROUTES_API_KEY` | Dispatch route optimization (Google Directions). Server-side only. Without it, Dispatch never invents savings. |
 | `INTEGRATION_WEBHOOK_SECRET` | Optional HMAC for `/api/webhooks/[provider]` |
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
@@ -203,6 +207,7 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `RESEND_API_KEY` | No | Required to send team / technician invite emails. Without it, Team shows “Email is not configured.” |
 | `EMAIL_FROM` or `RESEND_FROM` | No | Verified Resend from-address |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | No | Required to send On My Way SMS. Job status still updates without them. |
+| `GOOGLE_MAPS_API_KEY` or `GOOGLE_ROUTES_API_KEY` | No | Dispatch route optimization. Without it, Dispatch shows not configured and never invents savings. |
 | `ALLOW_SEED` | No | Must be `false` or unset in production |
 | `SEED_*` | No | Leave empty in production |
 

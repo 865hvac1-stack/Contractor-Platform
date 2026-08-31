@@ -105,6 +105,11 @@ export async function createJobAction(
     revalidatePath("/jobs");
     revalidatePath("/schedule");
     revalidatePath("/dashboard");
+    revalidatePath("/dispatch");
+    revalidatePath("/office");
+    const returnTo = String(formData.get("returnTo") || "");
+    if (returnTo === "dispatch") redirect("/dispatch");
+    if (returnTo === "office") redirect(`/office/customers/${customer.id}`);
     redirect(`/jobs/${job.id}`);
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

@@ -39,12 +39,18 @@ export function NewJobForm({
   members,
   playbooks,
   defaultCustomerId,
+  returnTo,
+  canAssign = true,
+  submitLabel = "Create job",
 }: {
   customers: CustomerOption[];
   properties: PropertyOption[];
   members: MemberOption[];
   playbooks: PlaybookOption[];
   defaultCustomerId?: string;
+  returnTo?: string;
+  canAssign?: boolean;
+  submitLabel?: string;
 }) {
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
 
@@ -55,6 +61,7 @@ export function NewJobForm({
 
   return (
     <ActionForm action={createJobFormAction} className="space-y-4">
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
       <div className="space-y-2">
         <Label htmlFor="customerId">Customer</Label>
         <select
@@ -179,7 +186,7 @@ export function NewJobForm({
         </div>
       </div>
 
-      {members.length > 0 ? (
+      {canAssign && members.length > 0 ? (
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Assignees</legend>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -194,7 +201,7 @@ export function NewJobForm({
       ) : null}
 
       <div className="flex justify-end pt-2">
-        <Button type="submit">Create job</Button>
+        <Button type="submit">{submitLabel}</Button>
       </div>
     </ActionForm>
   );

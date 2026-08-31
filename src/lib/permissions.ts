@@ -55,7 +55,9 @@ export type Permission =
   | "compensation:view_all"
   | "compensation:manage"
   | "performance:view_own"
-  | "performance:view_team";
+  | "performance:view_team"
+  | "jobs:lock"
+  | "routing:optimize";
 
 const ALL_COMPANY: Permission[] = [
   "company:manage",
@@ -108,6 +110,8 @@ const ALL_COMPANY: Permission[] = [
   "compensation:manage",
   "performance:view_own",
   "performance:view_team",
+  "jobs:lock",
+  "routing:optimize",
 ];
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
@@ -121,6 +125,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "jobs:field_status",
     "schedule:manage",
     "schedule:view",
+    "jobs:lock",
+    "routing:optimize",
     "estimates:manage",
     "estimates:view",
     "invoices:manage",
@@ -145,15 +151,11 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "accounting:view",
     "receipts:view",
     "receipts:manage",
-    "job_costs:view",
-    "job_costs:manage",
     "pricebook:view",
     "pricebook:manage",
-    "pricebook:cost",
     "memberships:view",
     "memberships:manage",
     "compensation:view_own",
-    "compensation:view_all",
     "performance:view_own",
     "performance:view_team",
   ],
@@ -164,6 +166,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "jobs:field_status",
     "schedule:manage",
     "schedule:view",
+    "jobs:lock",
+    "routing:optimize",
     "estimates:view",
     "dashboard:view",
     "team:view",
@@ -233,7 +237,10 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "jobs:manage",
     "jobs:view",
     "jobs:field_status",
+    "schedule:manage",
     "schedule:view",
+    "jobs:lock",
+    "routing:optimize",
     "estimates:view",
     "invoices:field",
     "estimates:discount",

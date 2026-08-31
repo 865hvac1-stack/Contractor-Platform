@@ -516,7 +516,10 @@ model Company {
   performanceGoals PerformanceGoal[]
   jobPhotos JobPhoto[]
   teamInvites TeamInvite[]
+  routeOptimizationRuns RouteOptimizationRun[]
   techDiscountLimitBps Int?
+  routeStartKind String?
+  routeEndKind String?
 
   @@index([status])
   @@index([industry])
@@ -540,6 +543,12 @@ model Membership {
   invitedBy User?   @relation("MembershipInviter", fields: [invitedById], references: [id])
   assignedVehicleId String?
   assignedVehicle Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+  routeStartKind String?
+  routeEndKind String?
+  homeAddress String?
+  homeCity String?
+  homeState String?
+  homeZip String?
 
   @@unique([companyId, userId])
   @@index([userId])
@@ -736,6 +745,8 @@ model Job {
   importSessionId     String?
   importMode          String      @default("LIVE")
   importedTechnicianName String?
+  scheduleLocked      Boolean     @default(false)
+  routeOrder          Int?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -773,6 +784,31 @@ model Job {
   @@index([companyId, playbookId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, scheduleLocked])
+}
+
+model RouteOptimizationRun {
+  id                 String   @id @default(cuid())
+  companyId          String
+  technicianUserId   String
+  day                DateTime
+  actorId            String
+  provider           String
+  status             String
+  currentSeconds     Int?
+  suggestedSeconds   Int?
+  currentMeters      Int?
+  suggestedMeters    Int?
+  currentJobIds      String
+  suggestedJobIds    String
+  error              String?
+  appliedAt          DateTime?
+  createdAt          DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, technicianUserId, day])
+  @@index([companyId, createdAt])
 }
 
 model JobAssignment {

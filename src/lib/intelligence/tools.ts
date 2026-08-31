@@ -67,6 +67,8 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getMarginByTechnician: "job_costs:view",
   getPendingCompensation: "compensation:view_own",
   getPricebookItemPerformance: "pricebook:view",
+  getDispatchWorkload: "schedule:manage",
+  getRouteOptimizationSavings: "routing:optimize",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -255,6 +257,16 @@ export const TOOL_DEFINITIONS = [
     name: "getPricebookItemPerformance",
     description: "One Pricebook item's approved estimate usage.",
     parameters: { itemId: { type: "string" } },
+  },
+  {
+    name: "getDispatchWorkload",
+    description: "Today's assigned job counts and unassigned queue. Does not invent drive times.",
+    parameters: {},
+  },
+  {
+    name: "getRouteOptimizationSavings",
+    description: "Verified route optimization savings from applied RouteOptimizationRun records only.",
+    parameters: {},
   },
 ] as const;
 
@@ -809,6 +821,80 @@ export async function runIntelligenceTool(
         ok: true,
         data: [...grouped.values()].sort((a, b) => b.revenueCents - a.revenueCents).slice(0, 20),
         grounding: { sources: ["pricebook_items", "estimates"] },
+      };
+    }
+    case "getDispatchWorkload": {
+      const start = startOfDay(new Date());
+      const end = endOfDay(new Date());
+      const [technicians, assigned, unassigned] = await Promise.all([
+        prisma.membership.findMany({
+          where: { companyId: ctx.companyId, status: "ACTIVE", role: { in: ["TECHNICIAN", "INSTALLER"] } },
+          include: { user: { select: { firstName: true, lastName: true } } },
+        }),
+        prisma.job.findMany({
+          where: {
+            companyId: ctx.companyId,
+            status: { not: "CANCELED" },
+            scheduledStart: { gte: start, lte: end },
+            assignments: { some: {} },
+          },
+          select: {
+            id: true,
+            jobNumber: true,
+            assignments: { select: { userId: true, user: { select: { firstName: true, lastName: true } } } },
+          },
+        }),
+        prisma.job.count({
+          where: {
+            companyId: ctx.companyId,
+            status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] },
+            assignments: { none: {} },
+          },
+        }),
+      ]);
+      return {
+        ok: true,
+        data: {
+          unassignedJobs: unassigned,
+          technicians: technicians.map((member) => ({
+            name: `${member.user.firstName} ${member.user.lastName}`.trim(),
+            jobsToday: assigned.filter((job) => job.assignments.some((row) => row.userId === member.userId)).length,
+          })),
+        },
+        grounding: { sources: ["jobs", "job_assignments"], period: "Today" },
+      };
+    }
+    case "getRouteOptimizationSavings": {
+      const weekStart = startOfDay(addDays(new Date(), -7));
+      const runs = await prisma.routeOptimizationRun.findMany({
+        where: {
+          companyId: ctx.companyId,
+          status: "APPLIED",
+          appliedAt: { gte: weekStart },
+          currentSeconds: { not: null },
+          suggestedSeconds: { not: null },
+        },
+        select: { currentSeconds: true, suggestedSeconds: true, currentMeters: true, suggestedMeters: true },
+      });
+      const savedSeconds = runs.reduce(
+        (sum, run) => sum + Math.max(0, (run.currentSeconds ?? 0) - (run.suggestedSeconds ?? 0)),
+        0
+      );
+      const savedMeters = runs.reduce(
+        (sum, run) => sum + Math.max(0, (run.currentMeters ?? 0) - (run.suggestedMeters ?? 0)),
+        0
+      );
+      return {
+        ok: true,
+        data: {
+          appliedRuns: runs.length,
+          savedMinutes: Math.round(savedSeconds / 60),
+          savedMiles: Math.round((savedMeters / 1609.34) * 10) / 10,
+          note: runs.length
+            ? "From applied RouteOptimizationRun records only."
+            : "No applied route optimizations this week. AI does not invent drive time.",
+        },
+        grounding: { sources: ["route_optimization_runs"], period: "Last 7 days" },
       };
     }
     case "getMarginByTechnician": {

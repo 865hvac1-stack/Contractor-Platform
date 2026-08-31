@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { can } from "@/lib/permissions";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { NewJobForm } from "@/components/jobs/new-job-form";
@@ -7,10 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default async function NewJobPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; returnTo?: string }>;
 }) {
   const ctx = await requirePermission("jobs:manage");
-  const { customerId } = await searchParams;
+  const { customerId, returnTo } = await searchParams;
 
   const [customers, properties, memberships, playbooks] = await Promise.all([
     prisma.customer.findMany({
@@ -66,6 +67,9 @@ export default async function NewJobPage({
           ) : (
             <NewJobForm
               defaultCustomerId={defaultCustomerId}
+              returnTo={returnTo === "dispatch" || returnTo === "office" ? returnTo : undefined}
+              canAssign={can(ctx.role, "schedule:manage")}
+              submitLabel={returnTo === "dispatch" || returnTo === "office" ? "Create and send to Dispatch" : "Create job"}
               customers={customers.map((c) => ({
                 id: c.id,
                 label:

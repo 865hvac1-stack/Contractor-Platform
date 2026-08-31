@@ -7,8 +7,10 @@ import {
   Receipt,
   ArrowUpRight,
 } from "lucide-react";
+import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/tenant";
 import { getCommandCenterData } from "@/lib/dashboard";
+import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
 import { technicianScorecard } from "@/lib/performance/scorecard";
 import { getBusinessPulse } from "@/lib/intelligence/pulse";
 import { listActiveInsights } from "@/lib/intelligence/insights";
@@ -39,6 +41,9 @@ const severityTone: Record<string, string> = {
 
 export default async function DashboardPage() {
   const ctx = await requirePermission("dashboard:view");
+  if (!canAccessWorkspace(ctx.role, "command")) {
+    redirect(landingPath(ctx.role));
+  }
   const [data, pulse, insights, myWeek] = await Promise.all([
     getCommandCenterData(ctx.company.id),
     getBusinessPulse(ctx.company.id),
@@ -177,7 +182,7 @@ export default async function DashboardPage() {
       ) : null}
 
       {can(ctx.role, "intelligence:view") ? (
-        <AskContractorYou suggestions={suggestedQuestions(ctx.role)} />
+        <AskContractorYou suggestions={suggestedQuestions(ctx.role, null, "command")} />
       ) : null}
 
       {insights.length > 0 ? (
@@ -304,6 +309,20 @@ export default async function DashboardPage() {
               Schedule
             </Link>
           </div>
+          <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Unassigned</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.today.unassignedJobs}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Technicians</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.today.technicianCount}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Completed</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.today.completedJobs}</dd>
+            </div>
+          </dl>
           {data.scheduledJobsToday.length === 0 ? (
             <p className="mt-6 text-sm text-[var(--muted-foreground)]">
               Nothing scheduled yet today.
@@ -348,7 +367,7 @@ export default async function DashboardPage() {
               Estimates
             </Link>
           </div>
-          <dl className="mt-5 grid grid-cols-3 gap-3">
+          <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
               <dt className="text-xs text-[var(--muted-foreground)]">Open</dt>
               <dd className="mt-1 text-xl font-semibold tabular-nums">
@@ -365,6 +384,12 @@ export default async function DashboardPage() {
               <dt className="text-xs text-[var(--muted-foreground)]">Won this month</dt>
               <dd className="mt-1 text-xl font-semibold tabular-nums">
                 {formatMoney(data.sales.wonEstimateValue)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Memberships sold</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">
+                {data.sales.membershipsSoldThisMonth}
               </dd>
             </div>
           </dl>
@@ -406,6 +431,70 @@ export default async function DashboardPage() {
           </div>
         </dl>
       </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">Operations</h2>
+            <Link href="/dispatch" className="text-sm font-medium text-[var(--cy-orange)]">
+              Dispatch
+            </Link>
+          </div>
+          <dl className="mt-5 grid grid-cols-3 gap-3">
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Open jobs</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.today.openJobs}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Need attention</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">
+                {data.operations.jobsNeedingAttention}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Unassigned</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.today.unassignedJobs}</dd>
+            </div>
+          </dl>
+        </section>
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">Marketing</h2>
+            <Link href="/marketing" className="text-sm font-medium text-[var(--cy-orange)]">
+              Marketing Hub
+            </Link>
+          </div>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Marketing stays inside the Owner Hub. Recorded leads and missed-call records only.
+          </p>
+          <dl className="mt-5 grid grid-cols-2 gap-3">
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Leads this month</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.marketing.leadsThisMonth}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-[var(--muted-foreground)]">Missed calls open</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">{data.marketing.missedCallsOpen}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      {can(ctx.role, "performance:view_team") ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">Team</h2>
+            <Link href="/team/performance" className="text-sm font-medium text-[var(--cy-orange)]">
+              Scorecards
+            </Link>
+          </div>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            {data.today.technicianCount} active technician
+            {data.today.technicianCount === 1 ? "" : "s"}. Memberships sold this month:{" "}
+            {data.sales.membershipsSoldThisMonth}. Open compensation lives in Team → Compensation.
+          </p>
+        </section>
+      ) : null}
 
     </div>
   );

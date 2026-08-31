@@ -26,14 +26,12 @@ import {
   Settings,
   Menu,
   X,
-  Search,
   Bell,
   CircleHelp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +40,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/server/actions/auth";
+import { can, type Permission } from "@/lib/permissions";
+import type { CompanyRole } from "@prisma/client";
+import { GlobalSearch } from "@/components/global-search";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { accessibleWorkspaces, type WorkspaceId } from "@/lib/workspaces";
 
 type NavItem = {
   href?: string;
@@ -49,6 +52,7 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   comingSoon?: boolean;
   exact?: boolean;
+  permission?: Permission;
 };
 
 type NavGroup = {
@@ -60,71 +64,78 @@ const groups: NavGroup[] = [
   {
     title: "Command Center",
     items: [
-      { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-      { href: "/intelligence", label: "Intelligence", icon: CircleHelp },
+      { href: "/dashboard", label: "Home", icon: LayoutDashboard, permission: "dashboard:view" },
+      { href: "/dispatch", label: "Dispatch", icon: CalendarDays, permission: "schedule:view" },
+      { href: "/office", label: "Customer Hub", icon: Users, permission: "customers:view" },
+      { href: "/intelligence", label: "Intelligence", icon: CircleHelp, permission: "intelligence:view" },
       { label: "Inbox", icon: Inbox, comingSoon: true },
     ],
   },
   {
     title: "Operations",
     items: [
-      { href: "/customers", label: "Customers", icon: Users },
-      { href: "/schedule", label: "Schedule", icon: CalendarDays },
-      { href: "/jobs", label: "Jobs", icon: Briefcase },
-      { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen },
-      { href: "/estimates", label: "Estimates", icon: FileText },
-      { href: "/invoices", label: "Invoices", icon: Receipt },
-      { href: "/pricebook", label: "Pricebook", icon: BookOpen },
-      { href: "/memberships", label: "Memberships", icon: Star },
+      { href: "/customers", label: "Customers", icon: Users, permission: "customers:view" },
+      { href: "/schedule", label: "Schedule", icon: CalendarDays, permission: "schedule:view" },
+      { href: "/jobs", label: "Jobs", icon: Briefcase, permission: "jobs:view" },
+      { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen, permission: "playbooks:view" },
+      { href: "/estimates", label: "Estimates", icon: FileText, permission: "estimates:view" },
+      { href: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices:view" },
+      { href: "/pricebook", label: "Pricebook", icon: BookOpen, permission: "pricebook:view" },
+      { href: "/memberships", label: "Memberships", icon: Star, permission: "memberships:view" },
     ],
   },
   {
     title: "Marketing Hub",
     items: [
-      { href: "/marketing", label: "Marketing Hub", icon: Megaphone, exact: true },
-      { href: "/marketing/leads", label: "Leads", icon: UserPlus },
-      { href: "/marketing/communications", label: "Communications", icon: MessageSquare },
-      { href: "/marketing/campaigns", label: "Campaigns", icon: Share2 },
-      { href: "/marketing/reviews", label: "Reviews", icon: Star },
-      { href: "/marketing/automations", label: "Automations", icon: Zap },
-      { href: "/marketing/channels", label: "Channels", icon: Plug },
+      { href: "/marketing", label: "Marketing Hub", icon: Megaphone, exact: true, permission: "marketing:view" },
+      { href: "/marketing/leads", label: "Leads", icon: UserPlus, permission: "leads:view" },
+      { href: "/marketing/communications", label: "Communications", icon: MessageSquare, permission: "marketing:view" },
+      { href: "/marketing/campaigns", label: "Campaigns", icon: Share2, permission: "marketing:view" },
+      { href: "/marketing/reviews", label: "Reviews", icon: Star, permission: "marketing:view" },
+      { href: "/marketing/automations", label: "Automations", icon: Zap, permission: "marketing:view" },
+      { href: "/marketing/channels", label: "Channels", icon: Plug, permission: "marketing:view" },
     ],
   },
   {
     title: "Money",
     items: [
-      { href: "/receipts", label: "Receipts", icon: Camera },
-      { href: "/expenses", label: "Expenses", icon: Wallet },
-      { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/receipts", label: "Receipts", icon: Camera, permission: "receipts:view" },
+      { href: "/expenses", label: "Expenses", icon: Wallet, permission: "expenses:view" },
+      { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
     ],
   },
   {
     title: "Team",
     items: [
-      { href: "/team", label: "Team", icon: UserCog, exact: true },
-      { href: "/team/compensation", label: "Compensation", icon: Wallet },
-      { href: "/team/performance", label: "Team scorecards", icon: BarChart3 },
-      { href: "/me/performance", label: "My Performance", icon: Star },
+      { href: "/team", label: "Team", icon: UserCog, exact: true, permission: "team:view" },
+      { href: "/team/compensation", label: "Compensation", icon: Wallet, permission: "compensation:view_all" },
+      { href: "/team/performance", label: "Team scorecards", icon: BarChart3, permission: "performance:view_team" },
+      { href: "/me/performance", label: "My Performance", icon: Star, permission: "performance:view_own" },
     ],
   },
 ];
 
 function NavList({
   pathname,
+  role,
   onNavigate,
 }: {
   pathname: string;
+  role: CompanyRole;
   onNavigate?: () => void;
 }) {
   return (
     <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-      {groups.map((group) => (
+      {groups.map((group) => {
+        const items = group.items.filter((item) => !item.permission || can(role, item.permission));
+        if (items.length === 0) return null;
+        return (
         <div key={group.title}>
           <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
             {group.title}
           </p>
           <div className="space-y-0.5">
-            {group.items.map((item) => {
+            {items.map((item) => {
               const Icon = item.icon;
               const active = Boolean(
                 item.href &&
@@ -170,7 +181,8 @@ function NavList({
             })}
           </div>
         </div>
-      ))}
+      );
+      })}
     </nav>
   );
 }
@@ -179,15 +191,20 @@ export function AppShell({
   companyName,
   userName,
   userEmail,
+  role,
   children,
 }: {
   companyName: string;
   userName: string;
   userEmail: string;
+  role: CompanyRole;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const workspaces = accessibleWorkspaces(role);
+  const current: WorkspaceId =
+    pathname.startsWith("/dispatch") ? "dispatch" : pathname.startsWith("/office") ? "office" : "command";
 
   return (
     <div className="flex min-h-screen bg-[var(--background)]">
@@ -196,7 +213,7 @@ export function AppShell({
           <BrandMark variant="full" tone="light" />
           <p className="mt-3 truncate text-sm font-medium text-white/70">{companyName}</p>
         </div>
-        <NavList pathname={pathname} />
+        <NavList pathname={pathname} role={role} />
         <div className="border-t border-white/8 p-3">
           <Link
             href="/settings"
@@ -233,7 +250,7 @@ export function AppShell({
               </Button>
             </div>
             <p className="truncate px-5 pt-3 text-sm text-white/60">{companyName}</p>
-            <NavList pathname={pathname} onNavigate={() => setOpen(false)} />
+            <NavList pathname={pathname} role={role} onNavigate={() => setOpen(false)} />
             <div className="border-t border-white/8 p-3">
               <Link
                 href="/settings"
@@ -260,18 +277,8 @@ export function AppShell({
             <Menu className="h-5 w-5" />
           </Button>
 
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cy-text-muted)]" />
-            <Input
-              disabled
-              placeholder="Search customers, jobs, invoices…"
-              aria-label="Universal search coming soon"
-              className="h-9 border-transparent bg-[var(--cy-gray)] pl-9 text-sm"
-            />
-            <span className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-[var(--cy-text-muted)] sm:inline">
-              Coming soon
-            </span>
-          </div>
+          <WorkspaceSwitcher current={current} allowed={workspaces} />
+          <GlobalSearch />
 
           <button
             type="button"
@@ -330,7 +337,13 @@ export function AppShell({
         </header>
 
         <main className="flex-1 overflow-x-hidden">
-          <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</div>
+          <div
+            className={`mx-auto w-full px-4 py-6 md:px-8 md:py-8 ${
+              pathname.startsWith("/dispatch") ? "max-w-[1600px]" : "max-w-7xl"
+            }`}
+          >
+            {children}
+          </div>
         </main>
       </div>
     </div>

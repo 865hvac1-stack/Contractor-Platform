@@ -68,7 +68,28 @@ export async function createCustomerAction(
       entityId: customer.id,
     });
 
+    const address = emptyToNull(String(formData.get("address") || ""));
+    const city = emptyToNull(String(formData.get("city") || ""));
+    const state = emptyToNull(String(formData.get("state") || ""));
+    const zip = emptyToNull(String(formData.get("zip") || ""));
+    if (address && city && state && zip) {
+      await prisma.property.create({
+        data: {
+          companyId: ctx.company.id,
+          customerId: customer.id,
+          address,
+          city,
+          state,
+          zip,
+          isPrimary: true,
+        },
+      });
+    }
+
     revalidatePath("/customers");
+    revalidatePath("/office");
+    const returnTo = String(formData.get("returnTo") || "");
+    if (returnTo === "office") redirect(`/office/customers/${customer.id}`);
     redirect(`/customers/${customer.id}`);
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

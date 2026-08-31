@@ -41,7 +41,7 @@ export default async function IntelligencePage() {
         </Link>
       </header>
 
-      <AskContractorYou suggestions={suggestedQuestions(ctx.role)} />
+      <AskContractorYou suggestions={suggestedQuestions(ctx.role, null, "command")} />
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
         <h2 className="text-lg font-semibold text-[var(--cy-navy)]">Daily owner brief</h2>

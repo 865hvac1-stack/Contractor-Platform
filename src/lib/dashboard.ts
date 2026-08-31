@@ -24,6 +24,10 @@ export async function getCommandCenterData(companyId: string) {
     technicians,
     scheduledJobsToday,
     expensesThisMonth,
+    unassignedJobs,
+    membershipsSoldThisMonth,
+    leadsThisMonth,
+    missedCallsOpen,
   ] = await Promise.all([
     prisma.job.count({
       where: {
@@ -108,6 +112,22 @@ export async function getCommandCenterData(companyId: string) {
       where: { companyId, date: { gte: monthStart, lte: monthEnd } },
       _sum: { amountCents: true },
     }),
+    prisma.job.count({
+      where: {
+        companyId,
+        status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] },
+        assignments: { none: {} },
+      },
+    }),
+    prisma.customerMembership.count({
+      where: { companyId, saleDate: { gte: monthStart, lte: monthEnd } },
+    }),
+    prisma.lead.count({
+      where: { companyId, receivedAt: { gte: monthStart, lte: monthEnd } },
+    }),
+    prisma.callRecord.count({
+      where: { companyId, missed: true, booked: { not: true } },
+    }),
   ]);
 
   const openEstimateValue = openEstimates.reduce((s, e) => s + e.totalCents, 0);
@@ -123,11 +143,18 @@ export async function getCommandCenterData(companyId: string) {
       jobsToday,
       completedJobs: jobsCompletedToday,
       openJobs,
+      unassignedJobs,
+      technicianCount: technicians,
     },
     sales: {
       openEstimates: openEstimates.length,
       estimateValue: openEstimateValue,
       wonEstimateValue,
+      membershipsSoldThisMonth,
+    },
+    marketing: {
+      leadsThisMonth,
+      missedCallsOpen,
     },
     money: {
       revenueThisMonth,

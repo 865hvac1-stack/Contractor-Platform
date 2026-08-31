@@ -6,7 +6,7 @@ import type { CompanyRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { AuthError, createSession, setActiveCompany } from "@/lib/auth";
-import { isFieldRole } from "@/lib/permissions";
+import { landingPath } from "@/lib/workspaces";
 import { requirePermission } from "@/lib/tenant";
 import { acceptInviteSchema, inviteMemberSchema } from "@/lib/validators";
 import { isNextRedirect, publicActionError } from "@/lib/action-errors";
@@ -185,8 +185,7 @@ export async function acceptInviteAction(
       metadata: { role: accepted.role },
     });
 
-    if (isFieldRole(accepted.role)) redirect("/tech");
-    redirect("/dashboard");
+    redirect(landingPath(accepted.role));
   } catch (error) {
     if (isNextRedirect(error)) throw error;
     return { ok: false, error: publicActionError(error) };

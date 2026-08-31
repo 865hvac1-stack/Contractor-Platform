@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { redirect } from "next/navigation";
 import { loginAction } from "@/server/actions/auth";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
-import { isFieldRole } from "@/lib/permissions";
+import { landingPath } from "@/lib/workspaces";
 
 export default async function LoginPage({
   searchParams,
@@ -19,7 +19,7 @@ export default async function LoginPage({
     const user = await getSessionUser();
     if (user) {
       const tenant = await getTenantContext();
-      if (tenant && isFieldRole(tenant.role)) redirect("/tech");
+      if (tenant) redirect(landingPath(tenant.role));
       redirect("/dashboard");
     }
   }
