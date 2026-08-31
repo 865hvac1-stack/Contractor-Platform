@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
+import { PrismaClient } from "@prisma/client";
 import { can } from "@/lib/permissions";
+import { getDispatchBoard } from "@/lib/dispatch/board";
 import {
   accessibleWorkspaces,
   canAccessWorkspace,
   landingPath,
 } from "@/lib/workspaces";
+
+const prisma = new PrismaClient();
 
 describe("role landing and workspace access", () => {
   it("routes each primary role to the correct operating experience", () => {
@@ -74,5 +78,19 @@ describe("workspace field-level permissions", () => {
     expect(can("TECHNICIAN", "routing:optimize")).toBe(false);
     expect(can("TECHNICIAN", "jobs:lock")).toBe(false);
     expect(can("SALES", "routing:optimize")).toBe(false);
+  });
+});
+
+describe("dispatch board query", () => {
+  it("loads an empty board without a Prisma validation error", async () => {
+    const company = await prisma.company.create({
+      data: { businessName: `Dispatch board ${Date.now()}`, industry: "HVAC", status: "ACTIVE" },
+    });
+    const board = await getDispatchBoard(company.id, new Date());
+    expect(board.unassigned).toEqual([]);
+    expect(board.technicians).toEqual([]);
+    expect(board.exceptions).toEqual([]);
+    await prisma.company.delete({ where: { id: company.id } });
+    await prisma.$disconnect();
   });
 });

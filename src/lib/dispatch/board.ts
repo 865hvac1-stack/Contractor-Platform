@@ -3,6 +3,20 @@ import { prisma } from "@/lib/db";
 import { customerLabel } from "@/lib/tech/today";
 import { fieldStatusLabel, propertyAddress } from "@/lib/tech/access";
 
+const jobInclude = {
+  customer: {
+    include: {
+      customerMemberships: {
+        where: { status: "ACTIVE" as const },
+        include: { plan: { select: { name: true } } },
+        take: 1,
+      },
+    },
+  },
+  property: true,
+  assignments: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+} as const;
+
 export async function getDispatchBoard(companyId: string, day = new Date()) {
   const start = startOfDay(day);
   const end = endOfDay(day);
@@ -16,25 +30,19 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
     prisma.job.findMany({
       where: {
         companyId,
-        status: { not: "CANCELED" },
-        assignments: { some: {} },
+        status: { notIn: ["CANCELED"] },
+        assignments: { some: { userId: { not: "" } } },
         OR: [
           { scheduledStart: { gte: start, lte: end } },
           {
             AND: [
               { scheduledStart: null },
               { status: { in: ["SCHEDULED", "DISPATCHED", "IN_PROGRESS"] } },
-              { assignments: { some: {} } },
             ],
           },
         ],
       },
-      include: {
-        customer: true,
-        property: true,
-        assignments: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
-        customerMemberships: { include: { plan: { select: { name: true } } }, take: 1 },
-      },
+      include: jobInclude,
       orderBy: [{ routeOrder: "asc" }, { scheduledStart: "asc" }, { createdAt: "asc" }],
     }),
     prisma.job.findMany({
@@ -43,12 +51,7 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
         status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] },
         assignments: { none: {} },
       },
-      include: {
-        customer: true,
-        property: true,
-        assignments: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
-        customerMemberships: { include: { plan: { select: { name: true } } }, take: 1 },
-      },
+      include: jobInclude,
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
       take: 80,
     }),
@@ -83,10 +86,15 @@ export function toDispatchCard(job: {
   scheduleLocked: boolean;
   routeOrder: number | null;
   customerId: string;
-  customer: { firstName: string; lastName: string; businessName: string | null; phone: string | null };
+  customer: {
+    firstName: string;
+    lastName: string;
+    businessName: string | null;
+    phone: string | null;
+    customerMemberships: { plan: { name: string } }[];
+  };
   property: { address: string; city: string; state: string; zip: string; accessNotes: string | null };
   assignments: { userId: string; user: { id: string; firstName: string; lastName: string } }[];
-  customerMemberships: { plan: { name: string }; status: string }[];
 }) {
   return {
     id: job.id,
@@ -106,7 +114,7 @@ export function toDispatchCard(job: {
     address: propertyAddress(job.property),
     city: job.property.city,
     accessNotes: job.property.accessNotes,
-    membership: job.customerMemberships[0]?.plan.name ?? null,
+    membership: job.customer.customerMemberships[0]?.plan.name ?? null,
     assigneeIds: job.assignments.map((row) => row.userId),
     assignees: job.assignments.map((row) => `${row.user.firstName} ${row.user.lastName}`.trim()),
   };
