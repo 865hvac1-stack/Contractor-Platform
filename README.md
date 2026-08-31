@@ -171,7 +171,7 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 1. Create a Railway project and connect this GitHub repo.
 2. Add a **PostgreSQL** plugin and link it to the web service.
 3. Set environment variables (below).
-4. Deploy. Nixpacks installs dependencies (do **not** set the build command to `npm ci` — that fails on Railway with `EBUSY`). `railway.json` runs `prisma generate && npm run build`, then `prisma migrate deploy` on start, and health-checks `/api/health`.
+4. Deploy. Nixpacks installs dependencies (do **not** set the build command to `npm ci` — that fails on Railway with `EBUSY`). `railway.json` clears `.next`, runs `prisma generate && npm run build` (Webpack — Turbopack cache restores have failed on Railway), then `prisma migrate deploy` on start, and health-checks `/api/health`.
 5. If the Railway dashboard still shows build command `npm ci && …`, change it to `npx prisma generate && npm run build` and set Node to 20.
 5. Attach a volume for `UPLOAD_DIR` if you need persistent receipts.
 

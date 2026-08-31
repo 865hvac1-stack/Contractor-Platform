@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev --turbopack --port 43123",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build --webpack",
     "start": "next start --port ${PORT:-43123}",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
