@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { stripeWebhookConfigured } from "@/lib/payments/config";
+import { STRIPE_WEBHOOK_LISTEN_MODE, STRIPE_WEBHOOK_PATH } from "@/lib/payments/webhook-events";
 import { constructStripeEvent, processStripeEvent } from "@/lib/payments/webhooks";
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    service: "ContractorYou Stripe webhook",
+    path: STRIPE_WEBHOOK_PATH,
+    configured: stripeWebhookConfigured(),
+    listenMode: STRIPE_WEBHOOK_LISTEN_MODE,
+  });
+}
 
 export async function POST(request: Request) {
   const raw = await request.text();

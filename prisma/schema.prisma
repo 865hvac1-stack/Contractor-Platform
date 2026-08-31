@@ -977,7 +977,7 @@ model Payment {
   jobId          String?
   amountCents    Int
   method         PaymentMethod  @default(OTHER)
-  status         String         @default("RECORDED") // RECORDED | PENDING | FAILED | REFUNDED | CONFIRMED
+  status         String         @default("RECORDED") // RECORDED | PENDING | PROCESSING | SUCCEEDED | FAILED | REFUNDED | PARTIALLY_REFUNDED | CONFIRMED
   provider       String         @default("MANUAL")
   providerPaymentId String?
   recordedById   String?

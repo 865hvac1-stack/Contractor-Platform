@@ -3,12 +3,19 @@ import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import {
+  appUrl,
   missingStripeEnvVars,
   stripeConfigured,
   stripeModeLabel,
   stripePublishableKey,
   stripeWebhookConfigured,
 } from "@/lib/payments/config";
+import {
+  STRIPE_PAYMENT_WEBHOOK_EVENTS,
+  STRIPE_WEBHOOK_LISTEN_MODE,
+  STRIPE_WEBHOOK_PATH,
+  STRIPE_WEBHOOK_SECRET_ENV,
+} from "@/lib/payments/webhook-events";
 import { refreshConnectAccount, uxStatus } from "@/lib/payments/connect";
 import { paymentsCapabilitySummary, paymentsStatusCopy } from "@/lib/payments/payments-ux";
 import { PaymentsSettingsActions } from "@/app/(app)/settings/payments/payments-actions";
@@ -111,6 +118,37 @@ export default async function PaymentsSettingsPage({
           </p>
         )}
       </section>
+
+      {canManage ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-6 text-sm">
+          <h2 className="font-medium">Webhook configuration</h2>
+          <p className="mt-1 text-[var(--muted-foreground)]">
+            Direct charges emit on the connected account. The Stripe Dashboard endpoint must listen to
+            Events on Connected accounts ({STRIPE_WEBHOOK_LISTEN_MODE.replaceAll("_", " ")}).
+          </p>
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Endpoint</dt>
+              <dd className="mt-0.5 break-all font-mono text-xs">
+                {appUrl()}
+                {STRIPE_WEBHOOK_PATH}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">{STRIPE_WEBHOOK_SECRET_ENV}</dt>
+              <dd className="mt-0.5 font-medium">
+                {stripeWebhookConfigured() ? "Configured" : "Missing — invoice balances will not update from Stripe"}
+              </dd>
+            </div>
+          </dl>
+          {!stripeWebhookConfigured() ? (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-amber-950">
+              Add {STRIPE_WEBHOOK_SECRET_ENV} on Railway from the Stripe Dashboard signing secret. Subscribe
+              to {STRIPE_PAYMENT_WEBHOOK_EVENTS.join(", ")} on connected accounts.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <p className="text-xs text-[var(--muted-foreground)]">
         Secure payment processing powered by Stripe. ContractorYou never stores card numbers, CVV, bank

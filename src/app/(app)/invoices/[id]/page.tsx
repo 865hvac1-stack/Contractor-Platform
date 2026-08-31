@@ -13,7 +13,9 @@ import { paymentLabel } from "@/lib/payments/provider";
 import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
 import { appUrl } from "@/lib/payments/config";
 import { CardPay } from "@/components/payments/card-pay";
+import { InvoiceStatusRefresh } from "@/components/payments/invoice-status-refresh";
 import { RefundForm } from "@/components/payments/refund-form";
+import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
 import { can } from "@/lib/permissions";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -38,6 +40,7 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
   const ctx = await requirePermission("invoices:view");
+  await syncOpenStripePaymentsForInvoice(prisma, ctx.company.id, id);
   const invoice = await prisma.invoice.findFirst({
     where: { id, companyId: ctx.company.id },
     include: {
@@ -98,7 +101,10 @@ export default async function InvoiceDetailPage({
             {invoice.job ? ` · Job ${invoice.job.jobNumber}` : ""}
           </p>
         </div>
-        <StatusBadge status={invoice.status} className="text-sm" />
+        <div className="flex flex-col items-end gap-2">
+          <StatusBadge status={invoice.status} className="text-sm" />
+          <InvoiceStatusRefresh invoiceId={invoice.id} />
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -115,7 +121,7 @@ export default async function InvoiceDetailPage({
           <p className="mt-1 text-xl font-medium tabular-nums">{formatMoney(invoice.balanceCents)}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Payment status</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Invoice status</p>
           <p className="mt-1 text-xl"><StatusBadge status={invoice.status} /></p>
         </div>
       </div>

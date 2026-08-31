@@ -7,6 +7,7 @@ import { requireStripe, type Stripe } from "@/lib/payments/stripe-client";
 import { stripeWebhookSecret } from "@/lib/payments/config";
 import { emitPaymentAutomationEvent } from "@/lib/payments/events";
 import { connectAccountIdFromEvent, isV2AccountEvent } from "@/lib/payments/connect-v2";
+import { confirmStripeIntentPayment } from "@/lib/payments/sync";
 
 export function constructStripeEvent(raw: string, signature: string | null) {
   const secret = stripeWebhookSecret();
@@ -119,6 +120,10 @@ export async function processStripeEvent(
       await confirmIntent(prisma, eventDataObject(event) as Stripe.PaymentIntent, connectedAccount);
       break;
     }
+    case "charge.succeeded": {
+      await confirmCharge(prisma, eventDataObject(event) as Stripe.Charge, connectedAccount);
+      break;
+    }
     case "checkout.session.completed": {
       const session = eventDataObject(event) as Stripe.Checkout.Session | undefined;
       if (!session) break;
@@ -167,65 +172,81 @@ export async function processStripeEvent(
   return { ok: true as const, duplicate: false };
 }
 
+function paymentIntentIdFromCharge(charge: Stripe.Charge | undefined) {
+  if (!charge) return null;
+  const raw = charge.payment_intent;
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object" && "id" in raw && typeof raw.id === "string") return raw.id;
+  return null;
+}
+
+async function confirmCharge(prisma: PrismaClient, charge: Stripe.Charge, stripeAccountId?: string) {
+  const providerPaymentId = paymentIntentIdFromCharge(charge);
+  if (!providerPaymentId) return;
+  const methodTypes =
+    charge.payment_method_details?.type === "us_bank_account" ? ["us_bank_account"] : ["card"];
+  await confirmIntent(
+    prisma,
+    {
+      id: providerPaymentId,
+      amount: charge.amount,
+      amount_received: charge.amount,
+      payment_method_types: methodTypes,
+      metadata: (charge.metadata ?? {}) as Stripe.PaymentIntent["metadata"],
+    } as Stripe.PaymentIntent,
+    stripeAccountId
+  );
+}
+
 async function confirmIntent(
   prisma: PrismaClient,
   intent: Stripe.PaymentIntent,
   stripeAccountId?: string
 ) {
-  const metadata = intent.metadata ?? {};
-  const invoice = await trustedInvoiceForPayment(prisma, {
-    metadataCompanyId: metadata.companyId,
-    invoiceId: metadata.invoiceId,
-    stripeAccountId,
-  });
-  if (!invoice) return;
-  const companyId = invoice.companyId;
-  const invoiceId = invoice.id;
+  if (!intent?.id) return;
+  const metadata = (intent.metadata ?? {}) as Record<string, string>;
   const method = intent.payment_method_types?.includes("us_bank_account") && !intent.payment_method_types.includes("card")
     ? "ACH"
     : "CREDIT_CARD";
-  const result = await recordConfirmedProviderPayment({
-    prisma,
-    companyId,
-    invoiceId,
-    amountCents: intent.amount_received || intent.amount,
-    provider: "STRIPE",
+  const result = await confirmStripeIntentPayment(prisma, {
     providerPaymentId: intent.id,
-    method,
-    notes: "Stripe PaymentIntent succeeded",
+    amountCents: intent.amount_received || intent.amount,
+    metadata,
+    paymentMethodTypes: intent.payment_method_types,
     stripeAccountId,
   });
-  if (result.created && result.payment) {
-    const invoice = await prisma.invoice.findFirst({
-      where: { id: invoiceId, companyId },
-      include: { company: true, customer: true },
+  if (!result.ok || !result.created || !result.payment) return;
+  const companyId = result.payment.companyId;
+  const invoiceId = result.payment.invoiceId;
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, companyId },
+    include: { company: true, customer: true },
+  });
+  if (invoice) {
+    await sendPaymentReceiptEmail({
+      to: invoice.customer.email,
+      contractorName: invoice.company.businessName,
+      customerName: `${invoice.customer.firstName} ${invoice.customer.lastName}`.trim(),
+      invoiceNumber: invoice.invoiceNumber,
+      amountCents: result.payment.amountCents,
+      methodLabel: method === "ACH" ? "Bank payment" : "Card",
+      reference: intent.id,
+      paidAt: new Date(),
     });
-    if (invoice) {
-      await sendPaymentReceiptEmail({
-        to: invoice.customer.email,
-        contractorName: invoice.company.businessName,
-        customerName: `${invoice.customer.firstName} ${invoice.customer.lastName}`.trim(),
-        invoiceNumber: invoice.invoiceNumber,
-        amountCents: result.payment.amountCents,
-        methodLabel: method === "ACH" ? "Bank payment" : "Card",
-        reference: intent.id,
-        paidAt: new Date(),
-      });
-    }
-    await writeAudit({
-      companyId,
-      action: "payment.succeeded",
-      entityType: "Payment",
-      entityId: result.payment.id,
-      metadata: { invoiceId, providerPaymentId: intent.id },
-    });
-    const invoiceAfter = await prisma.invoice.findFirst({ where: { id: invoiceId, companyId } });
-    await emitPaymentAutomationEvent(prisma, { companyId, trigger: "PAYMENT_SUCCEEDED" });
-    if (invoiceAfter?.status === "PAID") {
-      await emitPaymentAutomationEvent(prisma, { companyId, trigger: "INVOICE_PAID" });
-    } else if (invoiceAfter?.status === "PARTIALLY_PAID") {
-      await emitPaymentAutomationEvent(prisma, { companyId, trigger: "PARTIAL_PAYMENT" });
-    }
+  }
+  await writeAudit({
+    companyId,
+    action: "payment.succeeded",
+    entityType: "Payment",
+    entityId: result.payment.id,
+    metadata: { invoiceId, providerPaymentId: intent.id },
+  });
+  const invoiceAfter = await prisma.invoice.findFirst({ where: { id: invoiceId, companyId } });
+  await emitPaymentAutomationEvent(prisma, { companyId, trigger: "PAYMENT_SUCCEEDED" });
+  if (invoiceAfter?.status === "PAID") {
+    await emitPaymentAutomationEvent(prisma, { companyId, trigger: "INVOICE_PAID" });
+  } else if (invoiceAfter?.status === "PARTIALLY_PAID") {
+    await emitPaymentAutomationEvent(prisma, { companyId, trigger: "PARTIAL_PAYMENT" });
   }
 }
 

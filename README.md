@@ -308,16 +308,21 @@ Later Account Session components (account management, payouts, balances, payment
 **Required Dashboard setup**
 
 1. Enable Stripe Connect on the ContractorYou platform (sandbox first).
-2. Add the webhook endpoint `{APP_URL}/api/webhooks/stripe` (legacy alias: `{APP_URL}/api/payments/stripe`). ContractorYou verifies Stripe signatures and accepts both snapshot events (`object: event`) and Accounts v2 thin events (`object: v2.core.event`).
-3. Subscribe to payment events: `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `checkout.session.completed`, `charge.refunded`, `refund.updated`, `charge.dispute.created`.
-4. Subscribe to Accounts v2 events: `v2.core.account.updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account.closed`, `v2.core.account_link.returned`. Also keep `account.updated` if Stripe still emits it.
-5. Set `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET` on Railway. Never commit keys. `STRIPE_CONNECT_CLIENT_ID` is optional and not required for embedded Account Sessions.
+2. Add the webhook endpoint `{APP_URL}/api/webhooks/stripe` (legacy alias: `{APP_URL}/api/payments/stripe`). Production: `https://contractor-platform-production-c444.up.railway.app/api/webhooks/stripe`. ContractorYou verifies Stripe signatures against the raw body and accepts both snapshot events (`object: event`) and Accounts v2 thin events (`object: v2.core.event`).
+3. **Listen to events on Connected accounts.** ContractorYou uses direct charges (`stripeAccount` on PaymentIntents). `payment_intent.succeeded` for a contractor charge is a connected-account event. A platform-only webhook will show Stripe “Payment successful” in the browser and leave ContractorYou Paid / Balance Due unchanged.
+4. Subscribe to payment events (same endpoint): `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.succeeded`, `checkout.session.completed`, `charge.refunded`, `refund.updated`, `charge.dispute.created`. The PaymentIntent id is the only source of truth for creating or updating a ContractorYou Payment. `charge.succeeded` never creates a second payment for the same intent.
+5. Subscribe to Accounts v2 events: `v2.core.account.updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account.closed`, `v2.core.account_link.returned`. Also keep `account.updated` if Stripe still emits it.
+6. Copy the endpoint **signing secret** (`whsec_…`) from Stripe → Developers → Webhooks → the ContractorYou endpoint. Sandbox and live each have their own secret.
+7. Set Railway variables on the existing `contractor-platform` service: `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET`. Never commit keys. `STRIPE_CONNECT_CLIENT_ID` is optional and not required for embedded Account Sessions. Use `sk_test_` / `whsec_` from the sandbox endpoint first; use live keys only on a live endpoint.
+8. Verify delivery in Stripe → Developers → Webhooks → the endpoint → recent events. A successful POST returns `{ ok: true }`. `GET` on the same URL returns whether the signing secret is configured (never the secret). Resend a failed test event from that page only after the signing secret matches the Railway variable. Do not invent a second webhook URL.
 
 **Verify a connected contractor:** Settings → Payments → Set Up Payments must open the Stripe form **inside ContractorYou**. The page shows **Payments Active** only after Stripe confirms charges and payouts. Retry / Continue Setup always resumes the same stored account (idempotency key `cy-connect-v2-saas-{companyId}`) and issues a new Account Session. Never treat onboarding as successful from the embed exit alone.
 
 **Troubleshoot onboarding:** If setup fails, contractors see a generic message. Owners can expand the administrator reference (never a secret). Check Railway logs for the Stripe request id, not card or bank data.
 
 **Routing:** The server loads the invoice by id or public token, then charges that invoice's company connected account. The browser cannot choose company, destination, or amount.
+
+**Invoice sync:** A PaymentIntent creates a ContractorYou Payment in `PROCESSING`. Paid and Balance Due are calculated only from successful Payment rows (`SUCCEEDED` / `CONFIRMED` / `RECORDED` / `PARTIALLY_REFUNDED`). Invoice lifecycle (`DRAFT`, `SENT`, `PARTIALLY_PAID`, `PAID`) is not a payment status. After Stripe confirms a card payment, the invoice page retrieves the PaymentIntent on the connected account and recalculates totals. ACH stays `PROCESSING` until Stripe reports success. Duplicate webhook deliveries do not create a second payment.
 
 **Receipts:** ContractorYou sends a receipt through Resend when email is configured. Stripe `receipt_email` is not set, so Stripe and ContractorYou do not both email a receipt.
 

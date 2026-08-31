@@ -95,6 +95,8 @@ export async function recordConfirmedProviderPayment(input: {
   method: PaymentMethod;
   notes?: string | null;
   stripeAccountId?: string | null;
+  /** Stripe card/ACH success uses SUCCEEDED. Manual recorded payments stay RECORDED. */
+  status?: string;
 }) {
   const invoice = await input.prisma.invoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
@@ -115,12 +117,14 @@ export async function recordConfirmedProviderPayment(input: {
     return { created: false as const, payment: existing };
   }
 
+  const status = input.status ?? "SUCCEEDED";
+
   try {
     const payment = existing
       ? await input.prisma.payment.update({
           where: { id: existing.id },
           data: {
-            status: "CONFIRMED",
+            status,
             amountCents: input.amountCents,
             method: input.method,
             notes: input.notes ?? existing.notes,
@@ -136,12 +140,13 @@ export async function recordConfirmedProviderPayment(input: {
             jobId: invoice.jobId,
             amountCents: input.amountCents,
             method: input.method,
-            status: "CONFIRMED",
+            status,
             provider: input.provider,
             providerPaymentId: input.providerPaymentId,
             notes: input.notes ?? null,
             stripeAccountId: input.stripeAccountId ?? null,
             importMode: invoice.importMode,
+            paidAt: new Date(),
           },
         });
     const firstSuccess = !existing || !COUNTS_AS_COLLECTED.has(existing.status);

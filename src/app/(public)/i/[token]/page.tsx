@@ -4,8 +4,10 @@ import { formatMoney, lineTotalCents } from "@/lib/money";
 import { paymentLabel } from "@/lib/payments/provider";
 import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
 import { PublicCardPay } from "@/components/payments/card-pay";
+import { InvoiceStatusRefresh } from "@/components/payments/invoice-status-refresh";
 import { StatusBadge } from "@/components/status-badge";
 import { appUrl } from "@/lib/payments/config";
+import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
 
 export default async function PublicInvoicePage({
   params,
@@ -16,6 +18,13 @@ export default async function PublicInvoicePage({
 }) {
   const { token } = await params;
   const query = await searchParams;
+  const existing = await prisma.invoice.findFirst({
+    where: { publicToken: token },
+    select: { id: true, companyId: true },
+  });
+  if (existing) {
+    await syncOpenStripePaymentsForInvoice(prisma, existing.companyId, existing.id);
+  }
   const invoice = await prisma.invoice.findFirst({
     where: { publicToken: token },
     include: {
@@ -63,7 +72,10 @@ export default async function PublicInvoicePage({
           {invoice.customer.firstName} {invoice.customer.lastName}
         </p>
       </div>
-      <StatusBadge status={invoice.status} />
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusBadge status={invoice.status} />
+        <InvoiceStatusRefresh token={token} />
+      </div>
 
       {query.paid ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">

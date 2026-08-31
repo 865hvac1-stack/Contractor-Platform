@@ -41,7 +41,7 @@ export default async function PlatformIntegrationsPage() {
           <div>Stripe secret: {stripeConfigured() ? "present" : "missing"}</div>
           <div>Webhook secret: {stripeWebhookConfigured() ? "present" : "missing"}</div>
           <div>Mode: {stripeModeLabel()}</div>
-          <div>Webhook URL: {appUrl()}/api/webhooks/stripe</div>
+          <div>Webhook URL: {appUrl()}/api/webhooks/stripe (connected-account events required)</div>
           <div>Connected companies: {connected}</div>
           <div>Restricted / action required: {restricted}</div>
           <div>Webhook events (24h): {webhookRecent}</div>

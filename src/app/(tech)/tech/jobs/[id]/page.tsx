@@ -31,6 +31,7 @@ import { createDraftEstimateForJobAction } from "@/server/actions/estimate-optio
 import { createInvoiceFromJobAction } from "@/server/actions/field";
 import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
 import { appUrl } from "@/lib/payments/config";
+import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
 
 export default async function TechJobWorkspacePage({
   params,
@@ -100,7 +101,15 @@ export default async function TechJobWorkspacePage({
   const phone = full.customer.phone;
   const activeMembership = full.customerMemberships.find((row) => row.status === "ACTIVE") ?? full.customerMemberships[0];
   const estimate = full.estimates[0] ?? null;
-  const invoice = full.invoices[0] ?? null;
+  let invoice = full.invoices[0] ?? null;
+  if (invoice) {
+    await syncOpenStripePaymentsForInvoice(prisma, ctx.company.id, invoice.id);
+    invoice =
+      (await prisma.invoice.findFirst({
+        where: { id: invoice.id, companyId: ctx.company.id },
+        include: { payments: true, lineItems: true },
+      })) ?? invoice;
+  }
   const next = workflow ? nextTechnicianAction(workflow.definition, new Set(workflow.completedStepIds)) : null;
   const remaining = workflow?.remaining ?? [];
   const warrantyJob = /warranty/i.test(`${full.jobType ?? ""} ${full.description ?? ""}`);
