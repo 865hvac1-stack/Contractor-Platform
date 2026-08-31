@@ -25,8 +25,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "22mb",
     },
   },
-  // Railway mounts a persistent Next/webpack cache. A stale cache has failed
-  // production image builds in css-loader/neo-async ("Callback was already called").
+  // Railway bind-mounts .next/cache, so the build must not delete that directory.
+  // Disable webpack's persistent cache instead; a stale cache has failed image
+  // builds in css-loader/neo-async ("Callback was already called").
   webpack: (config, { dev }) => {
     if (!dev) config.cache = false;
     return config;
