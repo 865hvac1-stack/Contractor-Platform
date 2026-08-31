@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { requirePermission } from "@/lib/tenant";
 import { getCommandCenterData } from "@/lib/dashboard";
+import { technicianScorecard } from "@/lib/performance/scorecard";
 import { getBusinessPulse } from "@/lib/intelligence/pulse";
 import { listActiveInsights } from "@/lib/intelligence/insights";
 import { refreshCompanyInsights } from "@/lib/intelligence/generate";
@@ -38,10 +39,13 @@ const severityTone: Record<string, string> = {
 
 export default async function DashboardPage() {
   const ctx = await requirePermission("dashboard:view");
-  const [data, pulse, insights] = await Promise.all([
+  const [data, pulse, insights, myWeek] = await Promise.all([
     getCommandCenterData(ctx.company.id),
     getBusinessPulse(ctx.company.id),
     refreshCompanyInsights(ctx.company.id).catch(() => listActiveInsights(ctx.company.id)),
+    can(ctx.role, "performance:view_own")
+      ? technicianScorecard({ companyId: ctx.company.id, userId: ctx.user.id, period: "this_week" })
+      : null,
   ]);
   const greeting = greetingForHour(new Date().getHours());
 
@@ -125,6 +129,52 @@ export default async function DashboardPage() {
           );
         })}
       </section>
+
+      {myWeek ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+                This week
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--cy-navy)]">My performance</h2>
+            </div>
+            <Link href="/me/performance" className="text-sm font-medium text-[var(--cy-orange)]">
+              View my scorecard
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Revenue</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{formatMoney(myWeek.revenueCents)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Memberships</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{myWeek.membershipsSold}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Average ticket</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {myWeek.averageTicketCents == null ? "—" : formatMoney(myWeek.averageTicketCents)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Incentives</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {formatMoney(
+                  myWeek.incentives.pendingCents +
+                    myWeek.incentives.qualifiedCents +
+                    myWeek.incentives.approvedCents +
+                    myWeek.incentives.paidCents
+                )}
+              </p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Pending {formatMoney(myWeek.incentives.pendingCents)} · Paid {formatMoney(myWeek.incentives.paidCents)}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {can(ctx.role, "intelligence:view") ? (
         <AskContractorYou suggestions={suggestedQuestions(ctx.role)} />

@@ -74,6 +74,8 @@ const groups: NavGroup[] = [
       { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen },
       { href: "/estimates", label: "Estimates", icon: FileText },
       { href: "/invoices", label: "Invoices", icon: Receipt },
+      { href: "/pricebook", label: "Pricebook", icon: BookOpen },
+      { href: "/memberships", label: "Memberships", icon: Star },
     ],
   },
   {
@@ -98,7 +100,12 @@ const groups: NavGroup[] = [
   },
   {
     title: "Team",
-    items: [{ href: "/team", label: "Team", icon: UserCog }],
+    items: [
+      { href: "/team", label: "Team", icon: UserCog, exact: true },
+      { href: "/team/compensation", label: "Compensation", icon: Wallet },
+      { href: "/team/performance", label: "Team scorecards", icon: BarChart3 },
+      { href: "/me/performance", label: "My Performance", icon: Star },
+    ],
   },
 ];
 

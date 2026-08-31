@@ -7,6 +7,10 @@ import {
   recordPaymentAction,
   updateInvoiceStatusAction,
 } from "@/server/actions/billing";
+import { presentInvoiceAction, startInvoiceCheckoutAction } from "@/server/actions/payments";
+import { sellMembershipAction } from "@/server/actions/memberships";
+import { paymentLabel, stripeConfigured } from "@/lib/payments/provider";
+import { can } from "@/lib/permissions";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -40,6 +44,13 @@ export default async function InvoiceDetailPage({
     },
   });
   if (!invoice) notFound();
+
+  const plans = can(ctx.role, "memberships:manage")
+    ? await prisma.membershipPlan.findMany({
+        where: { companyId: ctx.company.id, active: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   const [invoiceMap, lastEvent, paymentMaps] = await Promise.all([
     prisma.quickBooksMapping.findFirst({
@@ -81,7 +92,7 @@ export default async function InvoiceDetailPage({
 
       <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Total</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Invoice total</p>
           <p className="mt-1 text-xl tabular-nums">{formatMoney(invoice.totalCents)}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">
@@ -89,13 +100,46 @@ export default async function InvoiceDetailPage({
           <p className="mt-1 text-xl tabular-nums">{formatMoney(invoice.amountPaidCents)}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Balance</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Balance due</p>
           <p className="mt-1 text-xl font-medium tabular-nums">{formatMoney(invoice.balanceCents)}</p>
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Tax</p>
-          <p className="mt-1 text-xl tabular-nums">{formatMoney(invoice.taxCents)}</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Payment status</p>
+          <p className="mt-1 text-xl"><StatusBadge status={invoice.status} /></p>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {invoice.publicToken ? (
+          <Link href={`/i/${invoice.publicToken}`} className={cn(buttonVariants({ variant: "outline" }))} target="_blank">
+            Customer payment link
+          </Link>
+        ) : (
+          <form
+            action={async () => {
+              "use server";
+              await presentInvoiceAction(id);
+            }}
+          >
+            <Button type="submit" size="sm" variant="outline">
+              Create payment link
+            </Button>
+          </form>
+        )}
+        {stripeConfigured() && invoice.balanceCents > 0 ? (
+          <form
+            action={async () => {
+              "use server";
+              await startInvoiceCheckoutAction(id);
+            }}
+          >
+            <Button type="submit" size="sm">
+              Collect card payment
+            </Button>
+          </form>
+        ) : !stripeConfigured() ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Card payments are not configured.</p>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-white">
@@ -172,7 +216,10 @@ export default async function InvoiceDetailPage({
           successMessage="Payment recorded."
           className="space-y-4 rounded-xl border border-[var(--border)] bg-white p-4"
         >
-          <h2 className="font-medium">Record payment</h2>
+          <h2 className="font-medium">Recorded payment</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Cash, check, or an external card charge. This is not a processor-confirmed payment.
+          </p>
           <input type="hidden" name="invoiceId" value={invoice.id} />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -203,7 +250,33 @@ export default async function InvoiceDetailPage({
               </select>
             </div>
           </div>
+          <Input name="reference" placeholder="Check number or reference" />
+          <Input name="notes" placeholder="Notes" />
           <Button type="submit">Record payment</Button>
+        </ActionForm>
+      ) : null}
+
+      {can(ctx.role, "memberships:manage") && plans.length > 0 ? (
+        <ActionForm
+          action={sellMembershipAction}
+          successMessage="Membership recorded."
+          className="space-y-3 rounded-xl border border-[var(--border)] bg-white p-4"
+        >
+          <h2 className="font-medium">Sell a membership</h2>
+          <input type="hidden" name="customerId" value={invoice.customerId} />
+          <input type="hidden" name="invoiceId" value={invoice.id} />
+          {invoice.jobId ? <input type="hidden" name="jobId" value={invoice.jobId} /> : null}
+          <select name="planId" required className="h-8 max-w-sm rounded-lg border border-input px-2.5 text-sm">
+            <option value="">Choose a plan</option>
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.name} · {formatMoney(plan.priceCents)}
+              </option>
+            ))}
+          </select>
+          <Button type="submit" size="sm">
+            Record membership
+          </Button>
         </ActionForm>
       ) : null}
 
@@ -227,7 +300,7 @@ export default async function InvoiceDetailPage({
             {invoice.payments.map((p) => (
               <li key={p.id} className="flex justify-between gap-4">
                 <span className="text-[var(--muted-foreground)]">
-                  {p.paidAt.toLocaleString()} · {p.method.replaceAll("_", " ")}
+                  {p.paidAt.toLocaleString()} · {paymentLabel(p)}
                 </span>
                 <span className="tabular-nums">{formatMoney(p.amountCents)}</span>
               </li>

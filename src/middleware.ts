@@ -18,7 +18,10 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/f/") ||
     pathname.startsWith("/p/") ||
+    pathname.startsWith("/e/") ||
+    pathname.startsWith("/i/") ||
     pathname.startsWith("/api/forms/") ||
+    pathname.startsWith("/api/payments/") ||
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/integrations/") && pathname.includes("/callback");
 

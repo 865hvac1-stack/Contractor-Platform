@@ -53,6 +53,10 @@ export default async function CustomerDetailPage({
       },
       estimates: { orderBy: { createdAt: "desc" }, take: 50 },
       invoices: { orderBy: { createdAt: "desc" }, take: 50 },
+      customerMemberships: {
+        include: { plan: true, soldBy: { select: { firstName: true, lastName: true } } },
+        orderBy: { saleDate: "desc" },
+      },
     },
   });
 
@@ -152,6 +156,37 @@ export default async function CustomerDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Memberships</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {customer.customerMemberships.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No memberships sold yet.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {customer.customerMemberships.map((row) => (
+                <li key={row.id} className="flex flex-wrap justify-between gap-2">
+                  <span>
+                    {row.plan.name} · {formatMoney(row.priceCents)}
+                    {row.startDate ? ` · started ${formatDate(row.startDate)}` : ""}
+                    {row.renewalDate ? ` · renews ${formatDate(row.renewalDate)}` : ""}
+                    {row.plan.includedVisits != null
+                      ? ` · ${row.visitsUsed}/${row.plan.includedVisits} visits`
+                      : ""}
+                    {row.soldBy ? ` · sold by ${row.soldBy.firstName}` : ""}
+                  </span>
+                  <StatusBadge status={row.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {customer.customerMemberships.some((row) => row.status === "ACTIVE") ? (
+            <p className="mt-3 text-sm text-emerald-800">Active membership — member Pricebook pricing applies.</p>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {customer.notes ? (
         <Card>

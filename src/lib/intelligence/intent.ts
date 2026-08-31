@@ -45,6 +45,23 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
   }
   if (/customer|call back|repeat/.test(q)) tools.add("getOpportunities");
   if (/trend|better|worse|compared|down|up/.test(q)) tools.add("getTrend");
+  if (/scorecard|technician|best tech|average ticket|close rate|membership/.test(q)) {
+    tools.add("getTechnicianScorecard");
+    tools.add("getTeamPerformance");
+    tools.add("getMembershipSales");
+    tools.add("getAverageTicket");
+    tools.add("getCloseRate");
+  }
+  if (/incentive|compensation|commission|owe|payout/.test(q)) {
+    tools.add("getCompensationSummary");
+    tools.add("getPendingCompensation");
+  }
+  if (/pricebook|which service|highest margin|item sold/.test(q)) {
+    tools.add("getPricebookPerformance");
+    tools.add("getPricebookItemPerformance");
+  }
+  if (/who sold|revenue by|produced/.test(q)) tools.add("getRevenueByTechnician");
+  if (/margin by technician|gross profit/.test(q)) tools.add("getMarginByTechnician");
   if (/how are we|this month|this week|summary|happening/.test(q)) tools.add("getBusinessSummary");
   if (tools.size === 0) {
     tools.add("getTopInsights");
@@ -65,16 +82,17 @@ export function suggestedQuestions(role: string, jobId?: string | null) {
   if (role === "TECHNICIAN" || role === "INSTALLER") {
     return [
       "What jobs do I have today?",
-      "What do I still need on my current jobs?",
+      "What is my scorecard this week?",
+      "What incentives are pending?",
       "What does the Playbook require?",
     ];
   }
   return [
     "What needs my attention today?",
-    "Show me receipts that need attention.",
-    "Which jobs had the highest margins this month?",
-    "How much did we spend on fuel?",
-    "Who owes us money?",
+    "Who sold the most memberships?",
+    "How much incentive compensation do we owe this week?",
+    "Which Pricebook items make us the most money?",
+    "Who has the highest close rate?",
     "How are we doing this month?",
   ];
 }

@@ -22,6 +22,10 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Money:** integer cents only (`src/lib/money.ts`).
 - **Needs Attention:** pluggable detectors in `src/lib/attention.ts` (dashboard consumes them).
 - **Marketing Hub:** tenant-scoped leads, channels, attribution, and Intelligence. Website forms, landing pages, and UTM capture are live. OAuth for Google / Meta / TikTok / LinkedIn is implemented; connections stay disconnected until real credentials and provider approval exist. Metrics use recorded leads, expenses, and imported spend only.
+- **Pricebook:** Operations → Pricebook. Categories, items, member pricing, and office-only internal cost.
+- **Memberships:** Operations → Memberships. Service-agreement records with attribution. Recurring billing is not configured.
+- **Compensation:** Team → Compensation. Configurable incentives. Not payroll. Pending is never paid.
+- **Scorecards:** My Performance and Team scorecards from verified jobs, invoices, estimates, and memberships.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
 - **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
@@ -103,8 +107,8 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 1. Register → onboarding (company + industry) → Command Center  
 2. Create customer → add property  
 3. Create job → choose a playbook (optional) → schedule  
-4. Create estimate → approve  
-5. Complete job → create invoice → record payment  
+4. Job → Build options → Pricebook → present estimate → customer approval  
+5. Complete job → create invoice → record payment or send payment link  
 6. Log expense or snap a receipt in Receipts  
 7. Confirm the receipt, then see job profit on the job  
 8. Dashboard / reports update from **real** data only  
@@ -189,6 +193,9 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `QUICKBOOKS_CLIENT_SECRET` | No | Intuit client secret |
 | `QUICKBOOKS_ENVIRONMENT` | No | `sandbox` or `production`. Default `sandbox`. |
 | `QUICKBOOKS_REDIRECT_URI` | No | Defaults from `APP_URL` |
+| `STRIPE_SECRET_KEY` | No | Required for card checkout. Manual recorded payments work without it. |
+| `STRIPE_WEBHOOK_SECRET` | No | Required to confirm Stripe Checkout |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | No | Optional publishable key |
 | `ALLOW_SEED` | No | Must be `false` or unset in production |
 | `SEED_*` | No | Leave empty in production |
 
@@ -239,7 +246,7 @@ tests/              vitest suites
 
 Settings → Import Data. Owners, admins, managers, and office can import. Technicians and installers cannot.
 
-The Import Center is one source-agnostic engine. Live types: customers, properties, jobs, estimates, invoices, payments, equipment, expenses, notes, tags, and lead sources. Memberships and pricebook items stay foundation-ready until those models exist.
+The Import Center is one source-agnostic engine. Live types: customers, properties, jobs, estimates, invoices, payments, equipment, expenses, notes, tags, and lead sources. Pricebook and memberships are managed in-app. Historical import of those types does not generate compensation, send payment links, or start billing.
 
 Supported files: CSV, XLSX, XLS (20 MB / 25,000 rows). Vendor names are optional presets, not separate importers. A file import is not a live connection. Historical imports do not send messages or take payments. Nothing is written until you confirm.
 
@@ -253,7 +260,7 @@ Changing a playbook creates a new version. Jobs already started keep the snapsho
 
 ## Phase 2 (intentionally deferred)
 
-AI receptionist, live SMS/email send, connected automation execution, memberships, pricebook, inventory, payroll, Stripe live payments, GPS/routing, native/PWA apps, customer portal, full custom form builder. QuickBooks live sync waits on Intuit credentials and app approval.
+AI receptionist, live SMS/email send, connected automation execution, inventory, payroll, GPS/routing, native/PWA apps, full custom form builder. Stripe card checkout and QuickBooks live sync wait on credentials and provider approval. Recurring membership billing and tiered/threshold compensation are foundation-ready.
 
 ## License
 

@@ -12,6 +12,7 @@ import { estimateSchema, invoiceSchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
 import type { EstimateStatus, InvoiceStatus } from "@prisma/client";
 import { maybeAutoSyncInvoice, maybeAutoSyncPayment } from "@/server/actions/quickbooks";
+import { nanoid } from "nanoid";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -91,6 +92,8 @@ export async function createEstimateAction(
         jobId: emptyToNull(d.jobId),
         estimateNumber,
         status: "DRAFT",
+        createdById: ctx.user.id,
+        publicToken: nanoid(24),
         expirationDate: emptyToNull(d.expirationDate) ? new Date(d.expirationDate!) : null,
         subtotalCents,
         taxCents,
@@ -153,7 +156,13 @@ export async function updateEstimateStatusAction(
       data.followUpAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
     }
 
-    await prisma.estimate.update({ where: { id: estimate.id }, data });
+    await prisma.estimate.update({
+      where: { id: estimate.id },
+      data: {
+        ...data,
+        approvalMethod: status === "APPROVED" ? estimate.approvalMethod ?? "OFFICE" : estimate.approvalMethod,
+      },
+    });
 
     await writeAudit({
       companyId: ctx.company.id,
@@ -163,6 +172,29 @@ export async function updateEstimateStatusAction(
       entityId: estimate.id,
       metadata: { from: estimate.status, to: status },
     });
+
+    if (status === "APPROVED" && estimate.status !== "APPROVED" && estimate.importMode !== "HISTORICAL") {
+      const { applyCompensation } = await import("@/lib/compensation/apply");
+      const { attributionUserIds } = await import("@/lib/compensation/attribute");
+      const userIds = await attributionUserIds(prisma, {
+        jobId: estimate.jobId,
+        createdById: estimate.createdById ?? ctx.user.id,
+      });
+      for (const userId of userIds) {
+        await applyCompensation({
+          prisma,
+          companyId: ctx.company.id,
+          userId,
+          trigger: "ESTIMATE_APPROVED",
+          sourceType: "ESTIMATE",
+          sourceId: estimate.id,
+          saleCents: estimate.totalCents,
+          jobId: estimate.jobId,
+          customerId: estimate.customerId,
+          importMode: estimate.importMode,
+        });
+      }
+    }
 
     // If approved and linked to a job that is NEW, move toward unscheduled
     if (status === "APPROVED" && estimate.jobId) {
@@ -239,6 +271,7 @@ export async function createInvoiceAction(
         propertyId: emptyToNull(d.propertyId),
         jobId: emptyToNull(d.jobId),
         invoiceNumber,
+        publicToken: nanoid(24),
         status: "DRAFT",
         dueDate: emptyToNull(d.dueDate) ? new Date(d.dueDate!) : null,
         subtotalCents,
@@ -320,6 +353,17 @@ export async function updateInvoiceStatusAction(
       metadata: { from: invoice.status, to: status },
     });
 
+    if (status === "VOID") {
+      const { voidCompensationForSource } = await import("@/lib/compensation/void");
+      await voidCompensationForSource({
+        prisma,
+        companyId: ctx.company.id,
+        sourceType: "INVOICE",
+        sourceId: invoice.id,
+        reason: "Invoice voided",
+      });
+    }
+
     if (status === "SENT") {
       await maybeAutoSyncInvoice({
         companyId: ctx.company.id,
@@ -371,14 +415,23 @@ export async function recordPaymentAction(
     if (balanceCents === 0) status = "PAID";
     else if (amountPaidCents > 0) status = "PARTIALLY_PAID";
 
+    const notes = emptyToNull(String(formData.get("notes") || ""));
+    const reference = emptyToNull(String(formData.get("reference") || ""));
+
     const [payment] = await prisma.$transaction([
       prisma.payment.create({
         data: {
           companyId: ctx.company.id,
           invoiceId: invoice.id,
+          customerId: invoice.customerId,
+          jobId: invoice.jobId,
           amountCents,
           method,
           status: "RECORDED",
+          provider: "MANUAL",
+          recordedById: ctx.user.id,
+          reference,
+          notes,
           importMode: invoice.importMode,
         },
       }),
@@ -394,7 +447,14 @@ export async function recordPaymentAction(
       action: "payment.recorded",
       entityType: "Invoice",
       entityId: invoice.id,
-      metadata: { amountCents, method, status },
+      metadata: { amountCents, method, status, recorded: true },
+    });
+
+    const { applyInvoicePaidCompensation } = await import("@/lib/payments/record");
+    await applyInvoicePaidCompensation({
+      prisma,
+      companyId: ctx.company.id,
+      invoice,
     });
 
     await maybeAutoSyncInvoice({

@@ -188,6 +188,31 @@ export async function updateJobStatusAction(
           importMode: invoice.importMode,
         });
       }
+      if (target.importMode !== "HISTORICAL" && target.status !== "COMPLETED") {
+        const { applyCompensation } = await import("@/lib/compensation/apply");
+        const { attributionUserIds } = await import("@/lib/compensation/attribute");
+        const invoicesForSale = await prisma.invoice.findMany({
+          where: { companyId: ctx.company.id, jobId: updated.id, status: { notIn: ["DRAFT", "VOID"] } },
+          select: { totalCents: true },
+        });
+        const saleCents = invoicesForSale.reduce((sum, invoice) => sum + invoice.totalCents, 0);
+        const userIds = await attributionUserIds(prisma, { jobId: updated.id });
+        for (const userId of userIds) {
+          await applyCompensation({
+            prisma,
+            companyId: ctx.company.id,
+            userId,
+            trigger: "JOB_COMPLETED",
+            sourceType: "JOB",
+            sourceId: updated.id,
+            saleCents,
+            jobId: updated.id,
+            customerId: updated.customerId,
+            importMode: target.importMode,
+            jobType: updated.jobType,
+          });
+        }
+      }
     }
 
     revalidatePath(`/jobs/${jobId}`);

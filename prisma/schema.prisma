@@ -104,6 +104,8 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   VOID
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum ExpenseStatus {
@@ -185,6 +187,50 @@ enum QuickBooksSyncStatus {
   FAILED
   REAUTH_REQUIRED
   NEEDS_REVIEW
+}
+
+enum PricebookItemType {
+  SERVICE
+  PRODUCT
+  MATERIAL
+  ADD_ON
+  MEMBERSHIP
+  BUNDLE
+  OTHER
+}
+
+enum CustomerMembershipStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum CompensationRuleType {
+  FLAT_AMOUNT
+  PERCENT_OF_SALE
+  PERCENT_OF_GROSS_PROFIT
+  TIERED
+  THRESHOLD_BONUS
+}
+
+enum CompensationTrigger {
+  PRICEBOOK_ITEM_SOLD
+  MEMBERSHIP_SOLD
+  ESTIMATE_APPROVED
+  INVOICE_PAID
+  JOB_COMPLETED
+  REVENUE_THRESHOLD
+  MARGIN_THRESHOLD
+}
+
+enum CompensationStatus {
+  PENDING
+  QUALIFIED
+  APPROVED
+  PAID
+  VOIDED
 }
 
 enum PaymentMethod {
@@ -308,6 +354,12 @@ model User {
   importSessions ImportSession[]
   receiptsUploaded Receipt[] @relation("ReceiptUploader")
   jobCostsCreated JobCost[] @relation("JobCostCreator")
+  estimatesCreated Estimate[] @relation("EstimateCreator")
+  paymentsRecorded Payment[] @relation("PaymentRecorder")
+  membershipsSold CustomerMembership[] @relation("MembershipSoldBy")
+  compensationEvents CompensationEvent[]
+  compensationApprovals CompensationEvent[] @relation("CompensationApprover")
+  performanceGoals PerformanceGoal[]
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
@@ -425,6 +477,15 @@ model Company {
   quickBooksSettings QuickBooksSettings?
   quickBooksMappings QuickBooksMapping[]
   quickBooksSyncEvents QuickBooksSyncEvent[]
+  pricebookCategories PricebookCategory[]
+  pricebookItems PricebookItem[]
+  membershipPlans MembershipPlan[]
+  customerMemberships CustomerMembership[]
+  estimateOptions EstimateOption[]
+  compensationRules CompensationRule[]
+  compensationRuleVersions CompensationRuleVersion[]
+  compensationEvents CompensationEvent[]
+  performanceGoals PerformanceGoal[]
 
   @@index([status])
   @@index([industry])
@@ -504,6 +565,8 @@ model Customer {
   formSubmissions FormSubmission[]
   attributionEvents AttributionEvent[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships CustomerMembership[]
+  compensationEvents CompensationEvent[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -542,6 +605,7 @@ model Property {
   equipment Equipment[]
   leads     Lead[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships CustomerMembership[]
 
   @@index([companyId])
   @@index([companyId, customerId])
@@ -641,6 +705,8 @@ model Job {
   callRecords CallRecord[]
   attributionEvents AttributionEvent[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships CustomerMembership[]
+  compensationEvents CompensationEvent[]
 
   @@unique([companyId, jobNumber])
   @@index([companyId])
@@ -693,6 +759,11 @@ model Estimate {
   externalId     String?
   importSessionId String?
   importMode     String         @default("LIVE")
+  publicToken    String?        @unique
+  createdById    String?
+  approvedOptionId String?
+  approvalMethod String?
+  version        Int            @default(1)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -701,7 +772,10 @@ model Estimate {
   property  Property?       @relation(fields: [propertyId], references: [id])
   job       Job?            @relation("EstimateOptionalJob", fields: [jobId], references: [id])
   linkedJob Job?            @relation("JobEstimate")
+  createdBy User?           @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   lineItems EstimateLineItem[]
+  options   EstimateOption[]
+  customerMemberships CustomerMembership[]
   leads     Lead[]
   attributionEvents AttributionEvent[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
@@ -718,6 +792,8 @@ model Estimate {
 model EstimateLineItem {
   id          String  @id @default(cuid())
   estimateId  String
+  optionId    String?
+  pricebookItemId String?
   name        String
   description String?
   quantity    Decimal @db.Decimal(12, 3)
@@ -728,8 +804,11 @@ model EstimateLineItem {
   sortOrder   Int     @default(0)
 
   estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  option   EstimateOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+  pricebookItem PricebookItem? @relation(fields: [pricebookItemId], references: [id], onDelete: SetNull)
 
   @@index([estimateId])
+  @@index([optionId])
 }
 
 // ============================================================
@@ -756,6 +835,7 @@ model Invoice {
   externalId     String?
   importSessionId String?
   importMode     String        @default("LIVE")
+  publicToken    String?       @unique
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -765,6 +845,7 @@ model Invoice {
   job       Job?              @relation(fields: [jobId], references: [id])
   lineItems InvoiceLineItem[]
   payments  Payment[]
+  customerMemberships CustomerMembership[]
   attributionEvents AttributionEvent[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
@@ -798,11 +879,17 @@ model Payment {
   id             String         @id @default(cuid())
   companyId      String
   invoiceId      String
+  customerId     String?
+  jobId          String?
   amountCents    Int
   method         PaymentMethod  @default(OTHER)
-  status         String         @default("RECORDED") // RECORDED | PENDING | FAILED | REFUNDED
+  status         String         @default("RECORDED") // RECORDED | PENDING | FAILED | REFUNDED | CONFIRMED
+  provider       String         @default("MANUAL")
+  providerPaymentId String?
+  recordedById   String?
+  reference      String?
   paidAt         DateTime       @default(now())
-  externalRef    String? // future Stripe payment intent id etc.
+  externalRef    String?
   notes          String?
   sourceSystem   String?
   externalId     String?
@@ -812,8 +899,10 @@ model Payment {
   updatedAt      DateTime       @updatedAt
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  recordedBy User? @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
+  @@unique([companyId, provider, providerPaymentId])
   @@index([companyId])
   @@index([invoiceId])
   @@index([companyId, sourceSystem, externalId])
@@ -1974,4 +2063,220 @@ model ImportMappingProfile {
   company           Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([sourceType, recordType])
+}
+
+// ============================================================
+// PRICEBOOK / ESTIMATE OPTIONS / MEMBERSHIPS / COMPENSATION
+// ============================================================
+
+model PricebookCategory {
+  id         String   @id @default(cuid())
+  companyId  String
+  parentId   String?
+  name       String
+  sortOrder  Int      @default(0)
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent   PricebookCategory?  @relation("PricebookCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children PricebookCategory[] @relation("PricebookCategoryTree")
+  items    PricebookItem[]
+
+  @@index([companyId, archived])
+  @@index([companyId, parentId])
+}
+
+model PricebookItem {
+  id                  String            @id @default(cuid())
+  companyId           String
+  categoryId          String
+  name                String
+  internalName        String?
+  sku                 String?
+  type                PricebookItemType @default(SERVICE)
+  customerDescription String?
+  technicianNotes     String?
+  standardPriceCents  Int
+  memberPriceCents    Int?
+  internalCostCents   Int?
+  taxable             Boolean           @default(true)
+  unit                String            @default("each")
+  active              Boolean           @default(true)
+  sortOrder           Int               @default(0)
+  importMode          String            @default("LIVE")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   PricebookCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  lineItems  EstimateLineItem[]
+
+  @@index([companyId, active])
+  @@index([companyId, categoryId])
+  @@index([companyId, name])
+  @@index([companyId, sku])
+}
+
+model EstimateOption {
+  id          String   @id @default(cuid())
+  companyId   String
+  estimateId  String
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  estimate  Estimate           @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  lineItems EstimateLineItem[]
+
+  @@index([companyId, estimateId])
+}
+
+model MembershipPlan {
+  id               String   @id @default(cuid())
+  companyId        String
+  name             String
+  description      String?
+  priceCents       Int
+  billingFrequency String   @default("ANNUAL")
+  includedVisits   Int?
+  discountPercent  Int      @default(0)
+  priorityService  Boolean  @default(false)
+  benefits         String?
+  terms            String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships  CustomerMembership[]
+
+  @@index([companyId, active])
+}
+
+model CustomerMembership {
+  id                String                    @id @default(cuid())
+  companyId         String
+  customerId        String
+  propertyId        String?
+  planId            String
+  soldById          String?
+  sourceJobId       String?
+  sourceEstimateId  String?
+  sourceInvoiceId   String?
+  status            CustomerMembershipStatus  @default(PENDING)
+  priceCents        Int
+  saleDate          DateTime                  @default(now())
+  startDate         DateTime?
+  renewalDate       DateTime?
+  visitsUsed        Int                       @default(0)
+  importMode        String                    @default("LIVE")
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  property Property?       @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  plan     MembershipPlan  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  soldBy   User?           @relation("MembershipSoldBy", fields: [soldById], references: [id], onDelete: SetNull)
+  job      Job?            @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
+  estimate Estimate?       @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
+  invoice  Invoice?        @relation(fields: [sourceInvoiceId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([companyId, customerId])
+  @@index([companyId, soldById])
+}
+
+model CompensationRule {
+  id            String               @id @default(cuid())
+  companyId     String
+  name          String
+  type          CompensationRuleType
+  trigger       CompensationTrigger
+  amountCents   Int?
+  percentBps    Int?
+  minAmountCents Int?
+  jobType       String?
+  pricebookItemId String?
+  membershipPlanId String?
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  company  Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  versions CompensationRuleVersion[]
+  events   CompensationEvent[]
+
+  @@index([companyId, active])
+  @@index([companyId, trigger])
+}
+
+model CompensationRuleVersion {
+  id         String   @id @default(cuid())
+  companyId  String
+  ruleId     String
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rule    CompensationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  events  CompensationEvent[]
+
+  @@index([companyId, ruleId])
+}
+
+model CompensationEvent {
+  id                 String             @id @default(cuid())
+  companyId          String
+  userId             String
+  ruleId             String
+  ruleVersionId      String
+  sourceType         String
+  sourceId           String
+  jobId              String?
+  customerId         String?
+  amountCents        Int
+  calculationBasis   String
+  status             CompensationStatus @default(PENDING)
+  earnedAt           DateTime           @default(now())
+  approvedAt         DateTime?
+  paidAt             DateTime?
+  approvedById       String?
+  notes              String?
+  importMode         String             @default("LIVE")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  company     Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rule        CompensationRule        @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  ruleVersion CompensationRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  approvedBy  User?                   @relation("CompensationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  job         Job?                    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  customer    Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, ruleId, sourceType, sourceId, userId])
+  @@index([companyId, userId, status])
+  @@index([companyId, status, earnedAt])
+}
+
+model PerformanceGoal {
+  id         String   @id @default(cuid())
+  companyId  String
+  userId     String?
+  metricKey  String
+  target     Int
+  period     String   @default("WEEK")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, metricKey])
 }

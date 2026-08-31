@@ -365,6 +365,95 @@ registerAttentionDetector(async (companyId) => {
   }));
 });
 
+registerAttentionDetector(async (companyId) => {
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      companyId,
+      status: { in: ["SENT", "PARTIALLY_PAID"] },
+      balanceCents: { gt: 0 },
+    },
+    take: 25,
+  });
+  if (invoices.length === 0) return [];
+  return [
+    {
+      id: "invoices-awaiting-payment",
+      type: "invoice_awaiting_payment",
+      title: `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} awaiting payment`,
+      description: invoices
+        .slice(0, 3)
+        .map((invoice) => `${invoice.invoiceNumber} · ${formatCents(invoice.balanceCents)}`)
+        .join(" · "),
+      severity: "warning" as const,
+      href: "/invoices",
+      entityType: "Invoice",
+      entityId: invoices[0].id,
+      createdAt: invoices[0].updatedAt,
+    },
+  ];
+});
+
+registerAttentionDetector(async (companyId) => {
+  const count = await prisma.compensationEvent.count({
+    where: { companyId, status: { in: ["PENDING", "QUALIFIED"] } },
+  });
+  if (count === 0) return [];
+  return [
+    {
+      id: "compensation-needs-approval",
+      type: "compensation_needs_approval",
+      title: `${count} compensation item${count === 1 ? "" : "s"} need approval`,
+      description: "Operational incentives waiting for review. Not payroll.",
+      severity: "warning" as const,
+      href: "/team/compensation",
+      entityType: "CompensationEvent",
+      entityId: "queue",
+      createdAt: new Date(),
+    },
+  ];
+});
+
+registerAttentionDetector(async (companyId) => {
+  const memberships = await prisma.customerMembership.findMany({
+    where: { companyId, status: "PENDING" },
+    take: 25,
+  });
+  if (memberships.length === 0) return [];
+  return [
+    {
+      id: "memberships-need-review",
+      type: "membership_needs_review",
+      title: `${memberships.length} membership${memberships.length === 1 ? "" : "s"} need review`,
+      description: "Pending service agreements have not been activated.",
+      severity: "info" as const,
+      href: "/memberships",
+      entityType: "CustomerMembership",
+      entityId: memberships[0].id,
+      createdAt: memberships[0].createdAt,
+    },
+  ];
+});
+
+registerAttentionDetector(async (companyId) => {
+  const failed = await prisma.payment.count({
+    where: { companyId, status: "FAILED" },
+  });
+  if (failed === 0) return [];
+  return [
+    {
+      id: "payments-failed",
+      type: "payment_failed",
+      title: `${failed} payment${failed === 1 ? "" : "s"} failed`,
+      description: "Processor-reported failures only.",
+      severity: "critical" as const,
+      href: "/invoices",
+      entityType: "Payment",
+      entityId: "failed",
+      createdAt: new Date(),
+    },
+  ];
+});
+
 function formatCents(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

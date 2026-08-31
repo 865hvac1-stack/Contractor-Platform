@@ -13,6 +13,9 @@ import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
 import { scopedCompanyWhere } from "@/lib/intelligence/scope";
 import { loadJobFinancials } from "@/lib/costing/job";
 import { getCompanyProfitability, getVehicleExpenseTotals } from "@/lib/costing/reporting";
+import { technicianScorecard, type ScorePeriod } from "@/lib/performance/scorecard";
+import { summarizeCompensation } from "@/lib/compensation/calculate";
+import { compensationUserFilter } from "@/lib/compensation/access";
 
 export type ToolContext = {
   companyId: string;
@@ -52,6 +55,18 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getMarginByJobType: "job_costs:view",
   getLowMarginJobs: "job_costs:view",
   getJobsMissingCosts: "job_costs:view",
+  getTechnicianScorecard: "performance:view_own",
+  getTeamPerformance: "performance:view_team",
+  getCompensationSummary: "compensation:view_own",
+  getMembershipSales: "memberships:view",
+  getMembershipConversion: "performance:view_own",
+  getPricebookPerformance: "pricebook:view",
+  getAverageTicket: "performance:view_own",
+  getCloseRate: "performance:view_own",
+  getRevenueByTechnician: "performance:view_team",
+  getMarginByTechnician: "job_costs:view",
+  getPendingCompensation: "compensation:view_own",
+  getPricebookItemPerformance: "pricebook:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -177,6 +192,69 @@ export const TOOL_DEFINITIONS = [
     name: "getJobsMissingCosts",
     description: "Jobs with revenue but no confirmed costs, or unreviewed receipts.",
     parameters: {},
+  },
+  {
+    name: "getTechnicianScorecard",
+    description: "Verified technician scorecard for this week, last week, or this month. Uses stored activity only.",
+    parameters: {
+      period: { type: "string", enum: ["this_week", "last_week", "this_month"] },
+      userId: { type: "string" },
+    },
+  },
+  {
+    name: "getTeamPerformance",
+    description: "Team comparison of verified jobs, revenue, close rate, memberships, and incentives.",
+    parameters: { period: { type: "string", enum: ["this_week", "last_week", "this_month"] } },
+  },
+  {
+    name: "getCompensationSummary",
+    description: "Stored incentive totals by status. Never invents compensation math.",
+    parameters: {},
+  },
+  {
+    name: "getMembershipSales",
+    description: "Recorded membership sales and attribution.",
+    parameters: {},
+  },
+  {
+    name: "getMembershipConversion",
+    description: "Memberships sold versus estimates presented for a technician.",
+    parameters: { userId: { type: "string" } },
+  },
+  {
+    name: "getPricebookPerformance",
+    description: "Pricebook items used on approved estimates, with revenue totals.",
+    parameters: {},
+  },
+  {
+    name: "getAverageTicket",
+    description: "Deterministic average invoice total for a technician.",
+    parameters: { userId: { type: "string" } },
+  },
+  {
+    name: "getCloseRate",
+    description: "Deterministic estimate close rate for a technician.",
+    parameters: { userId: { type: "string" } },
+  },
+  {
+    name: "getRevenueByTechnician",
+    description: "Verified invoiced revenue grouped by assigned technician.",
+    parameters: {},
+  },
+  {
+    name: "getMarginByTechnician",
+    description: "Verified gross profit by technician. Requires job cost permission.",
+    parameters: {},
+  },
+  {
+    name: "getPendingCompensation",
+    description: "Stored pending and qualified incentive events only.",
+    parameters: {},
+  },
+  {
+    name: "getPricebookItemPerformance",
+    description: "One Pricebook item's approved estimate usage.",
+    parameters: { itemId: { type: "string" } },
   },
 ] as const;
 
@@ -553,6 +631,200 @@ export async function runIntelligenceTool(
         data: { missingCosts: pack.missingCosts, unreviewedReceipts: pack.unreviewedReceipts },
         grounding: { sources: ["invoices", "job_costs", "receipts"] },
       };
+    }
+    case "getTechnicianScorecard":
+    case "getAverageTicket":
+    case "getCloseRate":
+    case "getMembershipConversion": {
+      const requested = typeof args.userId === "string" ? args.userId : ctx.userId;
+      if (requested !== ctx.userId && !can(ctx.role, "performance:view_team")) {
+        return deny("You can only view your own scorecard.");
+      }
+      const period = (["this_week", "last_week", "this_month"].includes(String(args.period))
+        ? args.period
+        : "this_week") as ScorePeriod;
+      const card = await technicianScorecard({
+        companyId: ctx.companyId,
+        userId: requested,
+        period,
+        includeMargin: can(ctx.role, "job_costs:view"),
+      });
+      if (name === "getAverageTicket") {
+        return { ok: true, data: { averageTicketCents: card.averageTicketCents }, grounding: { sources: ["invoices"] } };
+      }
+      if (name === "getCloseRate") {
+        return {
+          ok: true,
+          data: { presented: card.estimatesPresented, approved: card.estimatesApproved, closeRate: card.closeRate },
+          grounding: { sources: ["estimates"] },
+        };
+      }
+      if (name === "getMembershipConversion") {
+        return {
+          ok: true,
+          data: {
+            presented: card.estimatesPresented,
+            membershipsSold: card.membershipsSold,
+            membershipConversion: card.membershipConversion,
+          },
+          grounding: { sources: ["estimates", "customer_memberships"] },
+        };
+      }
+      return {
+        ok: true,
+        data: {
+          ...card,
+          events: card.events.map((event) => ({
+            id: event.id,
+            amountCents: event.amountCents,
+            status: event.status,
+            calculationBasis: event.calculationBasis,
+            earnedAt: event.earnedAt,
+          })),
+          note: "Best technician is not assumed from revenue alone. Compare close rate, memberships, callbacks, and reviews when those exist.",
+        },
+        grounding: { sources: ["jobs", "invoices", "estimates", "customer_memberships", "compensation_events"] },
+      };
+    }
+    case "getTeamPerformance":
+    case "getRevenueByTechnician": {
+      const members = await prisma.membership.findMany({
+        where: { companyId: ctx.companyId, status: "ACTIVE" },
+        include: { user: { select: { id: true, firstName: true, lastName: true } } },
+      });
+      const period = (["this_week", "last_week", "this_month"].includes(String(args.period))
+        ? args.period
+        : "this_month") as ScorePeriod;
+      const rows = [];
+      for (const member of members) {
+        const card = await technicianScorecard({
+          companyId: ctx.companyId,
+          userId: member.userId,
+          period,
+          includeMargin: can(ctx.role, "job_costs:view"),
+        });
+        rows.push({
+          technician: `${member.user.firstName} ${member.user.lastName}`,
+          jobsCompleted: card.jobsCompleted,
+          revenueCents: card.revenueCents,
+          averageTicketCents: card.averageTicketCents,
+          closeRate: card.closeRate,
+          membershipsSold: card.membershipsSold,
+          membershipConversion: card.membershipConversion,
+          callbacks: card.callbacks,
+          reviews: card.reviews,
+          incentives: card.incentives,
+        });
+      }
+      return {
+        ok: true,
+        data: {
+          rows,
+          note: "Do not rank a single best technician from revenue alone.",
+        },
+        grounding: { sources: ["jobs", "invoices", "estimates", "customer_memberships"] },
+      };
+    }
+    case "getCompensationSummary":
+    case "getPendingCompensation": {
+      const filter = compensationUserFilter(ctx.role, ctx.userId);
+      if (!filter) return deny("You do not have access to compensation.");
+      const events = await prisma.compensationEvent.findMany({
+        where: { companyId: ctx.companyId, ...filter },
+        select: { amountCents: true, status: true, calculationBasis: true, userId: true },
+      });
+      if (name === "getPendingCompensation") {
+        return {
+          ok: true,
+          data: {
+            events: events.filter((event) => event.status === "PENDING" || event.status === "QUALIFIED"),
+            note: "Pending and qualified are not paid.",
+          },
+          grounding: { sources: ["compensation_events"] },
+        };
+      }
+      return {
+        ok: true,
+        data: { ...summarizeCompensation(events), note: "Stored events only. AI did not calculate these amounts." },
+        grounding: { sources: ["compensation_events"] },
+      };
+    }
+    case "getMembershipSales": {
+      const rows = await prisma.customerMembership.findMany({
+        where: companyWhere,
+        select: {
+          id: true,
+          status: true,
+          priceCents: true,
+          saleDate: true,
+          plan: { select: { name: true } },
+          soldBy: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { saleDate: "desc" },
+        take: 50,
+      });
+      return { ok: true, data: rows, grounding: { sources: ["customer_memberships"] } };
+    }
+    case "getPricebookPerformance":
+    case "getPricebookItemPerformance": {
+      const itemId = typeof args.itemId === "string" ? args.itemId : null;
+      const items = await prisma.estimateLineItem.findMany({
+        where: {
+          pricebookItemId: itemId ?? { not: null },
+          estimate: { companyId: ctx.companyId, status: "APPROVED" },
+        },
+        select: {
+          name: true,
+          quantity: true,
+          unitPriceCents: true,
+          pricebookItemId: true,
+          pricebookItem: { select: { name: true, standardPriceCents: true, internalCostCents: true } },
+        },
+        take: 200,
+      });
+      const grouped = new Map<string, { name: string; count: number; revenueCents: number }>();
+      for (const item of items) {
+        const key = item.pricebookItemId ?? item.name;
+        const current = grouped.get(key) ?? { name: item.pricebookItem?.name ?? item.name, count: 0, revenueCents: 0 };
+        current.count += 1;
+        current.revenueCents += Math.round(Number(item.quantity) * item.unitPriceCents);
+        grouped.set(key, current);
+      }
+      return {
+        ok: true,
+        data: [...grouped.values()].sort((a, b) => b.revenueCents - a.revenueCents).slice(0, 20),
+        grounding: { sources: ["pricebook_items", "estimates"] },
+      };
+    }
+    case "getMarginByTechnician": {
+      if (!can(ctx.role, "job_costs:view")) return deny("Gross profit is restricted.");
+      const members = await prisma.membership.findMany({
+        where: { companyId: ctx.companyId, status: "ACTIVE" },
+        include: { user: { select: { firstName: true, lastName: true } } },
+      });
+      const rows = [];
+      for (const member of members) {
+        const jobs = await prisma.job.findMany({
+          where: { companyId: ctx.companyId, assignments: { some: { userId: member.userId } }, status: "COMPLETED" },
+          select: { id: true },
+          take: 25,
+        });
+        let profit = 0;
+        let revenue = 0;
+        for (const job of jobs) {
+          const financials = await loadJobFinancials(ctx.companyId, job.id);
+          if (!financials) continue;
+          profit += financials.grossProfitCents;
+          revenue += financials.revenueCents;
+        }
+        rows.push({
+          technician: `${member.user.firstName} ${member.user.lastName}`,
+          verifiedJobs: jobs.length,
+          revenueCents: revenue,
+          grossProfitCents: profit,
+        });
+      }
+      return { ok: true, data: rows, grounding: { sources: ["invoices", "job_costs", "jobs"] } };
     }
     default:
       return deny("Unknown tool.");

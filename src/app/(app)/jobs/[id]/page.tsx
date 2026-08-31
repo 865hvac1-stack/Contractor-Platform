@@ -7,6 +7,8 @@ import { formatMoney } from "@/lib/money";
 import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
 import { JobWorkflowPanel } from "@/components/playbooks/job-workflow";
 import { scheduleJobAction } from "@/server/actions/jobs";
+import { createDraftEstimateForJobAction } from "@/server/actions/estimate-options";
+import { sellMembershipAction } from "@/server/actions/memberships";
 import { addManualJobCostAction } from "@/server/actions/costing";
 import { loadJobFinancials } from "@/lib/costing/job";
 import { JOB_COST_LABELS } from "@/lib/costing/categories";
@@ -76,6 +78,12 @@ export default async function JobDetailPage({
   const canAct =
     can(ctx.role, "jobs:manage") || job.assignments.some((a) => a.userId === ctx.user.id);
   const canAddCost = can(ctx.role, "job_costs:manage");
+  const membershipPlans = can(ctx.role, "memberships:manage")
+    ? await prisma.membershipPlan.findMany({
+        where: { companyId: ctx.company.id, active: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   const customerName =
     job.customer.businessName?.trim() ||
@@ -213,6 +221,36 @@ export default async function JobDetailPage({
         </Card>
       </div>
 
+      {membershipPlans.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sell a membership</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ActionForm action={sellMembershipAction} successMessage="Membership recorded." className="space-y-3">
+              <input type="hidden" name="customerId" value={job.customerId} />
+              <input type="hidden" name="jobId" value={job.id} />
+              <input type="hidden" name="propertyId" value={job.propertyId} />
+              <select name="planId" required className="h-8 w-full rounded-lg border border-input px-2.5 text-sm">
+                <option value="">Choose a plan</option>
+                {membershipPlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name} · {formatMoney(plan.priceCents)}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="activate" value="true" />
+                Activate now
+              </label>
+              <Button type="submit" size="sm">
+                Record membership
+              </Button>
+            </ActionForm>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Assignees</CardTitle>
@@ -274,7 +312,21 @@ export default async function JobDetailPage({
               ];
               if (linked.length === 0) {
                 return (
-                  <p className="text-sm text-[var(--muted-foreground)]">No linked estimates.</p>
+                  <div className="space-y-3">
+                    <p className="text-sm text-[var(--muted-foreground)]">No linked estimates.</p>
+                    {can(ctx.role, "estimates:manage") ? (
+                      <form
+                        action={async () => {
+                          "use server";
+                          await createDraftEstimateForJobAction(job.id);
+                        }}
+                      >
+                        <Button type="submit" size="sm">
+                          Build options
+                        </Button>
+                      </form>
+                    ) : null}
+                  </div>
                 );
               }
               return (
@@ -293,6 +345,19 @@ export default async function JobDetailPage({
                 </ul>
               );
             })()}
+            {can(ctx.role, "estimates:manage") ? (
+              <form
+                className="mt-4"
+                action={async () => {
+                  "use server";
+                  await createDraftEstimateForJobAction(job.id);
+                }}
+              >
+                <Button type="submit" size="sm" variant="outline">
+                  Build options
+                </Button>
+              </form>
+            ) : null}
           </CardContent>
         </Card>
       </div>

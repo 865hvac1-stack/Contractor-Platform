@@ -42,7 +42,17 @@ export type Permission =
   | "receipts:view"
   | "receipts:manage"
   | "job_costs:view"
-  | "job_costs:manage";
+  | "job_costs:manage"
+  | "pricebook:view"
+  | "pricebook:manage"
+  | "pricebook:cost"
+  | "memberships:view"
+  | "memberships:manage"
+  | "compensation:view_own"
+  | "compensation:view_all"
+  | "compensation:manage"
+  | "performance:view_own"
+  | "performance:view_team";
 
 const ALL_COMPANY: Permission[] = [
   "company:manage",
@@ -82,6 +92,16 @@ const ALL_COMPANY: Permission[] = [
   "receipts:manage",
   "job_costs:view",
   "job_costs:manage",
+  "pricebook:view",
+  "pricebook:manage",
+  "pricebook:cost",
+  "memberships:view",
+  "memberships:manage",
+  "compensation:view_own",
+  "compensation:view_all",
+  "compensation:manage",
+  "performance:view_own",
+  "performance:view_team",
 ];
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
@@ -118,6 +138,15 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "receipts:manage",
     "job_costs:view",
     "job_costs:manage",
+    "pricebook:view",
+    "pricebook:manage",
+    "pricebook:cost",
+    "memberships:view",
+    "memberships:manage",
+    "compensation:view_own",
+    "compensation:view_all",
+    "performance:view_own",
+    "performance:view_team",
   ],
   DISPATCHER: [
     "customers:view",
@@ -145,6 +174,11 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "leads:manage",
     "intelligence:view",
     "playbooks:view",
+    "pricebook:view",
+    "memberships:view",
+    "memberships:manage",
+    "performance:view_own",
+    "compensation:view_own",
   ],
   TECHNICIAN: [
     "jobs:view",
@@ -161,6 +195,12 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "intelligence:view",
     "receipts:view",
     "receipts:manage",
+    "pricebook:view",
+    "estimates:manage",
+    "memberships:view",
+    "memberships:manage",
+    "compensation:view_own",
+    "performance:view_own",
   ],
   INSTALLER: [
     "jobs:view",
@@ -196,6 +236,12 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "receipts:view",
     "receipts:manage",
     "job_costs:view",
+    "pricebook:view",
+    "memberships:view",
+    "compensation:view_own",
+    "compensation:view_all",
+    "performance:view_own",
+    "performance:view_team",
   ],
 };
 

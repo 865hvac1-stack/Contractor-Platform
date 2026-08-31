@@ -31,8 +31,10 @@ export const FOUNDATION_ENTITY_TYPES: ImportRecordTypeId[] = [
 ];
 
 export const FOUNDATION_REASON: Record<string, string> = {
-  MEMBERSHIPS: "ContractorYou does not yet have service-agreement records — only team memberships.",
-  PRICEBOOK: "There is no pricebook item table yet. Line items live on estimates and invoices.",
+  MEMBERSHIPS:
+    "Service agreements are managed in Operations → Memberships. Historical membership import does not activate billing, send notices, or generate compensation.",
+  PRICEBOOK:
+    "Pricebook items are managed in Operations → Pricebook. Historical pricebook import does not create compensation or customer notices.",
   CONTACTS: "People are customers today. A separate contact book is not in the data model.",
   COMMUNICATIONS: "Historical SMS/email logs are not a first-class record yet.",
   OTHER: "Use a supported type, or Customers if this is a mixed contact list.",
