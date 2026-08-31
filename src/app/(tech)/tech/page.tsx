@@ -28,7 +28,7 @@ export default async function TechHomePage() {
           {greetingForHour(new Date().getHours())}, {ctx.user.firstName}
         </p>
         <h1 className="mt-1 font-display text-3xl tracking-tight">
-          {jobs.length === 0 ? "No more jobs today." : `${jobs.length} job${jobs.length === 1 ? "" : "s"} today`}
+          {jobs.length === 0 ? "You're clear for today." : `${jobs.length} job${jobs.length === 1 ? "" : "s"} today`}
         </h1>
       </header>
 
@@ -38,9 +38,16 @@ export default async function TechHomePage() {
           <TechJobCard job={next} />
         </section>
       ) : (
-        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-10 text-center text-sm text-[var(--muted-foreground)]">
-          Nothing assigned today. Check upcoming jobs or wait for dispatch.
-        </p>
+        <section className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-10 text-center">
+          <p className="text-sm font-medium text-[var(--cy-navy)]">You&apos;re clear for today.</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">No jobs are currently assigned to you.</p>
+          <Link
+            href="/tech/jobs?view=upcoming"
+            className="mt-4 inline-flex h-12 items-center justify-center rounded-xl bg-[var(--cy-navy)] px-5 text-sm font-medium text-white"
+          >
+            View upcoming jobs
+          </Link>
+        </section>
       )}
 
       {jobs.length > 1 ? (
@@ -81,16 +88,9 @@ export default async function TechHomePage() {
           </div>
           <div>
             <p className="text-xs text-[var(--muted-foreground)]">Incentives</p>
-            <p className="text-xl font-semibold tabular-nums">
-              {formatMoney(
-                week.incentives.pendingCents +
-                  week.incentives.qualifiedCents +
-                  week.incentives.approvedCents +
-                  week.incentives.paidCents
-              )}
-            </p>
+            <p className="text-xl font-semibold tabular-nums">{formatMoney(week.incentives.approvedCents)}</p>
             <p className="text-xs text-[var(--muted-foreground)]">
-              Pending {formatMoney(week.incentives.pendingCents)}
+              Approved · {formatMoney(week.incentives.pendingCents)} pending
             </p>
           </div>
         </div>

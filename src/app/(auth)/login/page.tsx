@@ -3,14 +3,27 @@ import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { redirect } from "next/navigation";
 import { loginAction } from "@/server/actions/auth";
+import { getSessionUser, getTenantContext } from "@/lib/auth";
+import { isFieldRole } from "@/lib/permissions";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; signedOut?: string }>;
 }) {
-  const next = (await searchParams).next;
+  const params = await searchParams;
+  const signedOut = params.signedOut === "1";
+  if (!signedOut) {
+    const user = await getSessionUser();
+    if (user) {
+      const tenant = await getTenantContext();
+      if (tenant && isFieldRole(tenant.role)) redirect("/tech");
+      redirect("/dashboard");
+    }
+  }
+  const next = params.next;
   const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
 
   return (

@@ -64,6 +64,10 @@ const toneMap: Record<string, string> = {
   SKIPPED: "bg-stone-100 text-stone-500",
   VALID: "bg-emerald-50 text-emerald-800",
   WARNING: "bg-amber-50 text-amber-800",
+  PENDING: "bg-amber-50 text-amber-800",
+  ACCEPTED: "bg-emerald-50 text-emerald-800",
+  REVOKED: "bg-stone-100 text-stone-500",
+  QUALIFIED: "bg-sky-50 text-sky-800",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

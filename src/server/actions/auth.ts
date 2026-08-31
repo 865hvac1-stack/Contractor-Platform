@@ -23,7 +23,9 @@ import {
 } from "@/lib/validators";
 import { isFieldRole } from "@/lib/permissions";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true; message?: string }
+  | { ok: false; error: string; setupUrl?: string };
 
 export async function loginAction(
   _prev: ActionResult | null,
@@ -89,7 +91,7 @@ export async function logoutAction(): Promise<void> {
       entityId: user.id,
     });
   }
-  redirect("/login");
+  redirect("/login?signedOut=1");
 }
 
 export async function registerAction(

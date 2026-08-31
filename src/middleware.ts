@@ -1,43 +1,36 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-const PUBLIC_PATHS = [
-  "/",
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-];
+import {
+  SESSION_COOKIE_NAME,
+  middlewareAuthDecision,
+  sessionCookieClearOptions,
+} from "@/lib/auth-session";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isPublic =
-    PUBLIC_PATHS.includes(pathname) ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/api/health") ||
-    pathname.startsWith("/f/") ||
-    pathname.startsWith("/p/") ||
-    pathname.startsWith("/e/") ||
-    pathname.startsWith("/i/") ||
-    pathname.startsWith("/api/forms/") ||
-    pathname.startsWith("/api/payments/") ||
-    pathname.startsWith("/api/webhooks/") ||
-    pathname.startsWith("/api/integrations/") && pathname.includes("/callback");
+  const session = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const signedOut = request.nextUrl.searchParams.get("signedOut") === "1";
+  const decision = middlewareAuthDecision({
+    pathname,
+    hasSessionCookie: Boolean(session),
+    signedOut,
+  });
 
-  const session = request.cookies.get("cp_session")?.value; // must match SESSION_COOKIE in lib/auth
-
-  if (!isPublic && !session) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+  if (decision.redirectTo) {
+    const target = new URL(decision.redirectTo, request.url);
+    if (decision.redirectTo === "/login") target.searchParams.set("next", pathname);
+    const response = NextResponse.redirect(target);
+    if (decision.clearSessionCookie) {
+      response.cookies.set(SESSION_COOKIE_NAME, "", sessionCookieClearOptions());
+    }
+    return response;
   }
 
-  if (session && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  const response = NextResponse.next();
+  if (decision.clearSessionCookie) {
+    response.cookies.set(SESSION_COOKIE_NAME, "", sessionCookieClearOptions());
   }
-
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

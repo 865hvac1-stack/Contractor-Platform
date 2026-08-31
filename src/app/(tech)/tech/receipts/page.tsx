@@ -33,12 +33,8 @@ export default async function TechReceiptsPage() {
       <p className="text-sm text-[var(--muted-foreground)]">
         Upload a fuel, supply, or job receipt. AI may suggest vendor and amount — you confirm later.
       </p>
-      {can(ctx.role, "receipts:manage") && currentJob ? (
-        <TechReceiptUpload jobId={currentJob.id} defaultVehicleId={membership?.assignedVehicleId} />
-      ) : can(ctx.role, "receipts:manage") ? (
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Open a job to assign a receipt to it, or start a job first.
-        </p>
+      {can(ctx.role, "receipts:manage") ? (
+        <TechReceiptUpload jobId={currentJob?.id} defaultVehicleId={membership?.assignedVehicleId} />
       ) : null}
       {receipts.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">

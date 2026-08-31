@@ -26,7 +26,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Memberships:** Operations → Memberships. Service-agreement records with attribution. Recurring billing is not configured.
 - **Compensation:** Team → Compensation. Configurable incentives. Not payroll. Pending is never paid.
 - **Scorecards:** My Performance and Team scorecards from verified jobs, invoices, estimates, and memberships.
-- **Technician Portal:** `/tech` is a mobile-first field experience for TECHNICIAN and INSTALLER roles. Same jobs, playbooks, pricebook, estimates, invoices, payments, memberships, receipts, and scorecards — not a second system. Bottom nav: Home, Jobs, Performance, Inbox, More.
+- **Technician Portal:** `/tech` is a mobile-first field experience for TECHNICIAN and INSTALLER roles. Same jobs, playbooks, pricebook, estimates, invoices, payments, memberships, receipts, and scorecards — not a second system. Bottom nav: Home, Jobs, Performance, Inbox, More. Job workspace uses progressive sections + Next Step. Photos support camera capture and photo-library upload. Sign out clears the session cookie. Office customer search is server-side (not a client-only filter). Team invites send through Resend when `RESEND_API_KEY` is set.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
 - **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
@@ -164,7 +164,9 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | TikTok Login Kit |
 | `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` | LinkedIn |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Phone / SMS (no fake ringing without these) |
-| `RESEND_API_KEY` | Transactional email |
+| `RESEND_API_KEY` | Transactional email (team / technician invites) |
+| `EMAIL_FROM` or `RESEND_FROM` | Verified from-address for Resend |
+| `TWILIO_FROM_NUMBER` | Optional From number for On My Way SMS |
 | `INTEGRATION_WEBHOOK_SECRET` | Optional HMAC for `/api/webhooks/[provider]` |
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
@@ -198,6 +200,9 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `STRIPE_SECRET_KEY` | No | Required for card checkout. Manual recorded payments work without it. |
 | `STRIPE_WEBHOOK_SECRET` | No | Required to confirm Stripe Checkout |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | No | Optional publishable key |
+| `RESEND_API_KEY` | No | Required to send team / technician invite emails. Without it, Team shows “Email is not configured.” |
+| `EMAIL_FROM` or `RESEND_FROM` | No | Verified Resend from-address |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | No | Required to send On My Way SMS. Job status still updates without them. |
 | `ALLOW_SEED` | No | Must be `false` or unset in production |
 | `SEED_*` | No | Leave empty in production |
 
@@ -222,6 +227,10 @@ Critical coverage includes:
 - Expense tenant scope
 - Audit log writes
 - Empty dashboard aggregates = `$0`
+- Technician logout / session invalidation
+- Technician invite tokens (single-use, expiry, tenant isolation)
+- Server-side customer search (office + assigned-only technician)
+- Job photo categories and assignment-scoped file access
 - Playbook tenant isolation (Company A cannot read or mutate Company B playbooks, versions, snapshots, or form templates)
 - Playbook snapshots stay frozen when the live playbook is edited
 - Integration tenant isolation (connections, forms, leads)

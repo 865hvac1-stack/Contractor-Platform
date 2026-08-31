@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePermission, jobAccessFilter } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { customerLabel } from "@/lib/tech/today";
+import { CustomerSearchTypeahead } from "@/components/customers/search-typeahead";
 
 export default async function TechCustomersPage() {
   const ctx = await requirePermission("customers:view");
@@ -27,6 +28,7 @@ export default async function TechCustomersPage() {
     <div className="space-y-4">
       <h1 className="font-display text-3xl tracking-tight">Customers</h1>
       <p className="text-sm text-[var(--muted-foreground)]">People on jobs assigned to you. No company accounting.</p>
+      <CustomerSearchTypeahead hrefFor={(id) => `/tech/customers/${id}`} />
       {customers.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
           No customers on your assigned jobs.

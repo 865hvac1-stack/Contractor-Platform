@@ -3,8 +3,12 @@ import { prisma } from "@/lib/db";
 import { ROLE_LABELS, can } from "@/lib/permissions";
 import {
   inviteTeamMemberAction,
+  resendTeamInviteAction,
+  revokeTeamInviteAction,
   updateMemberRoleAction,
 } from "@/server/actions/team";
+import { inviteStatus } from "@/lib/team/invite-status";
+import { emailConfigured } from "@/lib/email/resend";
 import { updateLaborCostAction } from "@/server/actions/costing";
 import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
@@ -37,11 +41,19 @@ export default async function TeamPage() {
   const canManage = can(ctx.role, "team:manage");
   const canLabor = can(ctx.role, "job_costs:manage");
 
-  const members = await prisma.membership.findMany({
-    where: { companyId: ctx.company.id },
-    include: { user: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const [members, invites] = await Promise.all([
+    prisma.membership.findMany({
+      where: { companyId: ctx.company.id },
+      include: { user: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.teamInvite.findMany({
+      where: { companyId: ctx.company.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+  ]);
+  const emailReady = emailConfigured();
 
   return (
     <div className="space-y-8">
@@ -146,12 +158,99 @@ export default async function TeamPage() {
       )}
 
       {canManage ? (
+        <section className="space-y-3">
+          <h2 className="font-display text-xl">Invitations</h2>
+          {!emailReady ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              Email is not configured. Set <code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code> (or{" "}
+              <code>RESEND_FROM</code>) on the server. Invites can be saved, but ContractorYou will not say they were
+              sent.
+            </p>
+          ) : null}
+          {invites.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No invitations yet.</p>
+          ) : (
+            <div className="rounded-xl border border-[var(--border)] bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invites.map((invite) => {
+                    const status = inviteStatus(invite);
+                    return (
+                      <TableRow key={invite.id}>
+                        <TableCell className="font-medium">
+                          {invite.firstName} {invite.lastName}
+                        </TableCell>
+                        <TableCell>{invite.email}</TableCell>
+                        <TableCell>{ROLE_LABELS[invite.role]}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={status} />
+                        </TableCell>
+                        <TableCell className="text-xs text-[var(--muted-foreground)]">
+                          {invite.lastEmailStatus === "sent"
+                            ? "Sent"
+                            : invite.lastEmailStatus === "not_configured"
+                              ? "Not configured"
+                              : invite.lastEmailStatus === "failed"
+                                ? "Failed"
+                                : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {status === "PENDING" || status === "EXPIRED" ? (
+                            <div className="flex flex-wrap gap-2">
+                              <form
+                                action={async () => {
+                                  "use server";
+                                  await resendTeamInviteAction(invite.id);
+                                }}
+                              >
+                                <Button type="submit" size="sm" variant="outline">
+                                  Resend
+                                </Button>
+                              </form>
+                              {status === "PENDING" ? (
+                                <form
+                                  action={async () => {
+                                    "use server";
+                                    await revokeTeamInviteAction(invite.id);
+                                  }}
+                                >
+                                  <Button type="submit" size="sm" variant="ghost">
+                                    Revoke
+                                  </Button>
+                                </form>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {canManage ? (
         <ActionForm
           action={inviteTeamMemberAction}
-          successMessage="Team member invited."
           className="mx-auto max-w-xl space-y-4 rounded-xl border border-[var(--border)] bg-white p-6"
         >
           <h2 className="font-display text-xl">Invite member</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Sends a secure setup link. ContractorYou does not create a second account when you resend.
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="firstName">First name</Label>
@@ -165,13 +264,13 @@ export default async function TeamPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" name="email" type="email" required />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="role">Role</Label>
               <select
                 id="role"
                 name="role"
                 required
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                className="h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
                 defaultValue="TECHNICIAN"
               >
                 {INVITE_ROLES.map((r) => (
@@ -181,18 +280,8 @@ export default async function TeamPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="temporaryPassword">Temporary password</Label>
-              <Input
-                id="temporaryPassword"
-                name="temporaryPassword"
-                type="password"
-                required
-                minLength={10}
-              />
-            </div>
           </div>
-          <Button type="submit">Send invite</Button>
+          <Button type="submit">Send invite email</Button>
         </ActionForm>
       ) : null}
     </div>

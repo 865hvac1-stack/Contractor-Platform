@@ -76,6 +76,16 @@ export async function updateFieldJobStatusAction(
       entityId: job.id,
       metadata: { from: job.status, to: next },
     });
+    if (next === "DISPATCHED") {
+      const { maybeSendOnMyWayMessage } = await import("@/lib/communications/on-my-way");
+      await maybeSendOnMyWayMessage({
+        companyId: ctx.company.id,
+        jobId: job.id,
+        actorId: ctx.user.id,
+        actorFirstName: ctx.user.firstName,
+        actorLastName: ctx.user.lastName,
+      });
+    }
     revalidateJob(job.id);
     return { ok: true };
   } catch (e) {
@@ -120,37 +130,53 @@ export async function uploadJobPhotoAction(
   try {
     const jobId = String(formData.get("jobId") || "");
     const { ctx, job } = await requireAssignedJob(jobId);
-    const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Take a photo." };
-    if (!file.type.startsWith("image/")) return { ok: false, error: "Use a photo." };
-    if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Keep photos under 10 MB." };
+    const files = formData
+      .getAll("files")
+      .concat(formData.getAll("file"))
+      .filter((item): item is File => item instanceof File && item.size > 0);
+    if (files.length === 0) return { ok: false, error: "Take a photo or choose one from your library." };
+    const { isJobPhotoKind, looksLikeImage } = await import("@/lib/tech/photos");
     const kind = String(formData.get("kind") || "OTHER");
+    if (!isJobPhotoKind(kind)) return { ok: false, error: "Choose a photo category." };
+    const caption = emptyToNull(String(formData.get("caption") || ""));
     const equipmentId = emptyToNull(String(formData.get("equipmentId") || ""));
     const root = process.env.UPLOAD_DIR || "./uploads";
     const dir = path.join(root, ctx.company.id, "job-photos");
     await mkdir(dir, { recursive: true });
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "photo.jpg";
-    const stored = `${Date.now()}-${safeName}`;
-    await writeFile(path.join(dir, stored), Buffer.from(await file.arrayBuffer()));
-    await prisma.jobPhoto.create({
-      data: {
-        companyId: ctx.company.id,
-        jobId: job.id,
-        equipmentId,
-        kind,
-        fileName: file.name,
-        filePath: path.join(ctx.company.id, "job-photos", stored),
-        mimeType: file.type,
-        uploadedById: ctx.user.id,
-      },
-    });
+    let saved = 0;
+    for (const [index, file] of files.entries()) {
+      if (!looksLikeImage(file)) return { ok: false, error: "Use a photo." };
+      if (file.size > 12 * 1024 * 1024) return { ok: false, error: "Keep photos under 12 MB." };
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "photo.jpg";
+      const stored = `${Date.now()}-${index}-${safeName}`;
+      await writeFile(path.join(dir, stored), Buffer.from(await file.arrayBuffer()));
+      await prisma.jobPhoto.create({
+        data: {
+          companyId: ctx.company.id,
+          jobId: job.id,
+          equipmentId,
+          kind,
+          caption,
+          fileName: file.name,
+          filePath: path.join(ctx.company.id, "job-photos", stored),
+          mimeType: file.type || "image/jpeg",
+          uploadedById: ctx.user.id,
+        },
+      });
+      saved += 1;
+    }
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
       action: "job.photo_uploaded",
       entityType: "Job",
       entityId: job.id,
-      metadata: { kind },
+      metadata: {
+        kind,
+        count: saved,
+        customerId: job.customerId,
+        propertyId: job.propertyId,
+      },
     });
     revalidateJob(job.id);
     return { ok: true };

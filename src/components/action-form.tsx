@@ -28,12 +28,20 @@ export function ActionForm({
     <form action={formAction} className={className}>
       {children}
       {state && !state.ok ? (
-        <p className="mt-3 text-sm text-rose-700" role="alert">
-          {state.error}
-        </p>
+        <div className="mt-3 space-y-2" role="alert">
+          <p className="text-sm text-rose-700">{state.error}</p>
+          {state.setupUrl ? (
+            <p className="break-all text-sm text-[var(--muted-foreground)]">
+              Email was not sent. Share this setup link directly:{" "}
+              <a href={state.setupUrl} className="font-medium text-[var(--cy-navy)] underline">
+                Set up account
+              </a>
+            </p>
+          ) : null}
+        </div>
       ) : null}
-      {state && state.ok && successMessage ? (
-        <p className="mt-3 text-sm text-emerald-700">{successMessage}</p>
+      {state && state.ok && (state.message || successMessage) ? (
+        <p className="mt-3 text-sm text-emerald-700">{state.message || successMessage}</p>
       ) : null}
       {pending ? <p className="sr-only">Saving…</p> : null}
     </form>

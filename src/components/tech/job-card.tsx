@@ -93,7 +93,10 @@ export function TechJobCard({
           </form>
         ) : null}
       </div>
-      <Link href={`/tech/jobs/${job.id}`} className="mt-3 block text-center text-sm font-medium text-[var(--cy-orange)]">
+      <Link
+        href={`/tech/jobs/${job.id}`}
+        className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white"
+      >
         Open job
       </Link>
     </article>

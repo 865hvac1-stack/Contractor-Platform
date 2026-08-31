@@ -4,8 +4,7 @@ import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -15,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { CustomerSearchTypeahead } from "@/components/customers/search-typeahead";
 
 export default async function CustomersPage({
   searchParams,
@@ -67,21 +67,10 @@ export default async function CustomersPage({
         </div>
       </div>
 
-      <form
-        className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-3 sm:flex-row sm:items-center"
-        method="get"
-      >
-        <Input
-          name="q"
-          defaultValue={query}
-          placeholder="Search name, email, or phone"
-          aria-label="Search customers"
-          className="h-10 border-transparent bg-[var(--cy-gray)]"
-        />
-        <Button type="submit" className="h-10 px-5">
-          Search
-        </Button>
-      </form>
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
+        <p className="mb-2 text-sm font-medium">Find a customer</p>
+        <CustomerSearchTypeahead hrefFor={(id) => `/customers/${id}`} />
+      </div>
 
       {customers.length === 0 ? (
         query ? (

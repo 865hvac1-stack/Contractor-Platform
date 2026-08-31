@@ -341,6 +341,7 @@ model User {
   memberships          Membership[]
   sessions             Session[]
   passwordResetTokens  PasswordResetToken[]
+  teamInvitesSent      TeamInvite[]         @relation("TeamInviteSender")
   auditLogs            AuditLog[]           @relation("AuditActor")
   assignedJobs         JobAssignment[]
   expensesCreated      Expense[]            @relation("ExpenseCreator")
@@ -382,6 +383,32 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model TeamInvite {
+  id               String      @id @default(cuid())
+  companyId        String
+  email            String
+  firstName        String
+  lastName         String
+  role             CompanyRole
+  tokenHash        String      @unique
+  invitedById      String
+  userId           String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  lastEmailStatus  String?
+  lastEmailError   String?
+  lastEmailedAt    DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("TeamInviteSender", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, email])
+  @@index([companyId, expiresAt])
 }
 
 model PasswordResetToken {
@@ -488,6 +515,7 @@ model Company {
   compensationEvents CompensationEvent[]
   performanceGoals PerformanceGoal[]
   jobPhotos JobPhoto[]
+  teamInvites TeamInvite[]
   techDiscountLimitBps Int?
 
   @@index([status])
@@ -660,6 +688,7 @@ model JobPhoto {
   jobId         String
   equipmentId   String?
   kind          String   @default("OTHER")
+  caption       String?
   fileName      String
   filePath      String
   mimeType      String

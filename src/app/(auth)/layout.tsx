@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
+import { isFieldRole } from "@/lib/permissions";
 import { BrandMark } from "@/components/brand-mark";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -8,7 +9,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   if (user) {
     const tenant = await getTenantContext();
     if (tenant && tenant.company.status !== "ONBOARDING") {
-      redirect("/dashboard");
+      redirect(isFieldRole(tenant.role) ? "/tech" : "/dashboard");
     }
   }
 

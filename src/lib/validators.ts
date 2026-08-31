@@ -274,5 +274,10 @@ export const inviteMemberSchema = z.object({
     "MANAGER",
     "COMPANY_OWNER",
   ]),
-  temporaryPassword: z.string().min(10).max(128),
+  temporaryPassword: z.string().max(128).optional(),
+});
+
+export const acceptInviteSchema = z.object({
+  token: z.string().min(20).max(200),
+  password: z.string().min(10).max(128),
 });

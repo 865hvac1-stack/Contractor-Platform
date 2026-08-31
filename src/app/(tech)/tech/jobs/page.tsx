@@ -38,7 +38,7 @@ export default async function TechJobsPage({
       </div>
       {jobs.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
-          {view === "today" ? "No more jobs today." : "No upcoming assigned jobs."}
+          {view === "today" ? "You're clear for today. No jobs are currently assigned to you." : "No upcoming assigned jobs."}
         </p>
       ) : (
         <div className="space-y-3">

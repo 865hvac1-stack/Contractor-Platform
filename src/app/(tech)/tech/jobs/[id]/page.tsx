@@ -23,6 +23,8 @@ import { TechInvoicePay } from "@/components/tech/invoice-pay";
 import { TechMembershipSell } from "@/components/tech/membership-sell";
 import { TechReceiptUpload } from "@/components/tech/receipt-upload";
 import { CompleteJobPanel } from "@/components/tech/complete-job";
+import { WorkspaceSection } from "@/components/tech/workspace-section";
+import { Reveal } from "@/components/tech/reveal";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createDraftEstimateForJobAction } from "@/server/actions/estimate-options";
@@ -116,6 +118,9 @@ export default async function TechJobWorkspacePage({
       })
     : null;
 
+  const nextSection = next ? fieldSectionForStep(next) : remaining[0] ? fieldSectionForStep(remaining[0]) : null;
+  const noteCount = Number(Boolean(full.internalNotes)) + Number(Boolean(full.customerNotes));
+
   return (
     <div className="space-y-5">
       <div>
@@ -148,8 +153,7 @@ export default async function TechJobWorkspacePage({
       ) : null}
 
       <section id="overview" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Overview</h2>
-        <p className="mt-2 text-sm">{addr}</p>
+        <p className="text-sm">{addr}</p>
         {full.scheduledStart ? (
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             {full.scheduledStart.toLocaleString()}
@@ -202,9 +206,13 @@ export default async function TechJobWorkspacePage({
         <FieldStatusButtons jobId={full.id} status={full.status} />
       </section>
 
-      <section id="playbook" className="space-y-2">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Playbook</h2>
-        <p className="text-xs text-[var(--muted-foreground)]">Execution only — you are not editing the company playbook.</p>
+      <WorkspaceSection
+        id="playbook"
+        title="Job details"
+        summary={workflow ? workflow.playbookName : "No playbook"}
+        open={nextSection === "playbook" || nextSection === "overview"}
+      >
+        <p className="text-xs text-[var(--muted-foreground)]">Follow the playbook. You are not editing it.</p>
         {workflow ? (
           <JobWorkflowPanel
             jobId={full.id}
@@ -226,10 +234,13 @@ export default async function TechJobWorkspacePage({
             No playbook is attached to this job.
           </p>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section id="customer" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Customer & property</h2>
+      <WorkspaceSection
+        id="customer"
+        title="Customer & history"
+        summary={previousJobs.length ? `${previousJobs.length} previous job${previousJobs.length === 1 ? "" : "s"}` : "No previous service"}
+      >
         <p className="mt-2 text-sm">{customerName}</p>
         <p className="text-sm text-[var(--muted-foreground)]">
           {full.customer.phone ?? "No phone"} · {full.customer.email ?? "No email"}
@@ -251,10 +262,18 @@ export default async function TechJobWorkspacePage({
             ))}
           </ul>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section id="equipment" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Equipment</h2>
+      <WorkspaceSection
+        id="equipment"
+        title="Equipment"
+        summary={
+          full.property.equipment.length
+            ? `${full.property.equipment.length} system${full.property.equipment.length === 1 ? "" : "s"} added`
+            : "No equipment recorded"
+        }
+        open={nextSection === "equipment"}
+      >
         {full.property.equipment.length ? (
           <ul className="mt-3 space-y-2">
             {full.property.equipment.map((eq) => (
@@ -274,17 +293,31 @@ export default async function TechJobWorkspacePage({
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No equipment on this property yet.</p>
         )}
         {canEditEquipment ? (
-          <EquipmentForm
-            jobId={full.id}
-            customerId={full.customerId}
-            propertyId={full.propertyId}
-            warrantyJob={warrantyJob}
-          />
+          <Reveal label="Add equipment" defaultOpen={nextSection === "equipment" && full.property.equipment.length === 0}>
+            <EquipmentForm
+              jobId={full.id}
+              customerId={full.customerId}
+              propertyId={full.propertyId}
+              warrantyJob={warrantyJob}
+            />
+            <div className="mt-3">
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">Capture a data plate while you add it.</p>
+              <JobPhotoUpload jobId={full.id} equipment={full.property.equipment} defaultKind="DATA_PLATE" defaultOpen />
+            </div>
+          </Reveal>
         ) : null}
-      </section>
+      </WorkspaceSection>
 
-      <section id="options" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Options / estimate</h2>
+      <WorkspaceSection
+        id="options"
+        title="Options & estimate"
+        summary={
+          estimate
+            ? `${estimate.options.length || 1} option${(estimate.options.length || 1) === 1 ? "" : "s"} · ${estimate.status}`
+            : "Not started"
+        }
+        open={nextSection === "options"}
+      >
         {estimate ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm">
@@ -368,29 +401,41 @@ export default async function TechJobWorkspacePage({
         ) : (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">You do not have permission to build estimates.</p>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section id="photos" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Photos & notes</h2>
-        <JobPhotoUpload jobId={full.id} equipment={full.property.equipment} />
+      <WorkspaceSection
+        id="photos"
+        title="Photos & notes"
+        summary={`${full.photos.length} photo${full.photos.length === 1 ? "" : "s"} · ${noteCount} note${noteCount === 1 ? "" : "s"}`}
+        open={nextSection === "photos"}
+      >
+        <JobPhotoUpload jobId={full.id} equipment={full.property.equipment} defaultOpen={nextSection === "photos"} />
         {full.photos.length ? (
           <ul className="mt-3 grid grid-cols-3 gap-2">
             {full.photos.map((photo) => (
               <li key={photo.id} className="overflow-hidden rounded-lg border border-[var(--border)]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`/api/job-photos/${photo.id}`} alt={photo.kind} className="aspect-square w-full object-cover" />
-                <p className="px-1 py-0.5 text-[10px] text-[var(--muted-foreground)]">{photo.kind.replaceAll("_", " ")}</p>
+                <p className="px-1 py-0.5 text-[10px] text-[var(--muted-foreground)]">
+                  {photo.kind.replaceAll("_", " ")}
+                  {photo.caption ? ` · ${photo.caption}` : ""}
+                </p>
               </li>
             ))}
           </ul>
         ) : (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No job photos yet.</p>
         )}
-        <JobNotesForm jobId={full.id} internalNotes={full.internalNotes} customerNotes={full.customerNotes} />
-      </section>
+        <Reveal label="Add notes">
+          <JobNotesForm jobId={full.id} internalNotes={full.internalNotes} customerNotes={full.customerNotes} />
+        </Reveal>
+      </WorkspaceSection>
 
-      <section id="costs" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Costs / receipts</h2>
+      <WorkspaceSection
+        id="costs"
+        title="Costs & receipts"
+        summary={receipts.length ? `${receipts.length} receipt${receipts.length === 1 ? "" : "s"}` : "None"}
+      >
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           Assign a receipt to this job, your truck, or a company expense. Company profitability is not shown here.
         </p>
@@ -409,10 +454,18 @@ export default async function TechJobWorkspacePage({
             ))}
           </ul>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section id="invoice" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Invoice & payment</h2>
+      <WorkspaceSection
+        id="invoice"
+        title="Invoice & payment"
+        summary={
+          invoice
+            ? `${formatMoney(invoice.totalCents)} · ${invoice.balanceCents === 0 ? "Paid" : invoice.status}`
+            : "No invoice"
+        }
+        open={nextSection === "invoice"}
+      >
         {invoice ? (
           <TechInvoicePay
             invoice={{
@@ -441,10 +494,14 @@ export default async function TechJobWorkspacePage({
         ) : (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No invoice yet.</p>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section id="membership" className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Membership</h2>
+      <WorkspaceSection
+        id="membership"
+        title="Membership"
+        summary={activeMembership ? `${activeMembership.plan.name} · ${activeMembership.status}` : "None"}
+        open={nextSection === "membership"}
+      >
         {activeMembership ? (
           <p className="mt-2 text-sm">
             {activeMembership.plan.name} is already on this customer ({activeMembership.status}).
@@ -470,7 +527,7 @@ export default async function TechJobWorkspacePage({
         ) : (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No membership on this property.</p>
         )}
-      </section>
+      </WorkspaceSection>
 
       <section id="complete" className="rounded-2xl border border-[var(--border)] bg-white p-4">
         <CompleteJobPanel

@@ -76,13 +76,26 @@ export async function createSession(
   return token;
 }
 
+export async function invalidateSessionToken(token: string): Promise<number> {
+  const result = await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
+  return result.count;
+}
+
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {
-    const tokenHash = hashToken(token);
-    await prisma.session.deleteMany({ where: { tokenHash } });
+    await invalidateSessionToken(token);
   }
+  const clear = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  };
+  cookieStore.set(SESSION_COOKIE, "", clear);
   cookieStore.delete(SESSION_COOKIE);
 }
 

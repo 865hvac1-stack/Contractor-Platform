@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { brand } from "@/lib/brand";
@@ -8,6 +8,11 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
 });
+
+export const viewport: Viewport = {
+  themeColor: "#0B1220",
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: `${brand.name} — ${brand.positioning}`,
