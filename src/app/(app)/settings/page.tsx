@@ -50,6 +50,21 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
+      {can(ctx.role, "accounting:view") ? (
+        <Link
+          href="/settings/quickbooks"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Integrations
+          </p>
+          <h2 className="mt-2 font-medium">QuickBooks</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Connect QuickBooks to sync invoices. ContractorYou still runs the job; QuickBooks keeps the books.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "imports:manage") ? (
         <Link
           href="/settings/import"

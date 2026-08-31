@@ -9,6 +9,7 @@ export async function createOAuthState(input: {
   providerKey: string;
   codeVerifier?: string;
   redirectTo?: string;
+  state?: string;
 }) {
   await prisma.oAuthState.deleteMany({
     where: { expiresAt: { lt: new Date() } },
@@ -18,7 +19,7 @@ export async function createOAuthState(input: {
       companyId: input.companyId,
       userId: input.userId,
       providerKey: input.providerKey,
-      state: randomOAuthState(),
+      state: input.state ?? randomOAuthState(),
       codeVerifier: input.codeVerifier ?? null,
       redirectTo: input.redirectTo ?? null,
       expiresAt: new Date(Date.now() + TTL_MS),

@@ -5,6 +5,7 @@ import {
   inviteTeamMemberAction,
   updateMemberRoleAction,
 } from "@/server/actions/team";
+import { updateLaborCostAction } from "@/server/actions/costing";
 import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -34,6 +35,7 @@ const INVITE_ROLES: CompanyRole[] = [
 export default async function TeamPage() {
   const ctx = await requirePermission("team:view");
   const canManage = can(ctx.role, "team:manage");
+  const canLabor = can(ctx.role, "job_costs:manage");
 
   const members = await prisma.membership.findMany({
     where: { companyId: ctx.company.id },
@@ -47,6 +49,9 @@ export default async function TeamPage() {
         <h1 className="font-display text-3xl tracking-tight">Team</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           People with access to {ctx.company.businessName}.
+          {canLabor
+            ? " Loaded labor cost is office-only and used later for job costing. It is not payroll and is never shown to technicians."
+            : ""}
         </p>
       </div>
 
@@ -65,6 +70,7 @@ export default async function TeamPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 {canManage ? <TableHead>Change role</TableHead> : null}
+                {canLabor ? <TableHead>Loaded labor / hr</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -107,6 +113,29 @@ export default async function TeamPage() {
                           </Button>
                         </form>
                       )}
+                    </TableCell>
+                  ) : null}
+                  {canLabor ? (
+                    <TableCell>
+                      <ActionForm action={updateLaborCostAction} className="flex items-center gap-2">
+                        <input type="hidden" name="userId" value={m.userId} />
+                        <Input
+                          name="loadedLaborCost"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="h-8 w-24"
+                          defaultValue={
+                            m.user.loadedLaborCostCents != null
+                              ? (m.user.loadedLaborCostCents / 100).toFixed(2)
+                              : ""
+                          }
+                          placeholder="—"
+                        />
+                        <Button type="submit" size="sm" variant="outline">
+                          Save
+                        </Button>
+                      </ActionForm>
                     </TableCell>
                   ) : null}
                 </TableRow>

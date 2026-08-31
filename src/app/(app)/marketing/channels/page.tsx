@@ -38,7 +38,7 @@ export default async function ChannelsPage({
         </p>
       ) : null}
 
-      {PROVIDER_CATEGORIES.map((category) => {
+      {PROVIDER_CATEGORIES.filter((category) => category.key !== "ACCOUNTING").map((category) => {
         const group = cards.filter((c) => c.provider.category === category.key);
         return (
           <section key={category.key} className="space-y-3">

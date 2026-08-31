@@ -13,6 +13,7 @@ import type { ActionResult } from "@/server/actions/auth";
 import type { JobStatus } from "@prisma/client";
 import { assignPlaybookToJob } from "@/lib/playbooks/assign";
 import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
+import { maybeAutoSyncInvoice } from "@/server/actions/quickbooks";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -172,6 +173,22 @@ export async function updateJobStatusAction(
       entityId: updated.id,
       metadata: { from: target.status, to: status },
     });
+
+    if (status === "COMPLETED") {
+      const invoices = await prisma.invoice.findMany({
+        where: { companyId: ctx.company.id, jobId: updated.id, status: { not: "VOID" } },
+        select: { id: true, importMode: true },
+      });
+      for (const invoice of invoices) {
+        await maybeAutoSyncInvoice({
+          companyId: ctx.company.id,
+          invoiceId: invoice.id,
+          actorId: ctx.user.id,
+          event: "job_completed",
+          importMode: invoice.importMode,
+        });
+      }
+    }
 
     revalidatePath(`/jobs/${jobId}`);
     revalidatePath("/jobs");

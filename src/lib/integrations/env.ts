@@ -14,7 +14,7 @@ export function appUrl() {
   return (process.env.APP_URL || "http://127.0.0.1:43123").replace(/\/$/, "");
 }
 
-export function oauthCallbackUrl(family: "google" | "meta" | "tiktok" | "linkedin") {
+export function oauthCallbackUrl(family: "google" | "meta" | "tiktok" | "linkedin" | "quickbooks") {
   return `${appUrl()}/api/integrations/${family}/callback`;
 }
 
@@ -117,6 +117,20 @@ export function getProviderEnv(providerKey: string): ProviderEnvStatus {
         notes: missing.length
           ? ["You can map numbers to sources now. Live call capture waits on a phone provider."]
           : [],
+      };
+    }
+    case "quickbooks_online": {
+      const missing: string[] = [];
+      if (!present("QUICKBOOKS_CLIENT_ID")) missing.push("QUICKBOOKS_CLIENT_ID");
+      if (!present("QUICKBOOKS_CLIENT_SECRET")) missing.push("QUICKBOOKS_CLIENT_SECRET");
+      return {
+        providerKey,
+        configured: missing.length === 0,
+        missing,
+        notes: [
+          "Intuit app review is required before production QuickBooks Online access.",
+          "Set QUICKBOOKS_ENVIRONMENT to sandbox until Intuit approves production.",
+        ],
       };
     }
     default:

@@ -27,7 +27,9 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
 - **Audit log:** `writeAudit()` for create/status/security events.
-- **Receipts:** upload + storage + processing status fields; no fake AI extraction.
+- **Receipts:** Money → Receipts inbox. Photo/PDF upload, optional AI suggestions, confirm before creating an expense or job cost.
+- **Job costing:** Confirmed costs and verified invoice revenue only. Technicians cannot see company profit.
+- **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
 
 ## Local setup
 
@@ -103,10 +105,12 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 3. Create job → choose a playbook (optional) → schedule  
 4. Create estimate → approve  
 5. Complete job → create invoice → record payment  
-6. Log expense + upload receipt  
-7. Dashboard / reports update from **real** data only  
-8. Marketing Hub → record a lead → pipeline. Channel cards stay disconnected until OAuth is configured.
-9. Settings → Import Data → upload a customer export → match columns → preview → confirm.
+6. Log expense or snap a receipt in Receipts  
+7. Confirm the receipt, then see job profit on the job  
+8. Dashboard / reports update from **real** data only  
+9. Marketing Hub → record a lead → pipeline. Channel cards stay disconnected until OAuth is configured.
+10. Settings → Import Data → upload a customer export → match columns → preview → confirm.
+11. Settings → QuickBooks → Connect (after Intuit credentials) → optionally Sync to QuickBooks on an invoice.
 
 ## Security notes
 
@@ -136,6 +140,7 @@ Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into ea
 | Meta | `{APP_URL}/api/integrations/meta/callback` |
 | TikTok | `{APP_URL}/api/integrations/tiktok/callback` |
 | LinkedIn | `{APP_URL}/api/integrations/linkedin/callback` |
+| QuickBooks Online | `{APP_URL}/api/integrations/quickbooks/callback` |
 
 Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 
@@ -155,6 +160,9 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Phone / SMS (no fake ringing without these) |
 | `RESEND_API_KEY` | Transactional email |
 | `INTEGRATION_WEBHOOK_SECRET` | Optional HMAC for `/api/webhooks/[provider]` |
+| `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
+| `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
+| `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback` |
 
 Never commit real values. Platform Admin → Integrations shows **presence only**.
 
@@ -176,7 +184,11 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `APP_URL` | Yes | Public HTTPS URL of the service |
 | `UPLOAD_DIR` | Yes | e.g. `/data/uploads` with a volume |
 | `NODE_ENV` | Yes | `production` |
-| `OPENAI_API_KEY` | No | Server-side Intelligence wording. Without it, Ask still answers from records. Never expose to the browser. |
+| `OPENAI_API_KEY` | No | Server-side Intelligence wording and receipt suggestions. Receipts still work without it. Never expose to the browser. |
+| `QUICKBOOKS_CLIENT_ID` | No | Required to connect QuickBooks. Without it the card stays Not connected. |
+| `QUICKBOOKS_CLIENT_SECRET` | No | Intuit client secret |
+| `QUICKBOOKS_ENVIRONMENT` | No | `sandbox` or `production`. Default `sandbox`. |
+| `QUICKBOOKS_REDIRECT_URI` | No | Defaults from `APP_URL` |
 | `ALLOW_SEED` | No | Must be `false` or unset in production |
 | `SEED_*` | No | Leave empty in production |
 
@@ -241,7 +253,7 @@ Changing a playbook creates a new version. Jobs already started keep the snapsho
 
 ## Phase 2 (intentionally deferred)
 
-AI receptionist, live SMS/email send, connected automation execution, memberships, pricebook, inventory, payroll, QuickBooks, Stripe live payments, GPS/routing, native/PWA apps, customer portal, OCR receipt extraction, full custom form builder, photo library uploads.
+AI receptionist, live SMS/email send, connected automation execution, memberships, pricebook, inventory, payroll, Stripe live payments, GPS/routing, native/PWA apps, customer portal, full custom form builder. QuickBooks live sync waits on Intuit credentials and app approval.
 
 ## License
 

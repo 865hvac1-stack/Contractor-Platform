@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { QuickBooksInvoicePanel } from "@/components/quickbooks-invoice-panel";
 
 export default async function InvoiceDetailPage({
   params,
@@ -39,6 +40,23 @@ export default async function InvoiceDetailPage({
     },
   });
   if (!invoice) notFound();
+
+  const [invoiceMap, lastEvent, paymentMaps] = await Promise.all([
+    prisma.quickBooksMapping.findFirst({
+      where: { companyId: ctx.company.id, entityType: "INVOICE", internalId: invoice.id },
+    }),
+    prisma.quickBooksSyncEvent.findFirst({
+      where: { companyId: ctx.company.id, entityType: "INVOICE", internalId: invoice.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.quickBooksMapping.findMany({
+      where: {
+        companyId: ctx.company.id,
+        entityType: "PAYMENT",
+        internalId: { in: invoice.payments.map((payment) => payment.id) },
+      },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -188,6 +206,19 @@ export default async function InvoiceDetailPage({
           <Button type="submit">Record payment</Button>
         </ActionForm>
       ) : null}
+
+      <QuickBooksInvoicePanel
+        role={ctx.role}
+        invoiceId={invoice.id}
+        importMode={invoice.importMode}
+        mapping={invoiceMap}
+        lastEvent={lastEvent}
+        payments={invoice.payments.map((payment) => ({
+          id: payment.id,
+          amountLabel: formatMoney(payment.amountCents),
+          mapping: paymentMaps.find((row) => row.internalId === payment.id) ?? null,
+        }))}
+      />
 
       {invoice.payments.length > 0 ? (
         <div className="rounded-xl border border-[var(--border)] bg-white p-4">

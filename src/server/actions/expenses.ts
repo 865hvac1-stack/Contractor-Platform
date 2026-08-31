@@ -10,6 +10,8 @@ import { requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
 import { expenseSchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
+import { expenseToJobCostCategory } from "@/lib/costing/categories";
+import { recordJobCost } from "@/lib/costing/record";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -126,6 +128,22 @@ export async function createExpenseAction(
       entityId: expense.id,
       metadata: { amountCents: expense.amountCents, category: expense.category },
     });
+
+    if (expense.jobId) {
+      await recordJobCost(prisma, {
+        companyId: ctx.company.id,
+        jobId: expense.jobId,
+        createdById: ctx.user.id,
+        category: expenseToJobCostCategory(expense.category),
+        description: expense.vendor || expense.description,
+        amountCents: expense.amountCents,
+        sourceType: "EXPENSE",
+        sourceId: expense.id,
+        expenseId: expense.id,
+        receiptId: expense.receiptId,
+        confirmed: true,
+      });
+    }
 
     revalidatePath("/expenses");
     revalidatePath("/dashboard");

@@ -229,7 +229,7 @@ registerAttentionDetector(async (companyId) => {
       title: "Receipt needs review",
       description: r.fileName,
       severity: "info" as const,
-      href: `/expenses/new?receiptId=${r.id}`,
+      href: `/receipts/${r.id}`,
       entityType: "Receipt",
       entityId: r.id,
       createdAt: r.createdAt,

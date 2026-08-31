@@ -11,6 +11,7 @@ import { AuthError } from "@/lib/auth";
 import { estimateSchema, invoiceSchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
 import type { EstimateStatus, InvoiceStatus } from "@prisma/client";
+import { maybeAutoSyncInvoice, maybeAutoSyncPayment } from "@/server/actions/quickbooks";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -269,6 +270,14 @@ export async function createInvoiceAction(
       metadata: { invoiceNumber, totalCents },
     });
 
+    await maybeAutoSyncInvoice({
+      companyId: ctx.company.id,
+      invoiceId: invoice.id,
+      actorId: ctx.user.id,
+      event: "created",
+      importMode: invoice.importMode,
+    });
+
     revalidatePath("/invoices");
     revalidatePath("/dashboard");
     redirect(`/invoices/${invoice.id}`);
@@ -311,6 +320,16 @@ export async function updateInvoiceStatusAction(
       metadata: { from: invoice.status, to: status },
     });
 
+    if (status === "SENT") {
+      await maybeAutoSyncInvoice({
+        companyId: ctx.company.id,
+        invoiceId: invoice.id,
+        actorId: ctx.user.id,
+        event: "sent",
+        importMode: invoice.importMode,
+      });
+    }
+
     revalidatePath(`/invoices/${invoiceId}`);
     revalidatePath("/invoices");
     revalidatePath("/dashboard");
@@ -352,7 +371,7 @@ export async function recordPaymentAction(
     if (balanceCents === 0) status = "PAID";
     else if (amountPaidCents > 0) status = "PARTIALLY_PAID";
 
-    await prisma.$transaction([
+    const [payment] = await prisma.$transaction([
       prisma.payment.create({
         data: {
           companyId: ctx.company.id,
@@ -360,6 +379,7 @@ export async function recordPaymentAction(
           amountCents,
           method,
           status: "RECORDED",
+          importMode: invoice.importMode,
         },
       }),
       prisma.invoice.update({
@@ -375,6 +395,19 @@ export async function recordPaymentAction(
       entityType: "Invoice",
       entityId: invoice.id,
       metadata: { amountCents, method, status },
+    });
+
+    await maybeAutoSyncInvoice({
+      companyId: ctx.company.id,
+      invoiceId: invoice.id,
+      actorId: ctx.user.id,
+      event: "payment_received",
+      importMode: invoice.importMode,
+    });
+    await maybeAutoSyncPayment({
+      companyId: ctx.company.id,
+      paymentId: payment.id,
+      importMode: payment.importMode,
     });
 
     revalidatePath(`/invoices/${invoiceId}`);

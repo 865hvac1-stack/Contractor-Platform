@@ -2,9 +2,10 @@ export type ProviderCategory =
   | "SEARCH_GOOGLE"
   | "SOCIAL"
   | "COMMUNICATION"
-  | "WEBSITE";
+  | "WEBSITE"
+  | "ACCOUNTING";
 
-export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend";
+export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend" | "intuit";
 
 export type IntegrationProvider = {
   key: string;
@@ -262,6 +263,18 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     approvalRequired: false,
     futureCapabilities: ["Auto-capture", "Session id"],
   },
+  {
+    key: "quickbooks_online",
+    name: "QuickBooks Online",
+    category: "ACCOUNTING",
+    family: "intuit",
+    description: "Push invoices and recorded payments. QuickBooks stays the accounting system of record.",
+    value: "Do the job here, keep the books in QuickBooks.",
+    oauthReady: true,
+    internalLive: false,
+    approvalRequired: true,
+    futureCapabilities: ["Customers", "Invoices", "Recorded payments"],
+  },
 ];
 
 export const PROVIDER_CATEGORIES: { key: ProviderCategory; label: string }[] = [
@@ -269,6 +282,7 @@ export const PROVIDER_CATEGORIES: { key: ProviderCategory; label: string }[] = [
   { key: "SOCIAL", label: "Social" },
   { key: "COMMUNICATION", label: "Communication" },
   { key: "WEBSITE", label: "Website" },
+  { key: "ACCOUNTING", label: "Accounting" },
 ];
 
 export function getProvider(key: string) {

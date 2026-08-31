@@ -12,6 +12,7 @@ import {
   Briefcase,
   FileText,
   Receipt,
+  Camera,
   Megaphone,
   Star,
   Zap,
@@ -90,6 +91,7 @@ const groups: NavGroup[] = [
   {
     title: "Money",
     items: [
+      { href: "/receipts", label: "Receipts", icon: Camera },
       { href: "/expenses", label: "Expenses", icon: Wallet },
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ],

@@ -7,6 +7,9 @@ import { formatMoney } from "@/lib/money";
 import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
 import { JobWorkflowPanel } from "@/components/playbooks/job-workflow";
 import { scheduleJobAction } from "@/server/actions/jobs";
+import { addManualJobCostAction } from "@/server/actions/costing";
+import { loadJobFinancials } from "@/lib/costing/job";
+import { JOB_COST_LABELS } from "@/lib/costing/categories";
 import { ActionForm } from "@/components/action-form";
 import { JobStatusControls } from "@/components/jobs/job-status-controls";
 import { StatusBadge } from "@/components/status-badge";
@@ -67,8 +70,12 @@ export default async function JobDetailPage({
   if (!job) notFound();
 
   const workflow = await loadJobWorkflowView(ctx.company.id, job.id);
+  const financials = can(ctx.role, "job_costs:view")
+    ? await loadJobFinancials(ctx.company.id, job.id)
+    : null;
   const canAct =
     can(ctx.role, "jobs:manage") || job.assignments.some((a) => a.userId === ctx.user.id);
+  const canAddCost = can(ctx.role, "job_costs:manage");
 
   const customerName =
     job.customer.businessName?.trim() ||
@@ -289,6 +296,117 @@ export default async function JobDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {financials ? (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl">Job costing</h2>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {financials.isFinal
+                  ? "Profit uses confirmed invoices and confirmed costs."
+                  : "Profit is not final while receipts still need review."}
+                {financials.lastUpdated
+                  ? ` Last updated ${formatDateTime(financials.lastUpdated)}.`
+                  : ""}
+              </p>
+            </div>
+            <Link
+              href={`/receipts/new?jobId=${job.id}`}
+              className="rounded-lg bg-[var(--cy-navy)] px-3 py-2 text-sm font-medium text-white"
+            >
+              Add receipt
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            {[
+              { label: "Revenue", value: formatMoney(financials.revenueCents) },
+              { label: "Direct costs", value: formatMoney(financials.directCostCents) },
+              { label: "Gross profit", value: formatMoney(financials.grossProfitCents) },
+              {
+                label: "Gross margin",
+                value: financials.grossMarginPercent == null ? "—" : `${financials.grossMarginPercent}%`,
+              },
+            ].map((card) => (
+              <div key={card.label} className="rounded-xl border border-[var(--border)] bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{card.label}</p>
+                <p className="mt-1 font-display text-2xl tabular-nums">{card.value}</p>
+              </div>
+            ))}
+          </div>
+          {financials.missingCosts ? (
+            <p className="text-sm text-amber-800">This job has revenue but no confirmed costs yet.</p>
+          ) : null}
+          {financials.unconfirmedReceipts.length > 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {financials.unconfirmedReceipts.length} receipt
+              {financials.unconfirmedReceipts.length === 1 ? "" : "s"} still need review and are not in these totals.
+            </p>
+          ) : null}
+          {financials.breakdown.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              No confirmed costs have been added to this job.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Sources</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {financials.breakdown.map((line) => (
+                    <TableRow key={line.category}>
+                      <TableCell className="font-medium">{line.label}</TableCell>
+                      <TableCell className="text-sm text-[var(--muted-foreground)]">
+                        {line.sources.map((source) => source.description).join(", ")}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(line.amountCents)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {canAddCost ? (
+            <ActionForm
+              action={addManualJobCostAction}
+              successMessage="Cost added."
+              className="space-y-3 rounded-xl border border-[var(--border)] bg-white p-4"
+            >
+              <h3 className="font-medium">Add a cost without a receipt</h3>
+              <input type="hidden" name="jobId" value={job.id} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <select
+                  name="category"
+                  className="h-10 rounded-lg border border-input px-2.5 text-sm"
+                  defaultValue="PERMIT"
+                >
+                  {Object.entries(JOB_COST_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <Input name="description" placeholder="Permit, subcontractor…" />
+                <Input name="amount" type="number" min="0.01" step="0.01" placeholder="125.00" required />
+              </div>
+              <Button type="submit" size="sm">
+                Add cost
+              </Button>
+            </ActionForm>
+          ) : null}
+        </section>
+      ) : can(ctx.role, "receipts:manage") ? (
+        <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+          <Link href={`/receipts/new?jobId=${job.id}`} className="font-medium hover:underline">
+            Add a receipt to this job
+          </Link>
+        </div>
+      ) : null}
 
       <div className="grid gap-8 lg:grid-cols-2">
         <section className="space-y-3">

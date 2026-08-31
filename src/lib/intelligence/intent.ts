@@ -29,6 +29,19 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
   if (/expense|cost|profit|margin|revenue/.test(q)) {
     tools.add("getRevenueMetrics");
     tools.add("getExpenseSummary");
+    tools.add("getJobProfitability");
+    tools.add("getLowMarginJobs");
+  }
+  if (/receipt|inbox|unassigned|duplicate/.test(q)) {
+    tools.add("getUnassignedReceipts");
+    tools.add("getReceiptSummary");
+  }
+  if (/fuel|truck|vehicle/.test(q)) tools.add("getVehicleExpenses");
+  if (/margin|job type|profitable/.test(q)) tools.add("getMarginByJobType");
+  if (/missing cost|no cost/.test(q)) tools.add("getJobsMissingCosts");
+  if (jobId && /make|profit|margin|cost/.test(q)) {
+    tools.add("getJobProfitability");
+    tools.add("getJobCostBreakdown");
   }
   if (/customer|call back|repeat/.test(q)) tools.add("getOpportunities");
   if (/trend|better|worse|compared|down|up/.test(q)) tools.add("getTrend");
@@ -44,8 +57,8 @@ export function suggestedQuestions(role: string, jobId?: string | null) {
   if (jobId) {
     return [
       "What do I still need on this job?",
-      "Summarize this job.",
-      "What does this Playbook require?",
+      "What did we make on this job?",
+      "Why was this job margin low?",
       "What should happen next?",
     ];
   }
@@ -58,10 +71,10 @@ export function suggestedQuestions(role: string, jobId?: string | null) {
   }
   return [
     "What needs my attention today?",
-    "What estimates should I follow up?",
+    "Show me receipts that need attention.",
+    "Which jobs had the highest margins this month?",
+    "How much did we spend on fuel?",
     "Who owes us money?",
     "How are we doing this month?",
-    "Where are our leads coming from?",
-    "What should I focus on?",
   ];
 }

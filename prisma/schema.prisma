@@ -136,6 +136,57 @@ enum ReceiptProcessingStatus {
   FAILED
 }
 
+enum ReceiptAssignment {
+  UNASSIGNED
+  JOB
+  VEHICLE
+  OVERHEAD
+  INVENTORY
+}
+
+enum ReceiptDuplicateStatus {
+  NONE
+  POSSIBLE
+}
+
+enum JobCostCategory {
+  EQUIPMENT
+  MATERIALS
+  LABOR
+  SUBCONTRACTOR
+  PERMIT
+  FUEL
+  RENTAL
+  INVENTORY
+  OTHER
+}
+
+enum JobCostSource {
+  RECEIPT
+  EXPENSE
+  MANUAL
+  LABOR
+  INVENTORY
+  IMPORTED
+}
+
+enum QuickBooksInvoiceTrigger {
+  MANUAL_ONLY
+  WHEN_CREATED
+  WHEN_SENT
+  WHEN_JOB_COMPLETED
+  WHEN_PAYMENT_RECEIVED
+}
+
+enum QuickBooksSyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+  REAUTH_REQUIRED
+  NEEDS_REVIEW
+}
+
 enum PaymentMethod {
   CASH
   CHECK
@@ -236,6 +287,7 @@ model User {
   lastName       String
   phone          String?
   isPlatformAdmin Boolean  @default(false)
+  loadedLaborCostCents Int?
   emailVerifiedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -254,6 +306,8 @@ model User {
   jobWorkflowEvents JobWorkflowEvent[]
   oauthStates OAuthState[]
   importSessions ImportSession[]
+  receiptsUploaded Receipt[] @relation("ReceiptUploader")
+  jobCostsCreated JobCost[] @relation("JobCostCreator")
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
@@ -366,6 +420,11 @@ model Company {
   importExternalRefs ImportExternalRef[]
   importProfiles ImportMappingProfile[]
   migrationProjects MigrationProject[]
+  vehicles Vehicle[]
+  jobCosts JobCost[]
+  quickBooksSettings QuickBooksSettings?
+  quickBooksMappings QuickBooksMapping[]
+  quickBooksSyncEvents QuickBooksSyncEvent[]
 
   @@index([status])
   @@index([industry])
@@ -573,6 +632,8 @@ model Job {
   estimates  Estimate[]      @relation("EstimateOptionalJob")
   invoices   Invoice[]
   expenses   Expense[]
+  jobCosts   JobCost[]
+  receipts   Receipt[]
   assignments JobAssignment[]
   leads      Lead[]
   reviews    Review[]
@@ -790,6 +851,7 @@ model Expense {
   customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   createdBy User     @relation("ExpenseCreator", fields: [createdById], references: [id])
   receipt   Receipt? @relation(fields: [receiptId], references: [id])
+  jobCosts  JobCost[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
@@ -802,29 +864,149 @@ model Expense {
 }
 
 model Receipt {
-  id                 String                  @id @default(cuid())
-  companyId          String
-  fileName           String
-  filePath           String
-  mimeType           String
-  fileSizeBytes      Int
-  processingStatus   ReceiptProcessingStatus @default(UPLOADED)
-  // Future AI extraction fields — null until a real extractor runs
-  extractedMerchant  String?
-  extractedDate      DateTime?
+  id                  String                  @id @default(cuid())
+  companyId           String
+  uploadedById        String?
+  fileName            String
+  filePath            String
+  mimeType            String
+  fileSizeBytes       Int
+  fileHash            String?
+  processingStatus    ReceiptProcessingStatus @default(UPLOADED)
+  assignment          ReceiptAssignment       @default(UNASSIGNED)
+  duplicateStatus     ReceiptDuplicateStatus  @default(NONE)
+  duplicateOfId       String?
+  vendor              String?
+  receiptDate         DateTime?
+  subtotalCents       Int?
+  tipCents            Int?
+  totalCents          Int?
+  category            ExpenseCategory?
+  description         String?
+  paymentMethod       PaymentMethod?
+  lastFour            String?
+  notes               String?
+  confidence          Int?
+  jobId               String?
+  vehicleId           String?
+  extractedMerchant   String?
+  extractedDate       DateTime?
   extractedTotalCents Int?
-  extractedTaxCents  Int?
-  suggestedCategory  ExpenseCategory?
-  suggestedJobId     String?
-  extractionError    String?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  extractedTaxCents   Int?
+  suggestedCategory   ExpenseCategory?
+  suggestedJobId      String?
+  extractionError     String?
+  confirmedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
-  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  expense Expense?
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uploadedBy User?     @relation("ReceiptUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  job        Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  expense    Expense?
+  jobCosts   JobCost[]
+  duplicateOf Receipt?  @relation("ReceiptDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates  Receipt[] @relation("ReceiptDuplicate")
 
   @@index([companyId])
   @@index([companyId, processingStatus])
+  @@index([companyId, assignment])
+  @@index([companyId, fileHash])
+  @@index([companyId, jobId])
+  @@index([companyId, vehicleId])
+}
+
+model Vehicle {
+  id         String   @id @default(cuid())
+  companyId  String
+  name       String
+  unitNumber String?
+  year       Int?
+  make       String?
+  model      String?
+  vin        String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  receipts Receipt[]
+
+  @@index([companyId])
+  @@index([companyId, active])
+}
+
+model JobCost {
+  id           String         @id @default(cuid())
+  companyId    String
+  jobId        String
+  category     JobCostCategory
+  description  String?
+  amountCents  Int
+  sourceType   JobCostSource
+  sourceId     String?
+  receiptId    String?
+  expenseId    String?
+  createdById  String
+  confirmed    Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  receipt   Receipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  expense   Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  createdBy User     @relation("JobCostCreator", fields: [createdById], references: [id])
+
+  @@unique([companyId, expenseId])
+  @@index([companyId, jobId])
+  @@index([companyId, confirmed])
+}
+
+model QuickBooksSettings {
+  id                 String                   @id @default(cuid())
+  companyId          String                   @unique
+  invoiceSyncTrigger QuickBooksInvoiceTrigger @default(MANUAL_ONLY)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model QuickBooksMapping {
+  id            String               @id @default(cuid())
+  companyId     String
+  entityType    String
+  internalId    String
+  quickbooksId  String
+  lastSyncedAt  DateTime?
+  status        QuickBooksSyncStatus @default(SYNCED)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, entityType, internalId])
+  @@index([companyId, entityType, quickbooksId])
+}
+
+model QuickBooksSyncEvent {
+  id            String               @id @default(cuid())
+  companyId     String
+  entityType    String
+  internalId    String?
+  quickbooksId  String?
+  direction     String               @default("PUSH")
+  status        QuickBooksSyncStatus
+  action        String
+  errorMessage  String?
+  createdAt     DateTime             @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, entityType, internalId])
 }
 
 // ============================================================

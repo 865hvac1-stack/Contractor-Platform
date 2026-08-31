@@ -7,6 +7,8 @@ import {
 } from "@/lib/integrations/crypto";
 import { refreshGoogleToken } from "@/lib/integrations/oauth/google";
 import { refreshTikTokToken } from "@/lib/integrations/oauth/tiktok";
+import { refreshQuickBooksToken } from "@/lib/quickbooks/oauth";
+import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import type { IntegrationStatus } from "@prisma/client";
 
 export async function upsertConnection(input: {
@@ -102,7 +104,9 @@ export async function getValidAccessToken(input: {
         ? await refreshGoogleToken(tokens.refreshToken)
         : input.providerKey.startsWith("tiktok")
           ? await refreshTikTokToken(tokens.refreshToken)
-          : tokens;
+          : input.providerKey === QUICKBOOKS_PROVIDER_KEY
+            ? await refreshQuickBooksToken(tokens.refreshToken)
+            : tokens;
     await saveConnectionTokens({
       companyId: input.companyId,
       connectionId: input.connectionId,

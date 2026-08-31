@@ -11,6 +11,8 @@ import { compareMetric } from "@/lib/intelligence/trends";
 import { getMarketingHubMetrics, getPerformanceBySource } from "@/lib/marketing/metrics";
 import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
 import { scopedCompanyWhere } from "@/lib/intelligence/scope";
+import { loadJobFinancials } from "@/lib/costing/job";
+import { getCompanyProfitability, getVehicleExpenseTotals } from "@/lib/costing/reporting";
 
 export type ToolContext = {
   companyId: string;
@@ -42,6 +44,14 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getTrend: "intelligence:view",
   getTopInsights: "intelligence:view",
   getOpportunities: "intelligence:view",
+  getJobProfitability: "job_costs:view",
+  getJobCostBreakdown: "job_costs:view",
+  getUnassignedReceipts: "receipts:view",
+  getReceiptSummary: "receipts:view",
+  getVehicleExpenses: "job_costs:view",
+  getMarginByJobType: "job_costs:view",
+  getLowMarginJobs: "job_costs:view",
+  getJobsMissingCosts: "job_costs:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -126,6 +136,46 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getOpportunities",
     description: "Rule-based follow-up and repeat opportunities.",
+    parameters: {},
+  },
+  {
+    name: "getJobProfitability",
+    description: "Verified job revenue, confirmed costs, profit, and margin. Deterministic math only.",
+    parameters: { jobId: { type: "string" } },
+  },
+  {
+    name: "getJobCostBreakdown",
+    description: "Confirmed cost lines for one job, with source records.",
+    parameters: { jobId: { type: "string" } },
+  },
+  {
+    name: "getUnassignedReceipts",
+    description: "Receipts that still need review or assignment.",
+    parameters: {},
+  },
+  {
+    name: "getReceiptSummary",
+    description: "Receipt inbox counts for this company.",
+    parameters: {},
+  },
+  {
+    name: "getVehicleExpenses",
+    description: "Confirmed truck/vehicle receipt totals this month. Operational, not accounting-grade.",
+    parameters: {},
+  },
+  {
+    name: "getMarginByJobType",
+    description: "Verified gross margin grouped by job type.",
+    parameters: {},
+  },
+  {
+    name: "getLowMarginJobs",
+    description: "Jobs with the lowest verified gross margin.",
+    parameters: {},
+  },
+  {
+    name: "getJobsMissingCosts",
+    description: "Jobs with revenue but no confirmed costs, or unreviewed receipts.",
     parameters: {},
   },
 ] as const;
@@ -419,6 +469,90 @@ export async function runIntelligenceTool(
     case "getOpportunities": {
       const rows = await getOpportunities(ctx.companyId);
       return { ok: true, data: rows, grounding: { sources: ["estimates", "leads", "jobs"] } };
+    }
+    case "getJobProfitability":
+    case "getJobCostBreakdown": {
+      const jobId = String(args.jobId || "");
+      if (!jobId) return deny("A job is required.");
+      const job = await prisma.job.findFirst({
+        where: { id: jobId, companyId: ctx.companyId },
+        select: { id: true },
+      });
+      if (!job) return deny("Job not found.");
+      const financials = await loadJobFinancials(ctx.companyId, job.id);
+      if (!financials) return deny("Job not found.");
+      return {
+        ok: true,
+        data:
+          name === "getJobProfitability"
+            ? {
+                jobNumber: financials.jobNumber,
+                revenueCents: financials.revenueCents,
+                directCostCents: financials.directCostCents,
+                grossProfitCents: financials.grossProfitCents,
+                grossMarginPercent: financials.grossMarginPercent,
+                isFinal: financials.isFinal,
+                unconfirmedReceipts: financials.unconfirmedReceipts.length,
+              }
+            : {
+                jobNumber: financials.jobNumber,
+                breakdown: financials.breakdown,
+                unconfirmedReceipts: financials.unconfirmedReceipts,
+              },
+        grounding: { sources: ["invoices", "job_costs", "receipts", "expenses"] },
+      };
+    }
+    case "getUnassignedReceipts": {
+      const receipts = await prisma.receipt.findMany({
+        where: {
+          ...companyWhere,
+          OR: [
+            { processingStatus: { in: ["UPLOADED", "REVIEW_REQUIRED"] } },
+            { assignment: "UNASSIGNED", processingStatus: { not: "CONFIRMED" } },
+          ],
+        },
+        select: { id: true, vendor: true, totalCents: true, processingStatus: true, assignment: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 25,
+      });
+      return { ok: true, data: receipts, grounding: { sources: ["receipts"] } };
+    }
+    case "getReceiptSummary": {
+      const [needsReview, unassigned, duplicates, confirmed] = await Promise.all([
+        prisma.receipt.count({
+          where: { ...companyWhere, processingStatus: { in: ["UPLOADED", "REVIEW_REQUIRED"] } },
+        }),
+        prisma.receipt.count({
+          where: { ...companyWhere, assignment: "UNASSIGNED", processingStatus: { not: "CONFIRMED" } },
+        }),
+        prisma.receipt.count({ where: { ...companyWhere, duplicateStatus: "POSSIBLE" } }),
+        prisma.receipt.count({ where: { ...companyWhere, processingStatus: "CONFIRMED" } }),
+      ]);
+      return {
+        ok: true,
+        data: { needsReview, unassigned, possibleDuplicates: duplicates, confirmed },
+        grounding: { sources: ["receipts"] },
+      };
+    }
+    case "getVehicleExpenses": {
+      const rows = await getVehicleExpenseTotals(ctx.companyId);
+      return { ok: true, data: rows, grounding: { sources: ["receipts", "vehicles"], period: "This month" } };
+    }
+    case "getMarginByJobType": {
+      const pack = await getCompanyProfitability(ctx.companyId);
+      return { ok: true, data: pack.byJobType, grounding: { sources: ["invoices", "job_costs"] } };
+    }
+    case "getLowMarginJobs": {
+      const pack = await getCompanyProfitability(ctx.companyId);
+      return { ok: true, data: pack.lowestMarginJobs, grounding: { sources: ["invoices", "job_costs"] } };
+    }
+    case "getJobsMissingCosts": {
+      const pack = await getCompanyProfitability(ctx.companyId);
+      return {
+        ok: true,
+        data: { missingCosts: pack.missingCosts, unreviewedReceipts: pack.unreviewedReceipts },
+        grounding: { sources: ["invoices", "job_costs", "receipts"] },
+      };
     }
     default:
       return deny("Unknown tool.");
