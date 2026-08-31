@@ -19,18 +19,16 @@ const allowedOrigins = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   serverExternalPackages: ["xlsx"],
+  // Bumps the Next/webpack config hash so Railway's mounted .next/cache
+  // cannot reuse the poisoned css-loader build from the failed deploys.
+  env: {
+    CY_CONNECT_ARCH: "accounts-v2-saas",
+  },
   experimental: {
     serverActions: {
       allowedOrigins: [...allowedOrigins, "*.up.railway.app", "*.railway.app"],
       bodySizeLimit: "22mb",
     },
-  },
-  // Railway bind-mounts .next/cache, so the build must not delete that directory.
-  // Disable webpack's persistent cache instead; a stale cache has failed image
-  // builds in css-loader/neo-async ("Callback was already called").
-  webpack: (config, { dev }) => {
-    if (!dev) config.cache = false;
-    return config;
   },
 };
 
