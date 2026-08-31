@@ -29,7 +29,7 @@ export async function companyPaymentMetrics(prisma: PrismaClient, companyId: str
     prisma.invoice.aggregate({
       where: {
         companyId,
-        status: { in: ["SENT", "VIEWED", "PARTIALLY_PAID", "OVERDUE"] },
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         importMode: { not: "HISTORICAL" },
       },
       _sum: { balanceCents: true },
@@ -45,7 +45,7 @@ export async function companyPaymentMetrics(prisma: PrismaClient, companyId: str
     collectedTodayCents: sumCollected(startOfDay),
     collectedWeekCents: sumCollected(startOfWeek),
     collectedMonthCents: sumCollected(startOfMonth),
-    outstandingCents: invoices._sum.balanceCents ?? 0,
+    outstandingCents: invoices._sum?.balanceCents ?? 0,
     processingCents: payments
       .filter((payment) => payment.status === "PROCESSING")
       .reduce((sum, payment) => sum + payment.amountCents, 0),

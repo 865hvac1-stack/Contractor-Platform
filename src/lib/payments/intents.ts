@@ -44,9 +44,11 @@ export async function createInvoicePaymentIntent(
   const stripe = requireStripe();
   if (existing?.providerPaymentId) {
     try {
-      const prior = await stripe.paymentIntents.retrieve(existing.providerPaymentId, {
-        stripeAccount: account.stripeAccountId,
-      });
+      const prior = await stripe.paymentIntents.retrieve(
+        existing.providerPaymentId,
+        undefined,
+        { stripeAccount: account.stripeAccountId }
+      );
       if (
         prior.client_secret &&
         (prior.status === "requires_payment_method" ||

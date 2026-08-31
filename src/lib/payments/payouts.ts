@@ -13,7 +13,7 @@ export async function loadPayoutSnapshot(prisma: PrismaClient, companyId: string
   if (!stripe) return { ok: false as const, error: "Payments are not configured." };
   try {
     const [balance, payouts] = await Promise.all([
-      stripe.balance.retrieve({ stripeAccount: account.stripeAccountId }),
+      stripe.balance.retrieve(undefined, { stripeAccount: account.stripeAccountId }),
       stripe.payouts.list({ limit: 8 }, { stripeAccount: account.stripeAccountId }),
     ]);
     const available = balance.available.reduce((sum, row) => sum + row.amount, 0);
