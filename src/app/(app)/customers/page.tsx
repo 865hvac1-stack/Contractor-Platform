@@ -69,7 +69,7 @@ export default async function CustomersPage({
 
       <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
         <p className="mb-2 text-sm font-medium">Find a customer</p>
-        <CustomerSearchTypeahead hrefFor={(id) => `/customers/${id}`} />
+        <CustomerSearchTypeahead hrefPrefix="/customers" />
       </div>
 
       {customers.length === 0 ? (

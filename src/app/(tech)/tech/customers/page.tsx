@@ -28,7 +28,7 @@ export default async function TechCustomersPage() {
     <div className="space-y-4">
       <h1 className="font-display text-3xl tracking-tight">Customers</h1>
       <p className="text-sm text-[var(--muted-foreground)]">People on jobs assigned to you. No company accounting.</p>
-      <CustomerSearchTypeahead hrefFor={(id) => `/tech/customers/${id}`} />
+      <CustomerSearchTypeahead hrefPrefix="/tech/customers" />
       {customers.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-12 text-center text-sm text-[var(--muted-foreground)]">
           No customers on your assigned jobs.

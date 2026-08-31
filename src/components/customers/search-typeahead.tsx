@@ -14,10 +14,10 @@ type Hit = {
 };
 
 export function CustomerSearchTypeahead({
-  hrefFor,
+  hrefPrefix = "/customers",
   placeholder = "Search name, phone, email, address, or company…",
 }: {
-  hrefFor: (id: string) => string;
+  hrefPrefix?: string;
   placeholder?: string;
 }) {
   const router = useRouter();
@@ -79,7 +79,7 @@ export function CustomerSearchTypeahead({
               <button
                 type="button"
                 className="flex min-h-16 w-full flex-col items-start px-4 py-3 text-left"
-                onClick={() => router.push(hrefFor(item.id))}
+                onClick={() => router.push(`${hrefPrefix}/${item.id}`)}
               >
                 <span className="font-medium text-[var(--cy-navy)]">{item.name}</span>
                 <span className="text-sm text-[var(--muted-foreground)]">

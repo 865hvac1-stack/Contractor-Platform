@@ -62,7 +62,7 @@ export default async function OfficeHubPage() {
           Name, phone, email, address, or company.
         </p>
         <div className="mt-4">
-          <CustomerSearchTypeahead hrefFor={(id) => `/office/customers/${id}`} />
+          <CustomerSearchTypeahead hrefPrefix="/office/customers" />
         </div>
       </section>
 
