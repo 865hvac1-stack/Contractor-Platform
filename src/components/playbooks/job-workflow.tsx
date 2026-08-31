@@ -30,6 +30,7 @@ export function JobWorkflowPanel({
   customerPhone,
   propertyAddress,
   canAct,
+  compact = false,
 }: {
   jobId: string;
   playbookName: string;
@@ -43,6 +44,7 @@ export function JobWorkflowPanel({
   customerPhone: string | null;
   propertyAddress: string;
   canAct: boolean;
+  compact?: boolean;
 }) {
   const done = new Set(completedStepIds);
   const next = nextTechnicianAction(definition, done);
@@ -51,6 +53,9 @@ export function JobWorkflowPanel({
 
   return (
     <section className="space-y-4 rounded-2xl border border-[var(--border)] bg-white p-4 md:p-5">
+      {compact ? (
+        <p className="text-sm font-medium text-[var(--cy-navy)]">{playbookName}</p>
+      ) : (
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
           Today&apos;s workflow
@@ -62,8 +67,9 @@ export function JobWorkflowPanel({
         </p>
         <p className="text-sm text-[var(--muted-foreground)]">{propertyAddress}</p>
       </div>
+      )}
 
-      {next ? (
+      {next && !compact ? (
         <div className="rounded-2xl bg-[var(--cy-navy)] p-4 text-white">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
             Next step
@@ -96,6 +102,7 @@ export function JobWorkflowPanel({
         <p className="text-sm text-[var(--muted-foreground)]">No technician tap is waiting.</p>
       )}
 
+      {compact ? null : (
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {customerPhone ? (
           <a
@@ -130,12 +137,13 @@ export function JobWorkflowPanel({
           Directions
         </a>
         <Link
-          href={`/estimates/new?jobId=${jobId}`}
+          href={compact ? `#options` : `/estimates/new?jobId=${jobId}`}
           className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cy-gray)] px-3 py-3 text-center text-sm font-semibold text-[var(--cy-navy)]"
         >
           Estimate
         </Link>
       </div>
+      )}
 
       {stages.length > 0 ? (
         <ol className="space-y-1.5">
@@ -160,7 +168,7 @@ export function JobWorkflowPanel({
         </ol>
       ) : null}
 
-      {remaining.length > 0 ? (
+      {remaining.length > 0 && !compact ? (
         <div className="rounded-xl border border-[var(--cy-orange)]/30 bg-[var(--cy-orange-muted)] p-3">
           <p className="text-sm font-semibold text-[var(--cy-navy)]">
             {remaining.length} item{remaining.length === 1 ? "" : "s"} remaining
@@ -183,7 +191,7 @@ export function JobWorkflowPanel({
         canAct={canAct}
       />
 
-      {canAct ? <CompleteJobButton jobId={jobId} remainingCount={remaining.length} /> : null}
+      {canAct && !compact ? <CompleteJobButton jobId={jobId} remainingCount={remaining.length} /> : null}
     </section>
   );
 }

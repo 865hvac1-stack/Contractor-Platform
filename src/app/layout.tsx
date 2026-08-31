@@ -12,6 +12,16 @@ const plusJakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: `${brand.name} — ${brand.positioning}`,
   description: brand.tagline,
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: brand.name,
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -33,10 +33,25 @@ export async function uploadReceiptAction(
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Take a photo or choose a file." };
     if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Keep receipts under 10 MB." };
     if (!ALLOWED.includes(file.type)) return { ok: false, error: "Use a photo or PDF." };
-    const jobId = String(formData.get("jobId") || "") || null;
+    const requestedAssignment = String(formData.get("assignment") || "");
+    const vehicleId = String(formData.get("vehicleId") || "") || null;
+    const rawJobId = String(formData.get("jobId") || "") || null;
+    const assignment: ReceiptAssignment =
+      requestedAssignment === "VEHICLE"
+        ? "VEHICLE"
+        : requestedAssignment === "OVERHEAD"
+          ? "OVERHEAD"
+          : rawJobId
+            ? "JOB"
+            : "UNASSIGNED";
+    const jobId = assignment === "JOB" ? rawJobId : null;
     if (jobId) {
       const job = await prisma.job.findFirst({ where: { id: jobId, companyId: ctx.company.id } });
       if (!job) return { ok: false, error: "That job is not in your company." };
+    }
+    if (vehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicleId, companyId: ctx.company.id } });
+      if (!vehicle) return { ok: false, error: "That vehicle is not in your company." };
     }
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileHash = createHash("sha256").update(buffer).digest("hex");
@@ -69,8 +84,9 @@ export async function uploadReceiptAction(
         fileSizeBytes: file.size,
         fileHash,
         processingStatus: "REVIEW_REQUIRED",
-        assignment: jobId ? "JOB" : "UNASSIGNED",
+        assignment,
         jobId,
+        vehicleId,
         vendor: suggestion.vendor,
         receiptDate: suggestion.date ? new Date(suggestion.date) : null,
         subtotalCents: suggestion.subtotalCents,
@@ -96,6 +112,11 @@ export async function uploadReceiptAction(
       metadata: { fileName: file.name, duplicate: Boolean(duplicate) },
     });
     revalidatePath("/receipts");
+    const returnTo = String(formData.get("returnTo") || "");
+    if (returnTo.startsWith("/tech")) {
+      revalidatePath(returnTo);
+      redirect(returnTo);
+    }
     redirect(`/receipts/${receipt.id}`);
   } catch (error) {
     if (isNextRedirect(error)) throw error;

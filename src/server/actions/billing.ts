@@ -6,8 +6,9 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { nextNumber } from "@/lib/sequences";
 import { lineTotalCents, sumCents } from "@/lib/money";
-import { requirePermission } from "@/lib/tenant";
+import { requirePermission, jobAccessFilter } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { estimateSchema, invoiceSchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
 import type { EstimateStatus, InvoiceStatus } from "@prisma/client";
@@ -389,7 +390,10 @@ export async function recordPaymentAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("invoices:manage");
+    const ctx = await requirePermission("invoices:view");
+    if (!can(ctx.role, "invoices:manage") && !can(ctx.role, "invoices:field")) {
+      return { ok: false, error: "You cannot record payments." };
+    }
     const invoiceId = String(formData.get("invoiceId") || "");
     const amountDollars = parseFloat(String(formData.get("amount") || "0"));
     const method = String(formData.get("method") || "OTHER") as
@@ -407,6 +411,12 @@ export async function recordPaymentAction(
       where: { id: invoiceId, companyId: ctx.company.id },
     });
     if (!invoice) return { ok: false, error: "Invoice not found." };
+    if (can(ctx.role, "jobs:assigned_only") && invoice.jobId) {
+      const assigned = await prisma.job.findFirst({
+        where: { id: invoice.jobId, companyId: ctx.company.id, ...jobAccessFilter(ctx.role, ctx.user.id) },
+      });
+      if (!assigned) return { ok: false, error: "Invoice not found." };
+    }
 
     const amountCents = Math.round(amountDollars * 100);
     const amountPaidCents = invoice.amountPaidCents + amountCents;

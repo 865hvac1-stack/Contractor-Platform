@@ -289,6 +289,21 @@ export async function runIntelligenceTool(
     return deny("You do not have access to that information.");
   }
 
+  const fieldSafeTools = new Set([
+    "getTodaySchedule",
+    "getJobSummary",
+    "getPlaybookStatus",
+    "getTechnicianScorecard",
+    "getCompensationSummary",
+    "getPendingCompensation",
+    "getAverageTicket",
+    "getCloseRate",
+    "getMembershipConversion",
+  ]);
+  if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "reports:view") && !fieldSafeTools.has(name)) {
+    return deny("That company information is not available in the field.");
+  }
+
   const assigned = jobAccessFilter(ctx.role, ctx.userId);
   const companyWhere = scopedCompanyWhere(ctx.companyId);
 

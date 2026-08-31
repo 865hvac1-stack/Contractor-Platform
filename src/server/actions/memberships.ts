@@ -173,7 +173,12 @@ export async function sellMembershipAction(
     });
     revalidatePath("/memberships");
     revalidatePath(`/customers/${customerId}`);
-    if (sourceJobId) revalidatePath(`/jobs/${sourceJobId}`);
+    if (sourceJobId) {
+      revalidatePath(`/jobs/${sourceJobId}`);
+      revalidatePath(`/tech/jobs/${sourceJobId}`);
+      revalidatePath("/tech");
+      revalidatePath("/tech/performance");
+    }
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

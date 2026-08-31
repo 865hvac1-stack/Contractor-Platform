@@ -54,6 +54,18 @@ async function main() {
     },
   });
 
+  const techEmail = (process.env.SEED_TECH_EMAIL || "tech@865hvac.local").toLowerCase();
+  const technician = await prisma.user.upsert({
+    where: { email: techEmail },
+    update: { passwordHash: ownerHash },
+    create: {
+      email: techEmail,
+      passwordHash: ownerHash,
+      firstName: "JR",
+      lastName: "Tech",
+    },
+  });
+
   let company = await prisma.company.findFirst({
     where: {
       businessName: "865 HVAC",
@@ -96,6 +108,18 @@ async function main() {
     });
   }
 
+  await prisma.membership.upsert({
+    where: { companyId_userId: { companyId: company.id, userId: technician.id } },
+    update: { role: "TECHNICIAN", status: "ACTIVE" },
+    create: {
+      companyId: company.id,
+      userId: technician.id,
+      role: "TECHNICIAN",
+      status: "ACTIVE",
+      joinedAt: new Date(),
+    },
+  });
+
   await prisma.auditLog.create({
     data: {
       companyId: company.id,
@@ -113,6 +137,7 @@ async function main() {
   console.log("Seed complete (development only).");
   console.log(`  Company: ${company.businessName} (${company.id})`);
   console.log(`  Owner:   ${ownerEmail}`);
+  console.log(`  Tech:    ${techEmail} (Technician Portal /tech — no seeded jobs)`);
   console.log(`  Admin:   ${adminEmail}`);
   console.log("  No fake customers, jobs, or financial records were created.");
 

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
+import { isFieldRole } from "@/lib/permissions";
 import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (tenant.company.status === "ONBOARDING") {
     redirect("/onboarding");
+  }
+
+  if (isFieldRole(tenant.role)) {
+    redirect("/tech");
   }
 
   if (tenant.company.status === "SUSPENDED") {

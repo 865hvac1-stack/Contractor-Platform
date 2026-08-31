@@ -21,6 +21,7 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validators";
+import { isFieldRole } from "@/lib/permissions";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -66,6 +67,10 @@ export async function loginAction(
     if (membership.company.status === "ONBOARDING") {
       redirect("/onboarding");
     }
+    const next = String(formData.get("next") || "");
+    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : null;
+    if (safeNext) redirect(safeNext);
+    if (isFieldRole(membership.role)) redirect("/tech");
     redirect("/dashboard");
   } catch (error) {
     if (isNextRedirect(error)) throw error;

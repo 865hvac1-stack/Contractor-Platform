@@ -14,6 +14,7 @@ export type Permission =
   | "jobs:manage"
   | "jobs:view"
   | "jobs:assigned_only"
+  | "jobs:field_status"
   | "schedule:manage"
   | "schedule:view"
   | "estimates:manage"
@@ -21,6 +22,8 @@ export type Permission =
   | "invoices:manage"
   | "invoices:view"
   | "invoices:financial"
+  | "invoices:field"
+  | "estimates:discount"
   | "expenses:manage"
   | "expenses:view"
   | "reports:view"
@@ -63,6 +66,7 @@ const ALL_COMPANY: Permission[] = [
   "customers:view",
   "jobs:manage",
   "jobs:view",
+  "jobs:field_status",
   "schedule:manage",
   "schedule:view",
   "estimates:manage",
@@ -70,6 +74,8 @@ const ALL_COMPANY: Permission[] = [
   "invoices:manage",
   "invoices:view",
   "invoices:financial",
+  "invoices:field",
+  "estimates:discount",
   "expenses:manage",
   "expenses:view",
   "reports:view",
@@ -112,12 +118,15 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "customers:view",
     "jobs:manage",
     "jobs:view",
+    "jobs:field_status",
     "schedule:manage",
     "schedule:view",
     "estimates:manage",
     "estimates:view",
     "invoices:manage",
     "invoices:view",
+    "invoices:field",
+    "estimates:discount",
     "expenses:manage",
     "expenses:view",
     "reports:view",
@@ -152,6 +161,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "customers:view",
     "jobs:manage",
     "jobs:view",
+    "jobs:field_status",
     "schedule:manage",
     "schedule:view",
     "estimates:view",
@@ -183,10 +193,13 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
   TECHNICIAN: [
     "jobs:view",
     "jobs:assigned_only",
+    "jobs:field_status",
     "customers:view",
     "schedule:view",
     "estimates:view",
     "invoices:view",
+    "invoices:field",
+    "estimates:discount",
     "expenses:manage",
     "expenses:view",
     "equipment:view",
@@ -205,6 +218,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
   INSTALLER: [
     "jobs:view",
     "jobs:assigned_only",
+    "jobs:field_status",
     "customers:view",
     "schedule:view",
     "equipment:view",
@@ -218,8 +232,11 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "customers:view",
     "jobs:manage",
     "jobs:view",
+    "jobs:field_status",
     "schedule:view",
     "estimates:view",
+    "invoices:field",
+    "estimates:discount",
     "invoices:view",
     "expenses:view",
     "reports:view",
@@ -251,6 +268,10 @@ export function can(role: CompanyRole, permission: Permission): boolean {
 
 export function canAny(role: CompanyRole, permissions: Permission[]): boolean {
   return permissions.some((p) => can(role, p));
+}
+
+export function isFieldRole(role: CompanyRole) {
+  return role === "TECHNICIAN" || role === "INSTALLER";
 }
 
 export const ROLE_LABELS: Record<CompanyRole, string> = {

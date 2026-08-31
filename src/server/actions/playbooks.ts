@@ -334,6 +334,8 @@ export async function advancePlaybookStepAction(
     });
 
     revalidatePath(`/jobs/${job.id}`);
+    revalidatePath(`/tech/jobs/${job.id}`);
+    revalidatePath("/tech");
     revalidatePath("/dashboard");
     return { ok: true };
   } catch (e) {
@@ -421,6 +423,32 @@ export async function completeJobWithPlaybookAction(jobId: string): Promise<Acti
         data: { currentStageKey: "completed" },
       });
     }
+    if (job.importMode !== "HISTORICAL") {
+      const { applyCompensation } = await import("@/lib/compensation/apply");
+      const { attributionUserIds } = await import("@/lib/compensation/attribute");
+      const invoices = await prisma.invoice.findMany({
+        where: { companyId: ctx.company.id, jobId: job.id, status: { notIn: ["DRAFT", "VOID"] } },
+        select: { totalCents: true },
+      });
+      const saleCents = invoices.reduce((sum, invoice) => sum + invoice.totalCents, 0);
+      const userIds = await attributionUserIds(prisma, { jobId: job.id });
+      for (const userId of userIds) {
+        await applyCompensation({
+          prisma,
+          companyId: ctx.company.id,
+          userId,
+          trigger: "JOB_COMPLETED",
+          sourceType: "JOB",
+          sourceId: job.id,
+          saleCents,
+          jobId: job.id,
+          customerId: job.customerId,
+          importMode: job.importMode,
+          jobType: job.jobType,
+        });
+      }
+    }
+
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
@@ -430,6 +458,9 @@ export async function completeJobWithPlaybookAction(jobId: string): Promise<Acti
       metadata: { from: job.status, to: "COMPLETED" },
     });
     revalidatePath(`/jobs/${job.id}`);
+    revalidatePath(`/tech/jobs/${job.id}`);
+    revalidatePath("/tech");
+    revalidatePath("/tech/performance");
     revalidatePath("/dashboard");
     return { ok: true };
   } catch (e) {

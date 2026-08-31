@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { requirePermission } from "@/lib/tenant";
+import { requirePermission, jobAccessFilter } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
+import { isFieldRole } from "@/lib/permissions";
+import { isNextRedirect } from "@/lib/action-errors";
 import { nanoid } from "nanoid";
 import { nextNumber } from "@/lib/sequences";
 import { lineTotalCents, sumCents } from "@/lib/money";
@@ -41,10 +43,14 @@ async function refreshEstimateTotals(estimateId: string, companyId: string) {
 export async function createDraftEstimateForJobAction(jobId: string): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("estimates:manage");
+    const access = jobAccessFilter(ctx.role, ctx.user.id);
     const job = await prisma.job.findFirst({
-      where: { id: jobId, companyId: ctx.company.id },
+      where: { id: jobId, companyId: ctx.company.id, ...access },
     });
     if (!job) return { ok: false, error: "Job not found." };
+    const optionNames = isFieldRole(ctx.role)
+      ? ["Good", "Better", "Best"]
+      : ["Option 1", "Option 2", "Option 3"];
     const estimateNumber = await nextNumber(ctx.company.id, "ESTIMATE", "EST");
     const estimate = await prisma.estimate.create({
       data: {
@@ -57,11 +63,11 @@ export async function createDraftEstimateForJobAction(jobId: string): Promise<Ac
         createdById: ctx.user.id,
         publicToken: nanoid(24),
         options: {
-          create: [
-            { companyId: ctx.company.id, name: "Option 1", sortOrder: 0 },
-            { companyId: ctx.company.id, name: "Option 2", sortOrder: 1 },
-            { companyId: ctx.company.id, name: "Option 3", sortOrder: 2 },
-          ],
+          create: optionNames.map((name, sortOrder) => ({
+            companyId: ctx.company.id,
+            name,
+            sortOrder,
+          })),
         },
       },
     });
@@ -73,8 +79,13 @@ export async function createDraftEstimateForJobAction(jobId: string): Promise<Ac
       entityId: estimate.id,
       metadata: { estimateNumber, fromJob: job.jobNumber },
     });
+    if (isFieldRole(ctx.role)) {
+      revalidatePath(`/tech/jobs/${job.id}`);
+      redirect(`/tech/jobs/${job.id}`);
+    }
     redirect(`/estimates/${estimate.id}`);
   } catch (e) {
+    if (isNextRedirect(e)) throw e;
     if (e instanceof AuthError) return { ok: false, error: e.message };
     throw e;
   }
@@ -179,6 +190,7 @@ export async function addPricebookItemToEstimateAction(
       metadata: { itemId: item.id, unitPriceCents, memberPriceApplied: unitPriceCents === item.memberPriceCents },
     });
     revalidatePath(`/estimates/${estimateId}`);
+    if (estimate.jobId) revalidatePath(`/tech/jobs/${estimate.jobId}`);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
@@ -201,6 +213,7 @@ export async function presentEstimateAction(estimateId: string): Promise<ActionR
       });
     }
     revalidatePath(`/estimates/${estimateId}`);
+    if (estimate.jobId) revalidatePath(`/tech/jobs/${estimate.jobId}`);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
@@ -306,5 +319,10 @@ export async function approveEstimateOptionAction(input: {
     metadata: { optionId: input.optionId, method: input.method, version: estimate.version },
   });
   revalidatePath(`/estimates/${estimate.id}`);
+  if (estimate.jobId) {
+    revalidatePath(`/jobs/${estimate.jobId}`);
+    revalidatePath(`/tech/jobs/${estimate.jobId}`);
+    revalidatePath(`/tech/jobs/${estimate.jobId}/present`);
+  }
   return { ok: true };
 }

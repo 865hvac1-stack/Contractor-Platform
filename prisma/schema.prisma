@@ -359,6 +359,7 @@ model User {
   membershipsSold CustomerMembership[] @relation("MembershipSoldBy")
   compensationEvents CompensationEvent[]
   compensationApprovals CompensationEvent[] @relation("CompensationApprover")
+  jobPhotosUploaded JobPhoto[] @relation("JobPhotoUploader")
   performanceGoals PerformanceGoal[]
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
@@ -486,6 +487,8 @@ model Company {
   compensationRuleVersions CompensationRuleVersion[]
   compensationEvents CompensationEvent[]
   performanceGoals PerformanceGoal[]
+  jobPhotos JobPhoto[]
+  techDiscountLimitBps Int?
 
   @@index([status])
   @@index([industry])
@@ -507,6 +510,8 @@ model Membership {
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   invitedBy User?   @relation("MembershipInviter", fields: [invitedById], references: [id])
+  assignedVehicleId String?
+  assignedVehicle Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, userId])
   @@index([userId])
@@ -640,12 +645,33 @@ model Equipment {
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  photos JobPhoto[]
 
   @@index([companyId])
   @@index([companyId, customerId])
   @@index([companyId, propertyId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+}
+
+model JobPhoto {
+  id            String   @id @default(cuid())
+  companyId     String
+  jobId         String
+  equipmentId   String?
+  kind          String   @default("OTHER")
+  fileName      String
+  filePath      String
+  mimeType      String
+  uploadedById  String?
+  createdAt     DateTime @default(now())
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  equipment  Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  uploadedBy User?      @relation("JobPhotoUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, jobId])
 }
 
 // ============================================================
@@ -707,6 +733,7 @@ model Job {
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
   compensationEvents CompensationEvent[]
+  photos JobPhoto[]
 
   @@unique([companyId, jobNumber])
   @@index([companyId])
@@ -1021,6 +1048,7 @@ model Vehicle {
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   receipts Receipt[]
+  assignedMemberships Membership[]
 
   @@index([companyId])
   @@index([companyId, active])

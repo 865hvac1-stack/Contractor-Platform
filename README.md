@@ -26,6 +26,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Memberships:** Operations → Memberships. Service-agreement records with attribution. Recurring billing is not configured.
 - **Compensation:** Team → Compensation. Configurable incentives. Not payroll. Pending is never paid.
 - **Scorecards:** My Performance and Team scorecards from verified jobs, invoices, estimates, and memberships.
+- **Technician Portal:** `/tech` is a mobile-first field experience for TECHNICIAN and INSTALLER roles. Same jobs, playbooks, pricebook, estimates, invoices, payments, memberships, receipts, and scorecards — not a second system. Bottom nav: Home, Jobs, Performance, Inbox, More.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
 - **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
@@ -61,6 +62,7 @@ UPLOAD_DIR="./uploads"
 ALLOW_SEED="true"
 SEED_OWNER_EMAIL="owner@865hvac.local"
 SEED_OWNER_PASSWORD="ChangeMe-DevOnly-865!"
+SEED_TECH_EMAIL="tech@865hvac.local"
 SEED_PLATFORM_ADMIN_EMAIL="admin@platform.local"
 SEED_PLATFORM_ADMIN_PASSWORD="ChangeMe-DevOnly-Admin!"
 ```
@@ -104,7 +106,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 
 ## First user journey
 
-1. Register → onboarding (company + industry) → Command Center  
+1. Register → onboarding (company + industry) → Command Center (owners/office). Technicians and installers land on `/tech`.  
 2. Create customer → add property  
 3. Create job → choose a playbook (optional) → schedule  
 4. Job → Build options → Pricebook → present estimate → customer approval  

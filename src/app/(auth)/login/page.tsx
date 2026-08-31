@@ -5,13 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginAction } from "@/server/actions/auth";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const next = (await searchParams).next;
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+
   return (
     <div>
       <h1 className="font-display text-2xl tracking-tight text-[var(--foreground)]">Welcome back</h1>
       <p className="mt-1 text-sm text-[var(--muted-foreground)]">Sign in to your workspace.</p>
 
       <ActionForm action={loginAction} className="mt-8 space-y-5">
+        {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input

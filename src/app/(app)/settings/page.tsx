@@ -2,6 +2,11 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
 import { industries } from "@/lib/brand";
+import { ActionForm } from "@/components/action-form";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { saveTechDiscountLimitAction } from "@/server/actions/field";
 
 export default async function SettingsPage() {
   const ctx = await requirePermission("company:settings");
@@ -96,6 +101,29 @@ export default async function SettingsPage() {
           </p>
         </Link>
       ) : null}
+
+      <div className="rounded-xl border border-[var(--border)] bg-white p-6">
+        <h2 className="font-medium">Field permissions</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Technician discount cap for assigned-only roles. Leave blank for no extra cap beyond the role.
+        </p>
+        <ActionForm action={saveTechDiscountLimitAction} className="mt-4 space-y-3" successMessage="Technician discount limit saved.">
+          <Label htmlFor="tech-discount">Maximum technician discount %</Label>
+          <Input
+            id="tech-discount"
+            name="percent"
+            type="number"
+            min={0}
+            step="0.1"
+            defaultValue={
+              company.techDiscountLimitBps != null ? String(company.techDiscountLimitBps / 100) : ""
+            }
+            placeholder="e.g. 5"
+            className="h-11 max-w-xs"
+          />
+          <Button type="submit">Save field discount limit</Button>
+        </ActionForm>
+      </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-white p-6">
         <h2 className="font-medium">Company profile</h2>

@@ -1,0 +1,18 @@
+{
+  "name": "ContractorYou",
+  "short_name": "ContractorYou",
+  "description": "Run the call. See the next job, follow the playbook, collect, and move on.",
+  "start_url": "/tech",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
