@@ -29,7 +29,7 @@ export function paymentsStatusCopy(status: ConnectUxStatus) {
   if (status === "ONBOARDING") {
     return {
       title: "Setup in progress",
-      body: "Finish business verification and payout setup inside ContractorYou. Payments stay off until Stripe confirms they are enabled.",
+      body: "Stripe is still enabling card payments or payouts. If you already finished the form, Stripe may be reviewing. This page stays off Payments Active until Stripe reports both as active.",
       action: "Continue Setup",
     };
   }
@@ -52,6 +52,28 @@ export function paymentsStatusCopy(status: ConnectUxStatus) {
     body: "Accepting payments. Payouts go to your business bank account.",
     action: "Update payment details",
   };
+}
+
+export function paymentsCapabilitySummary(account: {
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  requirementsDue?: string | null;
+}) {
+  return {
+    cards: account.chargesEnabled ? "Active" : capabilityWord(account.requirementsDue, "card_payments"),
+    payouts: account.payoutsEnabled ? "Active" : capabilityWord(account.requirementsDue, "payouts"),
+  };
+}
+
+function capabilityWord(requirementsDue: string | null | undefined, name: string) {
+  const token = (requirementsDue || "")
+    .split(",")
+    .find((part) => part.startsWith(`${name}:`));
+  const status = token?.split(":")[1];
+  if (status === "pending") return "Pending Stripe review";
+  if (status === "restricted") return "Restricted";
+  if (status === "not_requested") return "Not enabled yet";
+  return "Not active yet";
 }
 
 export const EMBEDDED_SETUP_COPY = {

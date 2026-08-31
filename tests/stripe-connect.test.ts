@@ -46,7 +46,7 @@ describe("stripe connect status honesty", () => {
         payoutsEnabled: true,
         detailsSubmitted: false,
       })
-    ).toBe("ONBOARDING");
+    ).toBe("CONNECTED");
     expect(
       deriveOnboardingStatus({
         chargesEnabled: true,
@@ -154,6 +154,7 @@ describe("stripe accounts v2 helpers", () => {
     expect(paymentsStatusCopy("ACTION_REQUIRED").title).toBe("Payments need attention");
     expect(paymentsStatusCopy("ACTION_REQUIRED").action).toBe("Complete Required Information");
     expect(paymentsStatusCopy("NOT_CONFIGURED").title).toMatch(/not configured/i);
+    expect(paymentsStatusCopy("ONBOARDING").body).toMatch(/reviewing|Stripe confirms/i);
     expect(EMBEDDED_SETUP_COPY.failed).toBe("Unable to start payment setup. Please try again.");
     expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("w-full");
     expect(PAYMENTS_EMBED_FRAME_CLASS).toContain("max-w-full");
@@ -210,8 +211,59 @@ describe("stripe accounts v2 helpers", () => {
         chargesEnabled: ready.chargesEnabled,
         payoutsEnabled: ready.payoutsEnabled,
         detailsSubmitted: ready.detailsSubmitted,
+        userActionRequired: ready.userActionRequired,
       })
     ).toBe("CONNECTED");
+
+    const reviewing = mapV2AccountCapabilities({
+      id: "acct_review",
+      configuration: {
+        merchant: {
+          applied: "2024-11-26T16:33:03.000Z",
+          capabilities: {
+            card_payments: { status: "pending", status_details: [] },
+            stripe_balance: { payouts: { status: "pending", status_details: [] } },
+          },
+        },
+      },
+      requirements: { entries: [], summary: { minimum_deadline: { status: "eventually_due" } } },
+    });
+    expect(reviewing.merchantApplied).toBe(true);
+    expect(reviewing.detailsSubmitted).toBe(false);
+    expect(reviewing.userActionRequired).toBe(false);
+    expect(
+      deriveOnboardingStatus({
+        chargesEnabled: reviewing.chargesEnabled,
+        payoutsEnabled: reviewing.payoutsEnabled,
+        detailsSubmitted: reviewing.detailsSubmitted,
+        userActionRequired: reviewing.userActionRequired,
+      })
+    ).toBe("ONBOARDING");
+
+    const needsInfo = mapV2AccountCapabilities({
+      id: "acct_need",
+      configuration: {
+        merchant: {
+          applied: true,
+          capabilities: {
+            card_payments: {
+              status: "restricted",
+              status_details: [{ code: "requirements_past_due", resolution: "provide_info" }],
+            },
+          },
+        },
+      },
+      requirements: { entries: [] },
+    });
+    expect(needsInfo.userActionRequired).toBe(true);
+    expect(
+      deriveOnboardingStatus({
+        chargesEnabled: needsInfo.chargesEnabled,
+        payoutsEnabled: needsInfo.payoutsEnabled,
+        detailsSubmitted: needsInfo.detailsSubmitted,
+        userActionRequired: needsInfo.userActionRequired,
+      })
+    ).toBe("ACTION_REQUIRED");
   });
 
   it("resolves connected account ids from v2 events and never from a browser companyId", () => {

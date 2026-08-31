@@ -85,6 +85,24 @@ export function PaymentsSettingsActions({
           ) : null}
         </div>
       ) : null}
+      {!showEmbed && status !== "NOT_CONFIGURED" && status !== "NOT_CONNECTED" ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full sm:w-auto"
+          disabled={Boolean(pending)}
+          onClick={() => {
+            void (async () => {
+              setPending("refresh");
+              await refreshPaymentsStatusAction();
+              setPending(null);
+              router.refresh();
+            })();
+          }}
+        >
+          {pending === "refresh" ? "Refreshing…" : "Refresh status"}
+        </Button>
+      ) : null}
       {!showEmbed && copy.action && status !== "NOT_CONFIGURED" ? (
         <Button
           type="button"

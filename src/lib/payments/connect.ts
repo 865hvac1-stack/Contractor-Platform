@@ -29,14 +29,15 @@ export function deriveOnboardingStatus(input: {
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
   requirementsDue?: string | null;
+  userActionRequired?: boolean;
   closed?: boolean;
 }): Exclude<ConnectUxStatus, "NOT_CONFIGURED" | "NOT_CONNECTED"> {
   if (input.disabledAt || input.closed) return "DISABLED";
-  if (input.chargesEnabled && input.payoutsEnabled && input.detailsSubmitted) return "CONNECTED";
-  if (input.detailsSubmitted && (!input.chargesEnabled || !input.payoutsEnabled || input.requirementsDue)) {
+  if (input.chargesEnabled && input.payoutsEnabled) return "CONNECTED";
+  if (input.userActionRequired) return "ACTION_REQUIRED";
+  if (input.userActionRequired === undefined && input.detailsSubmitted && (!input.chargesEnabled || !input.payoutsEnabled)) {
     return "ACTION_REQUIRED";
   }
-  if (!input.chargesEnabled && input.detailsSubmitted) return "RESTRICTED";
   return "ONBOARDING";
 }
 
@@ -62,6 +63,7 @@ export async function refreshConnectAccount(prisma: PrismaClient, companyId: str
     payoutsEnabled: mapped.payoutsEnabled,
     detailsSubmitted: mapped.detailsSubmitted,
     requirementsDue: mapped.requirementsDue,
+    userActionRequired: mapped.userActionRequired,
     closed: mapped.closed,
   });
   const previous = row.onboardingStatus;
@@ -211,6 +213,13 @@ export function uxStatus(input: {
   if (!input.platformConfigured) return "NOT_CONFIGURED";
   if (!input.account) return "NOT_CONNECTED";
   if (input.account.disabledAt) return "DISABLED";
+  const persisted = input.account.onboardingStatus;
+  if (persisted === "CONNECTED" && input.account.chargesEnabled && input.account.payoutsEnabled) {
+    return "CONNECTED";
+  }
+  if (persisted === "ACTION_REQUIRED" || persisted === "RESTRICTED" || persisted === "ONBOARDING" || persisted === "DISABLED") {
+    return persisted;
+  }
   return deriveOnboardingStatus(input.account);
 }
 

@@ -7,17 +7,25 @@ export const CONNECT_ACCOUNT_INCLUDES = [
   "defaults",
 ] as const;
 
+type CapabilityStatusDetail = { code?: string; resolution?: string };
+
+type CapabilityLike = {
+  status?: string;
+  status_details?: CapabilityStatusDetail[];
+};
+
 export type V2AccountLike = {
   id: string;
   closed?: boolean;
   applied_configurations?: Array<string>;
   configuration?: {
     merchant?: {
-      applied?: boolean;
+      /** Merchant config is on — not the same as onboarding complete. May be a boolean or a timestamp. */
+      applied?: boolean | string | null;
       capabilities?: {
-        card_payments?: { status?: string };
-        ach_debit_payments?: { status?: string };
-        stripe_balance?: { payouts?: { status?: string } };
+        card_payments?: CapabilityLike;
+        ach_debit_payments?: CapabilityLike;
+        stripe_balance?: { payouts?: CapabilityLike };
       };
     };
   };
@@ -25,12 +33,30 @@ export type V2AccountLike = {
     entries?: Array<{
       awaiting_action_from?: string | null;
       description?: string | null;
+      minimum_deadline?: { status?: string | null } | null;
     }>;
+    summary?: { minimum_deadline?: { status?: string | null } | null };
   };
   identity?: {
     business_details?: { registered_name?: string | null };
   };
 };
+
+function capabilityNeedsUser(capability?: CapabilityLike | null) {
+  return (capability?.status_details ?? []).some((detail) => detail.resolution === "provide_info");
+}
+
+function merchantConfigApplied(applied: unknown) {
+  return applied === true || (typeof applied === "string" && applied.length > 0);
+}
+
+function safeCapabilityLabel(name: string, capability?: CapabilityLike | null) {
+  const status = capability?.status || "not_requested";
+  const codes = (capability?.status_details ?? [])
+    .map((detail) => detail.code)
+    .filter((value): value is string => Boolean(value));
+  return [name, status, ...codes].join(":");
+}
 
 /**
  * SaaS / direct-charge merchant (Stripe current Accounts v2).
@@ -111,22 +137,41 @@ export function v2AccountUpdateLinkParams(stripeAccountId: string, input: { refr
 
 export function mapV2AccountCapabilities(account: V2AccountLike) {
   const merchant = account.configuration?.merchant;
-  const cardStatus = merchant?.capabilities?.card_payments?.status ?? "";
-  const payoutStatus = merchant?.capabilities?.stripe_balance?.payouts?.status ?? "";
+  const card = merchant?.capabilities?.card_payments;
+  const payouts = merchant?.capabilities?.stripe_balance?.payouts;
+  const cardStatus = card?.status ?? "";
+  const payoutStatus = payouts?.status ?? "";
   const userDue = (account.requirements?.entries ?? []).filter((entry) => entry.awaiting_action_from === "user");
+  const deadline = account.requirements?.summary?.minimum_deadline?.status ?? "";
+  const deadlineNeedsUser = deadline === "currently_due" || deadline === "past_due";
   const chargesEnabled = cardStatus === "active";
   const payoutsEnabled = payoutStatus === "active";
-  const detailsSubmitted = Boolean(merchant?.applied) && userDue.length === 0;
+  const userActionRequired =
+    merchantConfigApplied(merchant?.applied) &&
+    (userDue.length > 0 ||
+      capabilityNeedsUser(card) ||
+      capabilityNeedsUser(payouts) ||
+      (deadlineNeedsUser && userDue.length > 0));
+  const detailsSubmitted = chargesEnabled && payoutsEnabled;
+  const requirementsDue = [
+    safeCapabilityLabel("card_payments", card),
+    safeCapabilityLabel("payouts", payouts),
+    ...userDue
+      .map((entry) => entry.description)
+      .filter((value): value is string => Boolean(value)),
+  ]
+    .filter(Boolean)
+    .join(",") || null;
   return {
     chargesEnabled,
     payoutsEnabled,
     detailsSubmitted,
-    requirementsDue: userDue
-      .map((entry) => entry.description)
-      .filter((value): value is string => Boolean(value))
-      .join(",") || (userDue.length ? "additional_information" : null),
+    userActionRequired,
+    cardStatus: cardStatus || "not_requested",
+    payoutStatus: payoutStatus || "not_requested",
+    requirementsDue,
     closed: Boolean(account.closed),
-    merchantApplied: Boolean(merchant?.applied),
+    merchantApplied: merchantConfigApplied(merchant?.applied),
   };
 }
 

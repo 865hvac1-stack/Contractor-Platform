@@ -10,7 +10,7 @@ import {
   stripeWebhookConfigured,
 } from "@/lib/payments/config";
 import { refreshConnectAccount, uxStatus } from "@/lib/payments/connect";
-import { paymentsStatusCopy } from "@/lib/payments/payments-ux";
+import { paymentsCapabilitySummary, paymentsStatusCopy } from "@/lib/payments/payments-ux";
 import { PaymentsSettingsActions } from "@/app/(app)/settings/payments/payments-actions";
 
 export default async function PaymentsSettingsPage({
@@ -68,30 +68,38 @@ export default async function PaymentsSettingsPage({
         </p>
         <StatusCopy status={status} missing={missing} mode={stripeModeLabel()} />
 
-        {status === "CONNECTED" && account ? (
+        {account && status !== "NOT_CONFIGURED" && status !== "NOT_CONNECTED" ? (
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-[var(--muted-foreground)]">Accepting payments</dt>
-              <dd className="mt-0.5 font-medium">{account.chargesEnabled ? "Yes" : "No"}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--muted-foreground)]">Payouts enabled</dt>
-              <dd className="mt-0.5 font-medium">{account.payoutsEnabled ? "Yes" : "No"}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--muted-foreground)]">Account status</dt>
-              <dd className="mt-0.5 font-medium">Active</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--muted-foreground)]">Bank</dt>
               <dd className="mt-0.5 font-medium">
-                {account.bankLast4 ? `${account.bankName ? `${account.bankName} ` : ""}•••• ${account.bankLast4}` : "On file with Stripe"}
+                {status === "CONNECTED" ? (account.chargesEnabled ? "Yes" : "No") : paymentsCapabilitySummary(account).cards}
               </dd>
             </div>
             <div>
-              <dt className="text-[var(--muted-foreground)]">Payout schedule</dt>
-              <dd className="mt-0.5 font-medium">{account.payoutSchedule || "Set in Stripe"}</dd>
+              <dt className="text-[var(--muted-foreground)]">Payouts enabled</dt>
+              <dd className="mt-0.5 font-medium">
+                {status === "CONNECTED" ? (account.payoutsEnabled ? "Yes" : "No") : paymentsCapabilitySummary(account).payouts}
+              </dd>
             </div>
+            {status === "CONNECTED" ? (
+              <>
+                <div>
+                  <dt className="text-[var(--muted-foreground)]">Account status</dt>
+                  <dd className="mt-0.5 font-medium">Active</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted-foreground)]">Bank</dt>
+                  <dd className="mt-0.5 font-medium">
+                    {account.bankLast4 ? `${account.bankName ? `${account.bankName} ` : ""}•••• ${account.bankLast4}` : "On file with Stripe"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted-foreground)]">Payout schedule</dt>
+                  <dd className="mt-0.5 font-medium">{account.payoutSchedule || "Set in Stripe"}</dd>
+                </div>
+              </>
+            ) : null}
           </dl>
         ) : null}
 
