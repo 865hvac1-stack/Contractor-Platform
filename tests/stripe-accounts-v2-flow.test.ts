@@ -66,8 +66,9 @@ describe("accounts v2 create-or-resume flow", () => {
     });
     expect(accountsCreate).toHaveBeenCalledTimes(1);
     const createArgs = accountsCreate.mock.calls[0]?.[0] as { dashboard?: string; identity?: { country?: string } };
-    expect(createArgs.dashboard).toBe("express");
+    expect(createArgs.dashboard).toBe("full");
     expect(createArgs.identity?.country).toBe("us");
+    expect(JSON.stringify(createArgs)).not.toMatch(/"dashboard"\s*:\s*"express"/);
     expect(JSON.stringify(createArgs)).not.toMatch(/"type"\s*:\s*"express"/);
     expect(first.created).toBe(true);
     expect(first.stripeAccountId).toBe(`acct_v2_${ids.companyId}`);

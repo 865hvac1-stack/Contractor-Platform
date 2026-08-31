@@ -98,21 +98,25 @@ describe("stripe connect status honesty", () => {
 });
 
 describe("stripe accounts v2 helpers", () => {
-  it("creates Accounts v2 merchant params instead of v1 express type", () => {
+  it("creates the documented SaaS Accounts v2 merchant configuration", () => {
     const body = v2AccountCreateParams({
       companyId: "co_865",
       email: "owner@865hvac.local",
       businessName: "865 HVAC",
     });
-    expect(body.dashboard).toBe("express");
+    expect(body.dashboard).toBe("full");
+    expect(body.defaults.responsibilities.fees_collector).toBe("stripe");
+    expect(body.defaults.responsibilities.losses_collector).toBe("stripe");
     expect(body.identity.country).toBe("us");
     expect(body.configuration.merchant.capabilities.card_payments.requested).toBe(true);
+    expect(body.configuration.merchant.capabilities).not.toHaveProperty("ach_debit_payments");
     expect(body.metadata.companyId).toBe("co_865");
     expect(JSON.stringify(body)).not.toMatch(/"type"\s*:\s*"express"/);
+    expect(body.dashboard).not.toBe("express");
     expect(v2OnboardingLinkParams("acct_123", { refreshUrl: "https://a/r", returnUrl: "https://a/return" }).use_case.type).toBe(
       "account_onboarding"
     );
-    expect(connectIdempotencyKey("co_865")).toBe("cy-connect-v2-co_865");
+    expect(connectIdempotencyKey("co_865")).toBe("cy-connect-v2-saas-co_865");
   });
 
   it("reuses the same idempotency key for one company", () => {
@@ -197,6 +201,16 @@ describe("stripe accounts v2 helpers", () => {
     expect(safe.user).toMatch(/couldn't start setup/i);
     expect(safe.user).not.toMatch(/Accounts v1|sk_test/);
     expect(safe.diagnostic).not.toMatch(/sk_test_abc123/);
+
+    const coded = publicPaymentsError({
+      message: "This account configuration is not supported. Please reference https://docs.stripe.com/connect/design-an-integration.",
+      code: "account_controller_express_dash_without_application_losses_or_fees",
+      requestId: "req_test_123",
+    });
+    expect(coded.user).toMatch(/couldn't start setup/i);
+    expect(coded.user).not.toMatch(/account_controller|design-an-integration/);
+    expect(coded.diagnostic).toContain("account_controller_express_dash_without_application_losses_or_fees");
+    expect(coded.diagnostic).toContain("req_test_123");
   });
 });
 

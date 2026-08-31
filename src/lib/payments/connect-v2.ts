@@ -32,6 +32,19 @@ export type V2AccountLike = {
   };
 };
 
+/**
+ * SaaS / direct-charge merchant (Stripe current Accounts v2).
+ *
+ * Stripe rejects `dashboard: express` with `fees_collector`/`losses_collector: stripe`
+ * (`account_controller_express_dash_without_application_losses_or_fees`).
+ * Express requires application-owned fees AND losses (marketplace), which is not
+ * ContractorYou's model.
+ *
+ * Documented SaaS combination:
+ * https://docs.stripe.com/connect/saas/tasks/create
+ * dashboard=full, fees_collector=stripe, losses_collector=stripe,
+ * merchant.card_payments only.
+ */
 export function v2AccountCreateParams(input: {
   companyId: string;
   email?: string | null;
@@ -40,7 +53,7 @@ export function v2AccountCreateParams(input: {
   return {
     contact_email: input.email || undefined,
     display_name: input.businessName,
-    dashboard: "express" as const,
+    dashboard: "full" as const,
     identity: {
       country: "us" as const,
       entity_type: "company" as const,
@@ -50,7 +63,6 @@ export function v2AccountCreateParams(input: {
       merchant: {
         capabilities: {
           card_payments: { requested: true },
-          ach_debit_payments: { requested: true },
         },
       },
     },
@@ -146,19 +158,28 @@ export function isV2AccountEvent(type: string) {
 }
 
 export function publicPaymentsError(error: unknown) {
-  const raw = error instanceof Error ? error.message : "Unknown payment-provider error.";
-  const diagnostic = raw
+  const stripeLike = error as {
+    message?: string;
+    code?: string;
+    type?: string;
+    requestId?: string;
+    raw?: { code?: string; message?: string; request_id?: string; type?: string };
+  };
+  const code = stripeLike?.code || stripeLike?.raw?.code;
+  const requestId = stripeLike?.requestId || stripeLike?.raw?.request_id;
+  const raw = (stripeLike?.message || stripeLike?.raw?.message || "Unknown payment-provider error.")
     .replace(/sk_(live|test)_[A-Za-z0-9]+/g, "[redacted]")
-    .replace(/whsec_[A-Za-z0-9]+/g, "[redacted]")
-    .slice(0, 180);
+    .replace(/whsec_[A-Za-z0-9]+/g, "[redacted]");
+  const diagnostic = [code, requestId, raw].filter(Boolean).join(" · ").slice(0, 220);
   return {
     user: "ContractorYou Payments couldn't start setup. Please try again or contact your administrator.",
     diagnostic,
   };
 }
 
+/** New key after the unsupported Express+Stripe-liability create so Stripe does not replay that failure. */
 export function connectIdempotencyKey(companyId: string) {
-  return `cy-connect-v2-${companyId}`;
+  return `cy-connect-v2-saas-${companyId}`;
 }
 
 export type { Stripe };

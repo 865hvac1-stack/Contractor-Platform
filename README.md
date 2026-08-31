@@ -38,7 +38,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Receipts:** Money → Receipts inbox. Photo/PDF upload, optional AI suggestions, confirm before creating an expense or job cost.
 - **Job costing:** Confirmed costs and verified invoice revenue only. Technicians cannot see company profit.
 - **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
-- **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Connect **Accounts v2** merchant account (`POST /v2/core/accounts`, Express dashboard). Stripe handles KYC, cards, ACH, and payouts. ContractorYou never stores card numbers, CVV, or bank credentials. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
+- **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Connect **Accounts v2** merchant account (`POST /v2/core/accounts`, full Stripe Dashboard, Stripe-owned fees and losses). Stripe handles KYC, cards, bank payments, and payouts. ContractorYou never stores card numbers, CVV, or bank credentials. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
 
 ## Local setup
 
@@ -291,7 +291,9 @@ AI receptionist, live SMS/email send, connected automation execution, inventory,
 
 ContractorYou owns the contractor and customer experience. Stripe is the payment processor.
 
-**Architecture:** Stripe Connect **Accounts v2** (`POST /v2/core/accounts`) with the **merchant** configuration and Express dashboard. Charges are **direct charges** (`stripeAccount` on PaymentIntents). Each ContractorYou company has its own connected account and payout bank. Funds are never mixed across tenants. A contractor does not need a Stripe account before clicking Set Up Payments.
+**Architecture:** Stripe Connect **Accounts v2** (`POST /v2/core/accounts`) as a **SaaS / direct-charge** platform: `dashboard=full`, `defaults.responsibilities.fees_collector=stripe`, `defaults.responsibilities.losses_collector=stripe`, and `configuration.merchant.capabilities.card_payments`. Charges are **direct charges** (`stripeAccount` on PaymentIntents). Each ContractorYou company has its own connected merchant account and payout bank. Funds are never mixed across tenants. A contractor does not need a Stripe account before clicking Set Up Payments.
+
+Stripe does **not** allow `dashboard=express` with Stripe-owned fees/losses (`account_controller_express_dash_without_application_losses_or_fees`). Express is the marketplace combo (`fees_collector` and `losses_collector` both `application`). ContractorYou is SaaS, not a marketplace, so it uses the full Stripe Dashboard for each contractor.
 
 New Connect platforms must use Accounts v2. ContractorYou does **not** call legacy `POST /v1/accounts` and does not require enabling Accounts v1 compatibility in Stripe.
 
@@ -309,7 +311,7 @@ New Connect platforms must use Accounts v2. ContractorYou does **not** call lega
 4. Subscribe to Accounts v2 events: `v2.core.account.updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account.closed`, `v2.core.account_link.returned`. Also keep `account.updated` if Stripe still emits it.
 5. Set `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET` on Railway. Never commit keys. `STRIPE_CONNECT_CLIENT_ID` is optional and not required for Account Links.
 
-**Verify a connected contractor:** Settings → Payments must show **Payments Active** only after Stripe confirms charges and payouts. Retry Set Up Payments always resumes the same stored account (idempotency key `cy-connect-v2-{companyId}`).
+**Verify a connected contractor:** Settings → Payments must show **Payments Active** only after Stripe confirms charges and payouts. Retry Set Up Payments always resumes the same stored account (idempotency key `cy-connect-v2-saas-{companyId}`).
 
 **Troubleshoot onboarding:** If setup fails, contractors see a generic message. Owners can expand the administrator reference (never a secret). Check Railway logs for the Stripe request id, not card or bank data.
 
