@@ -25,7 +25,7 @@ import { landingPath } from "@/lib/workspaces";
 
 export type ActionResult =
   | { ok: true; message?: string }
-  | { ok: false; error: string; setupUrl?: string };
+  | { ok: false; error: string; setupUrl?: string; diagnostic?: string };
 
 export async function loginAction(
   _prev: ActionResult | null,

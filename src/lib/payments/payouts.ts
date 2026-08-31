@@ -30,10 +30,10 @@ export async function loadPayoutSnapshot(prisma: PrismaClient, companyId: string
         arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
       })),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false as const,
-      error: error instanceof Error ? error.message : "Could not load payouts from Stripe.",
+      error: "Payout information is unavailable.",
     };
   }
 }

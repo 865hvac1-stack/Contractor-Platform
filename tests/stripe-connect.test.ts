@@ -4,7 +4,15 @@ import bcrypt from "bcryptjs";
 import { can } from "@/lib/permissions";
 import { missingStripeEnvVars } from "@/lib/payments/config";
 import { deriveOnboardingStatus, uxStatus } from "@/lib/payments/connect";
-import { createInvoicePaymentIntent } from "@/lib/payments/intents";
+import {
+  connectAccountIdFromEvent,
+  connectIdempotencyKey,
+  mapV2AccountCapabilities,
+  publicPaymentsError,
+  v2AccountCreateParams,
+  v2OnboardingLinkParams,
+} from "@/lib/payments/connect-v2";
+import { createInvoicePaymentIntent, resolveInvoicePaymentDestination } from "@/lib/payments/intents";
 import { collectedAmountCents, reconcileInvoiceFromPayments, recordConfirmedProviderPayment } from "@/lib/payments/record";
 import { constructStripeEvent, processStripeEvent } from "@/lib/payments/webhooks";
 import { PAYMENT_AUTOMATION_TRIGGERS } from "@/lib/payments/events";
@@ -86,6 +94,109 @@ describe("stripe connect status honesty", () => {
     expect(constructStripeEvent("{}", "t=1,v1=not-valid").status).toBe(401);
     if (previous) process.env.STRIPE_WEBHOOK_SECRET = previous;
     else delete process.env.STRIPE_WEBHOOK_SECRET;
+  });
+});
+
+describe("stripe accounts v2 helpers", () => {
+  it("creates Accounts v2 merchant params instead of v1 express type", () => {
+    const body = v2AccountCreateParams({
+      companyId: "co_865",
+      email: "owner@865hvac.local",
+      businessName: "865 HVAC",
+    });
+    expect(body.dashboard).toBe("express");
+    expect(body.identity.country).toBe("us");
+    expect(body.configuration.merchant.capabilities.card_payments.requested).toBe(true);
+    expect(body.metadata.companyId).toBe("co_865");
+    expect(JSON.stringify(body)).not.toMatch(/"type"\s*:\s*"express"/);
+    expect(v2OnboardingLinkParams("acct_123", { refreshUrl: "https://a/r", returnUrl: "https://a/return" }).use_case.type).toBe(
+      "account_onboarding"
+    );
+    expect(connectIdempotencyKey("co_865")).toBe("cy-connect-v2-co_865");
+  });
+
+  it("reuses the same idempotency key for one company", () => {
+    expect(connectIdempotencyKey("co_a")).toBe(connectIdempotencyKey("co_a"));
+    expect(connectIdempotencyKey("co_a")).not.toBe(connectIdempotencyKey("co_b"));
+  });
+
+  it("does not mark CONNECTED unless card payments and payouts are active", () => {
+    const incomplete = mapV2AccountCapabilities({
+      id: "acct_1",
+      configuration: {
+        merchant: {
+          applied: false,
+          capabilities: { card_payments: { status: "pending" } },
+        },
+      },
+      requirements: { entries: [{ awaiting_action_from: "user", description: "business_profile.url" }] },
+    });
+    expect(incomplete.chargesEnabled).toBe(false);
+    expect(incomplete.detailsSubmitted).toBe(false);
+    expect(
+      deriveOnboardingStatus({
+        chargesEnabled: incomplete.chargesEnabled,
+        payoutsEnabled: incomplete.payoutsEnabled,
+        detailsSubmitted: incomplete.detailsSubmitted,
+        requirementsDue: incomplete.requirementsDue,
+      })
+    ).toBe("ONBOARDING");
+
+    const ready = mapV2AccountCapabilities({
+      id: "acct_2",
+      configuration: {
+        merchant: {
+          applied: true,
+          capabilities: {
+            card_payments: { status: "active" },
+            stripe_balance: { payouts: { status: "active" } },
+          },
+        },
+      },
+      requirements: { entries: [] },
+    });
+    expect(ready.chargesEnabled).toBe(true);
+    expect(ready.payoutsEnabled).toBe(true);
+    expect(ready.detailsSubmitted).toBe(true);
+    expect(
+      deriveOnboardingStatus({
+        chargesEnabled: ready.chargesEnabled,
+        payoutsEnabled: ready.payoutsEnabled,
+        detailsSubmitted: ready.detailsSubmitted,
+      })
+    ).toBe("CONNECTED");
+  });
+
+  it("resolves connected account ids from v2 events and never from a browser companyId", () => {
+    expect(
+      connectAccountIdFromEvent({
+        type: "v2.core.account[requirements].updated",
+        related_object: { id: "acct_v2_1" },
+      })
+    ).toBe("acct_v2_1");
+    expect(connectAccountIdFromEvent({ type: "account.updated", account: "acct_v1_1" })).toBe("acct_v1_1");
+    expect(
+      connectAccountIdFromEvent({
+        type: "v2.core.account.updated",
+        data: { object: { id: "acct_v2_obj", object: "v2.core.account" } },
+      })
+    ).toBe("acct_v2_obj");
+    expect(connectAccountIdFromEvent({ type: "payment_intent.succeeded", data: { object: { id: "pi_1" } } })).toBeUndefined();
+    expect(
+      connectAccountIdFromEvent({
+        type: "payment_intent.succeeded",
+        data: { object: { id: "pi_1", metadata: { companyId: "browser-supplied" } } },
+      })
+    ).toBeUndefined();
+  });
+
+  it("hides raw Stripe API errors from contractors", () => {
+    const safe = publicPaymentsError(
+      new Error("Stripe no longer recommends Accounts v1. Create connected accounts with POST /v2/core/accounts instead. sk_test_abc123")
+    );
+    expect(safe.user).toMatch(/couldn't start setup/i);
+    expect(safe.user).not.toMatch(/Accounts v1|sk_test/);
+    expect(safe.diagnostic).not.toMatch(/sk_test_abc123/);
   });
 });
 
@@ -246,6 +357,91 @@ describe("stripe connect tenant payments", () => {
     });
     expect(notSetup.ok).toBe(false);
     if (!notSetup.ok) expect(notSetup.error).toMatch(/not set up/i);
+  });
+
+  it("stores one connected account per company and never leaks Company B's Stripe id", async () => {
+    await prisma.stripeConnectAccount.create({
+      data: {
+        companyId: ids.companyA,
+        stripeAccountId: `acct_a_${ids.companyA}`,
+        onboardingStatus: "ONBOARDING",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+      },
+    });
+    await prisma.stripeConnectAccount.create({
+      data: {
+        companyId: ids.companyB,
+        stripeAccountId: `acct_b_${ids.companyB}`,
+        onboardingStatus: "CONNECTED",
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+      },
+    });
+    const a = await prisma.stripeConnectAccount.findUnique({ where: { companyId: ids.companyA } });
+    const b = await prisma.stripeConnectAccount.findUnique({ where: { companyId: ids.companyB } });
+    const leaked = await prisma.stripeConnectAccount.findFirst({
+      where: { companyId: ids.companyA, stripeAccountId: b!.stripeAccountId },
+    });
+    expect(a?.stripeAccountId).toBe(`acct_a_${ids.companyA}`);
+    expect(b?.stripeAccountId).toBe(`acct_b_${ids.companyB}`);
+    expect(leaked).toBeNull();
+    const secondA = await prisma.stripeConnectAccount
+      .create({
+        data: {
+          companyId: ids.companyA,
+          stripeAccountId: `acct_a_dup_${ids.companyA}`,
+        },
+      })
+      .catch((error: { code?: string }) => error);
+    expect(secondA).toMatchObject({ code: "P2002" });
+  });
+
+  it("routes Company A invoices only to Company A's connected account", async () => {
+    const destA = await resolveInvoicePaymentDestination(prisma, {
+      companyId: ids.companyA,
+      invoiceId: ids.invoiceA,
+    });
+    const destCross = await resolveInvoicePaymentDestination(prisma, {
+      companyId: ids.companyA,
+      invoiceId: ids.invoiceB,
+    });
+    const destSpoof = await resolveInvoicePaymentDestination(prisma, {
+      companyId: ids.companyB,
+      invoiceId: ids.invoiceA,
+    });
+    expect(destA.ok).toBe(true);
+    if (destA.ok) {
+      expect(destA.stripeAccountId).toBe(`acct_a_${ids.companyA}`);
+      expect(destA.stripeAccountId).not.toBe(`acct_b_${ids.companyB}`);
+      expect(destA.amountCents).toBe(48500);
+    }
+    expect(destCross.ok).toBe(false);
+    expect(destSpoof.ok).toBe(false);
+  });
+
+  it("rejects webhook payment events that spoof another company's invoice", async () => {
+    const event = {
+      id: `evt_spoof_${Date.now()}`,
+      type: "payment_intent.succeeded",
+      account: `acct_a_${ids.companyA}`,
+      data: {
+        object: {
+          id: `pi_spoof_${Date.now()}`,
+          amount: 10000,
+          amount_received: 10000,
+          payment_method_types: ["card"],
+          metadata: { companyId: ids.companyA, invoiceId: ids.invoiceB },
+        },
+      },
+    } as never;
+    await processStripeEvent(prisma, event);
+    const payments = await prisma.payment.findMany({
+      where: { invoiceId: ids.invoiceB, provider: "STRIPE" },
+    });
+    expect(payments).toHaveLength(0);
   });
 
   it("keeps ACH processing off the paid balance until success", async () => {

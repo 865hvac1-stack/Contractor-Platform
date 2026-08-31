@@ -54,7 +54,9 @@ export default async function PaymentsSettingsPage({
         </p>
       ) : null}
       {refreshError ? (
-        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{refreshError}</p>
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Payment status could not be refreshed from Stripe. Try again in a moment.
+        </p>
       ) : null}
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
@@ -66,12 +68,16 @@ export default async function PaymentsSettingsPage({
         {status === "CONNECTED" && account ? (
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-[var(--muted-foreground)]">Payments</dt>
-              <dd className="mt-0.5 font-medium">{account.chargesEnabled ? "Enabled" : "Not enabled"}</dd>
+              <dt className="text-[var(--muted-foreground)]">Accepting payments</dt>
+              <dd className="mt-0.5 font-medium">{account.chargesEnabled ? "Yes" : "No"}</dd>
             </div>
             <div>
-              <dt className="text-[var(--muted-foreground)]">Payouts</dt>
-              <dd className="mt-0.5 font-medium">{account.payoutsEnabled ? "Enabled" : "Not enabled"}</dd>
+              <dt className="text-[var(--muted-foreground)]">Payouts enabled</dt>
+              <dd className="mt-0.5 font-medium">{account.payoutsEnabled ? "Yes" : "No"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Account status</dt>
+              <dd className="mt-0.5 font-medium">Active</dd>
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Bank</dt>
@@ -172,9 +178,9 @@ function StatusCopy({
   }
   return (
     <div className="mt-3 space-y-2">
-      <h2 className="text-xl font-semibold">Connected ✓</h2>
+      <h2 className="text-xl font-semibold">Payments Active</h2>
       <p className="text-sm text-[var(--muted-foreground)]">
-        Customers can pay invoices. Payouts go to your business bank account.
+        Accepting payments. Payouts go to your business bank account.
       </p>
     </div>
   );

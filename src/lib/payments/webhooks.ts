@@ -6,25 +6,66 @@ import { sendPaymentReceiptEmail } from "@/lib/payments/receipt";
 import { requireStripe, type Stripe } from "@/lib/payments/stripe-client";
 import { stripeWebhookSecret } from "@/lib/payments/config";
 import { emitPaymentAutomationEvent } from "@/lib/payments/events";
+import { connectAccountIdFromEvent, isV2AccountEvent } from "@/lib/payments/connect-v2";
 
 export function constructStripeEvent(raw: string, signature: string | null) {
   const secret = stripeWebhookSecret();
   if (!secret) return { ok: false as const, error: "Stripe webhook is not configured.", status: 503 };
   if (!signature) return { ok: false as const, error: "Invalid signature.", status: 401 };
   try {
-    const event = requireStripe().webhooks.constructEvent(raw, signature, secret);
+    const stripe = requireStripe();
+    let objectType: string | undefined;
+    try {
+      objectType = (JSON.parse(raw) as { object?: string }).object;
+    } catch {
+      return { ok: false as const, error: "Invalid signature.", status: 401 };
+    }
+    if (objectType === "v2.core.event") {
+      const event = stripe.parseEventNotification(raw, signature, secret);
+      return { ok: true as const, event };
+    }
+    const event = stripe.webhooks.constructEvent(raw, signature, secret);
     return { ok: true as const, event };
   } catch {
     return { ok: false as const, error: "Invalid signature.", status: 401 };
   }
 }
 
-export async function processStripeEvent(prisma: PrismaClient, event: Stripe.Event) {
+function eventDataObject(event: { data?: { object?: unknown } }) {
+  return event.data?.object;
+}
+
+async function trustedInvoiceForPayment(
+  prisma: PrismaClient,
+  input: { metadataCompanyId?: string; invoiceId?: string; stripeAccountId?: string }
+) {
+  if (!input.invoiceId) return null;
+  const invoice = await prisma.invoice.findFirst({ where: { id: input.invoiceId } });
+  if (!invoice) return null;
+  if (input.metadataCompanyId && input.metadataCompanyId !== invoice.companyId) return null;
+  if (input.stripeAccountId) {
+    const owner = await prisma.stripeConnectAccount.findUnique({
+      where: { stripeAccountId: input.stripeAccountId },
+    });
+    if (!owner || owner.companyId !== invoice.companyId) return null;
+  }
+  return invoice;
+}
+
+export async function processStripeEvent(
+  prisma: PrismaClient,
+  event: Stripe.Event | {
+    id: string;
+    type: string;
+    account?: string;
+    related_object?: { id?: string };
+    data?: { object?: unknown };
+  }
+) {
   const existing = await prisma.stripeWebhookEvent.findUnique({ where: { id: event.id } });
   if (existing) return { ok: true as const, duplicate: true };
 
-  const connectedAccount =
-    typeof event.account === "string" ? event.account : undefined;
+  const connectedAccount = connectAccountIdFromEvent(event);
   const company = connectedAccount
     ? await prisma.stripeConnectAccount.findUnique({ where: { stripeAccountId: connectedAccount } })
     : null;
@@ -39,37 +80,60 @@ export async function processStripeEvent(prisma: PrismaClient, event: Stripe.Eve
 
   try {
   switch (event.type) {
-    case "account.updated": {
+    case "account.updated":
+    case "v2.core.account.updated":
+    case "v2.core.account.created":
+    case "v2.core.account[requirements].updated":
+    case "v2.core.account[configuration.merchant].updated":
+    case "v2.core.account[configuration.merchant].capability_status_updated":
+    case "v2.core.account[future_requirements].updated":
+    case "v2.core.account_link.returned": {
       if (company) await refreshConnectAccount(prisma, company.companyId);
       break;
     }
+    case "v2.core.account.closed": {
+      if (company) {
+        await prisma.stripeConnectAccount.update({
+          where: { id: company.id },
+          data: { onboardingStatus: "DISABLED" },
+        });
+        await refreshConnectAccount(prisma, company.companyId).catch(() => undefined);
+      }
+      break;
+    }
     case "payment_intent.processing": {
-      await markIntentStatus(prisma, event.data.object as Stripe.PaymentIntent, "PROCESSING", connectedAccount);
+      await markIntentStatus(prisma, eventDataObject(event) as Stripe.PaymentIntent, "PROCESSING", connectedAccount);
       break;
     }
     case "payment_intent.payment_failed":
     case "payment_intent.canceled": {
       await markIntentStatus(
         prisma,
-        event.data.object as Stripe.PaymentIntent,
+        eventDataObject(event) as Stripe.PaymentIntent,
         event.type === "payment_intent.canceled" ? "CANCELED" : "FAILED",
         connectedAccount
       );
       break;
     }
     case "payment_intent.succeeded": {
-      await confirmIntent(prisma, event.data.object as Stripe.PaymentIntent, connectedAccount);
+      await confirmIntent(prisma, eventDataObject(event) as Stripe.PaymentIntent, connectedAccount);
       break;
     }
     case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const session = eventDataObject(event) as Stripe.Checkout.Session | undefined;
+      if (!session) break;
       const metadata = session.metadata ?? {};
-      if (metadata.companyId && metadata.invoiceId && session.payment_intent) {
+      const invoice = await trustedInvoiceForPayment(prisma, {
+        metadataCompanyId: metadata.companyId,
+        invoiceId: metadata.invoiceId,
+        stripeAccountId: connectedAccount,
+      });
+      if (invoice && session.payment_intent) {
         const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent.id;
         await recordConfirmedProviderPayment({
           prisma,
-          companyId: metadata.companyId,
-          invoiceId: metadata.invoiceId,
+          companyId: invoice.companyId,
+          invoiceId: invoice.id,
           amountCents: session.amount_total ?? 0,
           provider: "STRIPE",
           providerPaymentId: pi,
@@ -86,10 +150,13 @@ export async function processStripeEvent(prisma: PrismaClient, event: Stripe.Eve
       break;
     }
     case "charge.dispute.created": {
-      await markDispute(prisma, event.data.object as Stripe.Dispute, connectedAccount);
+      await markDispute(prisma, eventDataObject(event) as Stripe.Dispute, connectedAccount);
       break;
     }
     default:
+      if (isV2AccountEvent(event.type) && company) {
+        await refreshConnectAccount(prisma, company.companyId);
+      }
       break;
   }
   } catch (error) {
@@ -106,13 +173,14 @@ async function confirmIntent(
   stripeAccountId?: string
 ) {
   const metadata = intent.metadata ?? {};
-  const companyId = metadata.companyId;
-  const invoiceId = metadata.invoiceId;
-  if (!companyId || !invoiceId) return;
-  if (stripeAccountId) {
-    const owner = await prisma.stripeConnectAccount.findUnique({ where: { stripeAccountId } });
-    if (!owner || owner.companyId !== companyId) return;
-  }
+  const invoice = await trustedInvoiceForPayment(prisma, {
+    metadataCompanyId: metadata.companyId,
+    invoiceId: metadata.invoiceId,
+    stripeAccountId,
+  });
+  if (!invoice) return;
+  const companyId = invoice.companyId;
+  const invoiceId = invoice.id;
   const method = intent.payment_method_types?.includes("us_bank_account") && !intent.payment_method_types.includes("card")
     ? "ACH"
     : "CREDIT_CARD";
@@ -167,35 +235,38 @@ async function markIntentStatus(
   status: string,
   stripeAccountId?: string
 ) {
-  const metadata = intent.metadata ?? {};
-  if (!metadata.companyId) return;
+  const payment = await prisma.payment.findFirst({
+    where: { provider: "STRIPE", providerPaymentId: intent.id },
+  });
+  if (!payment) return;
+  if (stripeAccountId && payment.stripeAccountId && payment.stripeAccountId !== stripeAccountId) return;
   await prisma.payment.updateMany({
     where: {
-      companyId: metadata.companyId,
-      provider: "STRIPE",
-      providerPaymentId: intent.id,
+      id: payment.id,
+      companyId: payment.companyId,
       status: { notIn: ["CONFIRMED", "SUCCEEDED", "REFUNDED", "PARTIALLY_REFUNDED"] },
     },
-    data: { status, stripeAccountId: stripeAccountId ?? undefined },
+    data: { status, stripeAccountId: stripeAccountId ?? payment.stripeAccountId ?? undefined },
   });
   if (status === "FAILED") {
     await writeAudit({
-      companyId: metadata.companyId,
+      companyId: payment.companyId,
       action: "payment.failed",
       entityType: "Invoice",
-      entityId: metadata.invoiceId || intent.id,
+      entityId: payment.invoiceId || intent.id,
       metadata: { providerPaymentId: intent.id },
     });
-    await emitPaymentAutomationEvent(prisma, { companyId: metadata.companyId, trigger: "PAYMENT_FAILED" });
+    await emitPaymentAutomationEvent(prisma, { companyId: payment.companyId, trigger: "PAYMENT_FAILED" });
   }
 }
 
 async function applyRefundEvent(
   prisma: PrismaClient,
-  event: Stripe.Event,
+  event: { type: string; data?: { object?: unknown } },
   stripeAccountId?: string
 ) {
-  const object = event.data.object as { payment_intent?: string | { id?: string }; amount_refunded?: number; amount?: number };
+  const object = eventDataObject(event) as { payment_intent?: string | { id?: string }; amount_refunded?: number; amount?: number } | undefined;
+  if (!object) return;
   const paymentIntentId =
     typeof object.payment_intent === "string" ? object.payment_intent : object.payment_intent?.id;
   if (!paymentIntentId) return;

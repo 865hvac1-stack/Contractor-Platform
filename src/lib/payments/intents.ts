@@ -4,13 +4,10 @@ import { platformFeeBps, stripePublishableKey } from "@/lib/payments/config";
 import { getConnectAccount } from "@/lib/payments/connect";
 import { requireStripe } from "@/lib/payments/stripe-client";
 
-export async function createInvoicePaymentIntent(
+/** Server-side destination only. Browser never chooses company, amount, or Stripe account. */
+export async function resolveInvoicePaymentDestination(
   prisma: PrismaClient,
-  input: {
-    companyId: string;
-    invoiceId: string;
-    actorId?: string | null;
-  }
+  input: { companyId: string; invoiceId: string }
 ) {
   const invoice = await prisma.invoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
@@ -22,19 +19,42 @@ export async function createInvoicePaymentIntent(
   if (invoice.status === "VOID") return { ok: false as const, error: "This invoice is void." };
   if (invoice.balanceCents <= 0) return { ok: false as const, error: "This invoice has no balance due." };
 
-  const account = await getConnectAccount(prisma, input.companyId);
+  const account = await getConnectAccount(prisma, invoice.companyId);
   if (!account || account.disabledAt) {
     return { ok: false as const, error: "Payments are not set up for this company." };
   }
   if (!account.chargesEnabled) {
     return { ok: false as const, error: "Card payments are not enabled yet. Complete payment setup." };
   }
+  return {
+    ok: true as const,
+    companyId: invoice.companyId,
+    invoiceId: invoice.id,
+    stripeAccountId: account.stripeAccountId,
+    amountCents: invoice.balanceCents,
+    invoiceNumber: invoice.invoiceNumber,
+    customerId: invoice.customerId,
+    jobId: invoice.jobId,
+    importMode: invoice.importMode,
+  };
+}
 
-  const amountCents = invoice.balanceCents;
+export async function createInvoicePaymentIntent(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    invoiceId: string;
+    actorId?: string | null;
+  }
+) {
+  const destination = await resolveInvoicePaymentDestination(prisma, input);
+  if (!destination.ok) return destination;
+
+  const amountCents = destination.amountCents;
   const existing = await prisma.payment.findFirst({
     where: {
-      companyId: invoice.companyId,
-      invoiceId: invoice.id,
+      companyId: destination.companyId,
+      invoiceId: destination.invoiceId,
       provider: "STRIPE",
       status: "PROCESSING",
       amountCents,
@@ -47,7 +67,7 @@ export async function createInvoicePaymentIntent(
       const prior = await stripe.paymentIntents.retrieve(
         existing.providerPaymentId,
         undefined,
-        { stripeAccount: account.stripeAccountId }
+        { stripeAccount: destination.stripeAccountId }
       );
       if (
         prior.client_secret &&
@@ -63,9 +83,9 @@ export async function createInvoicePaymentIntent(
           ok: true as const,
           clientSecret: prior.client_secret,
           publishableKey: publishable,
-          stripeAccountId: account.stripeAccountId,
+          stripeAccountId: destination.stripeAccountId,
           amountCents,
-          invoiceNumber: invoice.invoiceNumber,
+          invoiceNumber: destination.invoiceNumber,
         };
       }
     } catch {
@@ -81,30 +101,30 @@ export async function createInvoicePaymentIntent(
       currency: "usd",
       automatic_payment_methods: { enabled: true },
       metadata: {
-        companyId: invoice.companyId,
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
+        companyId: destination.companyId,
+        invoiceId: destination.invoiceId,
+        invoiceNumber: destination.invoiceNumber,
       },
       ...(applicationFee > 0 ? { application_fee_amount: applicationFee } : {}),
     },
-    { stripeAccount: account.stripeAccountId }
+    { stripeAccount: destination.stripeAccountId }
   );
 
   await prisma.payment.create({
     data: {
-      companyId: invoice.companyId,
-      invoiceId: invoice.id,
-      customerId: invoice.customerId,
-      jobId: invoice.jobId,
+      companyId: destination.companyId,
+      invoiceId: destination.invoiceId,
+      customerId: destination.customerId,
+      jobId: destination.jobId,
       amountCents,
       method: "CREDIT_CARD",
       status: "PROCESSING",
       provider: "STRIPE",
       providerPaymentId: intent.id,
       recordedById: input.actorId ?? null,
-      stripeAccountId: account.stripeAccountId,
+      stripeAccountId: destination.stripeAccountId,
       currency: "usd",
-      importMode: invoice.importMode,
+      importMode: destination.importMode,
       notes: "Stripe PaymentIntent created",
     },
   });
@@ -121,8 +141,8 @@ export async function createInvoicePaymentIntent(
     ok: true as const,
     clientSecret: intent.client_secret,
     publishableKey: publishable,
-    stripeAccountId: account.stripeAccountId,
+    stripeAccountId: destination.stripeAccountId,
     amountCents,
-    invoiceNumber: invoice.invoiceNumber,
+    invoiceNumber: destination.invoiceNumber,
   };
 }

@@ -1,6 +1,17 @@
+import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { upsertConnection } from "@/lib/integrations/store";
 import { appUrl, STRIPE_CONNECT_PROVIDER_KEY } from "@/lib/payments/config";
+import {
+  CONNECT_ACCOUNT_INCLUDES,
+  connectIdempotencyKey,
+  mapV2AccountCapabilities,
+  publicPaymentsError,
+  v2AccountCreateParams,
+  v2AccountUpdateLinkParams,
+  v2OnboardingLinkParams,
+  type V2AccountLike,
+} from "@/lib/payments/connect-v2";
 import { requireStripe } from "@/lib/payments/stripe-client";
 
 export type ConnectUxStatus =
@@ -18,8 +29,9 @@ export function deriveOnboardingStatus(input: {
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
   requirementsDue?: string | null;
+  closed?: boolean;
 }): Exclude<ConnectUxStatus, "NOT_CONFIGURED" | "NOT_CONNECTED"> {
-  if (input.disabledAt) return "DISABLED";
+  if (input.disabledAt || input.closed) return "DISABLED";
   if (input.chargesEnabled && input.payoutsEnabled && input.detailsSubmitted) return "CONNECTED";
   if (input.detailsSubmitted && (!input.chargesEnabled || !input.payoutsEnabled || input.requirementsDue)) {
     return "ACTION_REQUIRED";
@@ -32,46 +44,35 @@ export async function getConnectAccount(prisma: PrismaClient, companyId: string)
   return prisma.stripeConnectAccount.findUnique({ where: { companyId } });
 }
 
+async function retrieveV2Account(stripeAccountId: string) {
+  const stripe = requireStripe();
+  return stripe.v2.core.accounts.retrieve(stripeAccountId, {
+    include: [...CONNECT_ACCOUNT_INCLUDES],
+  }) as Promise<V2AccountLike>;
+}
+
 export async function refreshConnectAccount(prisma: PrismaClient, companyId: string) {
   const row = await getConnectAccount(prisma, companyId);
   if (!row) return null;
-  const stripe = requireStripe();
-  const account = await stripe.accounts.retrieve(row.stripeAccountId);
-  const due = [
-    ...(account.requirements?.currently_due ?? []),
-    ...(account.requirements?.past_due ?? []),
-  ];
-  const bank = account.external_accounts?.data?.find((item) => item.object === "bank_account") as
-    | { last4?: string; bank_name?: string }
-    | undefined;
-  const schedule = account.settings?.payouts?.schedule;
-  const payoutSchedule = schedule?.interval
-    ? schedule.interval === "daily"
-      ? "Daily"
-      : schedule.interval === "weekly"
-        ? `Weekly${schedule.weekly_anchor ? ` (${schedule.weekly_anchor})` : ""}`
-        : schedule.interval === "monthly"
-          ? "Monthly"
-          : schedule.interval
-    : null;
+  const account = await retrieveV2Account(row.stripeAccountId);
+  const mapped = mapV2AccountCapabilities(account);
   const onboardingStatus = deriveOnboardingStatus({
     disabledAt: row.disabledAt,
-    chargesEnabled: Boolean(account.charges_enabled),
-    payoutsEnabled: Boolean(account.payouts_enabled),
-    detailsSubmitted: Boolean(account.details_submitted),
-    requirementsDue: due.length ? due.join(",") : null,
+    chargesEnabled: mapped.chargesEnabled,
+    payoutsEnabled: mapped.payoutsEnabled,
+    detailsSubmitted: mapped.detailsSubmitted,
+    requirementsDue: mapped.requirementsDue,
+    closed: mapped.closed,
   });
+  const previous = row.onboardingStatus;
   const updated = await prisma.stripeConnectAccount.update({
     where: { id: row.id },
     data: {
-      chargesEnabled: Boolean(account.charges_enabled),
-      payoutsEnabled: Boolean(account.payouts_enabled),
-      detailsSubmitted: Boolean(account.details_submitted),
-      requirementsDue: due.length ? due.join(",") : null,
-      payoutSchedule,
-      bankLast4: bank?.last4 ?? row.bankLast4,
-      bankName: bank?.bank_name ?? row.bankName,
-      onboardingStatus: row.disabledAt ? "DISABLED" : onboardingStatus,
+      chargesEnabled: mapped.chargesEnabled,
+      payoutsEnabled: mapped.payoutsEnabled,
+      detailsSubmitted: mapped.detailsSubmitted,
+      requirementsDue: mapped.requirementsDue,
+      onboardingStatus: row.disabledAt || mapped.closed ? "DISABLED" : onboardingStatus,
     },
   });
   await upsertConnection({
@@ -82,7 +83,51 @@ export async function refreshConnectAccount(prisma: PrismaClient, companyId: str
     accountLabel: "ContractorYou Payments",
     healthMessage: updated.onboardingStatus,
   });
+  if (previous !== updated.onboardingStatus) {
+    const { writeAudit } = await import("@/lib/audit");
+    await writeAudit({
+      companyId,
+      action:
+        updated.onboardingStatus === "CONNECTED"
+          ? "payments.account_active"
+          : updated.onboardingStatus === "RESTRICTED" || updated.onboardingStatus === "ACTION_REQUIRED"
+            ? "payments.account_restricted"
+            : "payments.account_status_changed",
+      entityType: "StripeConnectAccount",
+      entityId: updated.stripeAccountId,
+      metadata: { status: updated.onboardingStatus },
+    });
+  }
   return updated;
+}
+
+async function persistCreatedAccount(
+  prisma: PrismaClient,
+  input: { companyId: string; stripeAccountId: string }
+) {
+  try {
+    const created = await prisma.stripeConnectAccount.create({
+      data: {
+        companyId: input.companyId,
+        stripeAccountId: input.stripeAccountId,
+        onboardingStatus: "ONBOARDING",
+      },
+    });
+    await upsertConnection({
+      companyId: input.companyId,
+      providerKey: STRIPE_CONNECT_PROVIDER_KEY,
+      status: "CONNECTING",
+      externalAccountId: input.stripeAccountId,
+      accountLabel: "ContractorYou Payments",
+    });
+    return { row: created, created: true as const };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const existing = await getConnectAccount(prisma, input.companyId);
+      if (existing) return { row: existing, created: false as const };
+    }
+    throw error;
+  }
 }
 
 export async function createOrResumeConnectAccount(
@@ -92,57 +137,51 @@ export async function createOrResumeConnectAccount(
   const existing = await getConnectAccount(prisma, input.companyId);
   const stripe = requireStripe();
   let stripeAccountId = existing?.stripeAccountId;
+  let created = false;
   if (!stripeAccountId) {
-    const account = await stripe.accounts.create({
-      type: "express",
-      country: "US",
-      email: input.email || undefined,
-      business_profile: { name: input.businessName },
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-        us_bank_account_ach_payments: { requested: true },
-      },
-      metadata: { companyId: input.companyId },
+    const account = await stripe.v2.core.accounts.create(v2AccountCreateParams(input), {
+      idempotencyKey: connectIdempotencyKey(input.companyId),
     });
     stripeAccountId = account.id;
-    await prisma.stripeConnectAccount.create({
-      data: {
-        companyId: input.companyId,
-        stripeAccountId,
-        onboardingStatus: "ONBOARDING",
-      },
-    });
-    await upsertConnection({
+    const persisted = await persistCreatedAccount(prisma, {
       companyId: input.companyId,
-      providerKey: STRIPE_CONNECT_PROVIDER_KEY,
-      status: "CONNECTING",
-      externalAccountId: stripeAccountId,
-      accountLabel: "ContractorYou Payments",
+      stripeAccountId,
+    });
+    created = persisted.created;
+    stripeAccountId = persisted.row.stripeAccountId;
+  } else if (existing?.disabledAt) {
+    await prisma.stripeConnectAccount.update({
+      where: { id: existing.id },
+      data: { disabledAt: null, onboardingStatus: "ONBOARDING" },
     });
   }
-  const link = await stripe.accountLinks.create({
-    account: stripeAccountId,
-    refresh_url: `${appUrl()}/api/payments/connect/refresh`,
-    return_url: `${appUrl()}/settings/payments?returned=1`,
-    type: "account_onboarding",
-  });
-  return { url: link.url, stripeAccountId };
+  const link = await stripe.v2.core.accountLinks.create(
+    v2OnboardingLinkParams(stripeAccountId, {
+      refreshUrl: `${appUrl()}/api/payments/connect/refresh`,
+      returnUrl: `${appUrl()}/settings/payments?returned=1`,
+    })
+  );
+  return { url: link.url, stripeAccountId, created };
 }
 
 export async function createAccountUpdateLink(stripeAccountId: string) {
   const stripe = requireStripe();
-  return stripe.accountLinks.create({
-    account: stripeAccountId,
-    refresh_url: `${appUrl()}/settings/payments`,
-    return_url: `${appUrl()}/settings/payments?returned=1`,
-    type: "account_onboarding",
-  });
+  return stripe.v2.core.accountLinks.create(
+    v2AccountUpdateLinkParams(stripeAccountId, {
+      refreshUrl: `${appUrl()}/settings/payments`,
+      returnUrl: `${appUrl()}/settings/payments?returned=1`,
+    })
+  );
 }
 
 export async function createAccountLoginLink(stripeAccountId: string) {
-  const stripe = requireStripe();
-  return stripe.accounts.createLoginLink(stripeAccountId);
+  try {
+    const stripe = requireStripe();
+    return await stripe.accounts.createLoginLink(stripeAccountId);
+  } catch {
+    const update = await createAccountUpdateLink(stripeAccountId);
+    return { url: update.url };
+  }
 }
 
 export function uxStatus(input: {
@@ -161,3 +200,5 @@ export function uxStatus(input: {
   if (input.account.disabledAt) return "DISABLED";
   return deriveOnboardingStatus(input.account);
 }
+
+export { publicPaymentsError };

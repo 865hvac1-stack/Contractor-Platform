@@ -13,16 +13,24 @@ import {
 
 export function PaymentsSettingsActions({ status }: { status: ConnectUxStatus }) {
   const [error, setError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
-  async function run(name: string, action: () => Promise<{ ok: boolean; error?: string } | void>) {
+  async function run(
+    name: string,
+    action: () => Promise<{ ok: boolean; error?: string; diagnostic?: string } | void>
+  ) {
     setPending(name);
     setError(null);
+    setDiagnostic(null);
     try {
       const result = await action();
-      if (result && !result.ok) setError(result.error ?? "Something went wrong.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (result && !result.ok) {
+        setError(result.error ?? "ContractorYou Payments couldn't start setup. Please try again or contact your administrator.");
+        setDiagnostic(result.diagnostic ?? null);
+      }
+    } catch {
+      setError("ContractorYou Payments couldn't start setup. Please try again or contact your administrator.");
     } finally {
       setPending(null);
     }
@@ -30,7 +38,17 @@ export function PaymentsSettingsActions({ status }: { status: ConnectUxStatus })
 
   return (
     <div className="mt-5 space-y-3">
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {error ? (
+        <div className="space-y-1">
+          <p className="text-sm text-red-700">{error}</p>
+          {diagnostic ? (
+            <details className="text-xs text-[var(--muted-foreground)]">
+              <summary>Administrator reference</summary>
+              <p className="mt-1 break-words font-mono">{diagnostic}</p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
       {status === "NOT_CONNECTED" || status === "DISABLED" ? (
         <Button
           type="button"
@@ -58,7 +76,7 @@ export function PaymentsSettingsActions({ status }: { status: ConnectUxStatus })
           disabled={Boolean(pending)}
           onClick={() => void run("complete", continuePaymentsSetupAction)}
         >
-          {pending === "complete" ? "Opening…" : "Complete Payment Setup"}
+          {pending === "complete" ? "Opening…" : "Resolve With Stripe"}
         </Button>
       ) : null}
       {status === "CONNECTED" ? (
@@ -70,7 +88,7 @@ export function PaymentsSettingsActions({ status }: { status: ConnectUxStatus })
             disabled={Boolean(pending)}
             onClick={() => void run("manage", manageStripeAccountAction)}
           >
-            {pending === "manage" ? "Opening…" : "Manage Payment Account"}
+            {pending === "manage" ? "Opening…" : "Manage Payments"}
           </Button>
           <Button
             type="button"

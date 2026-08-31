@@ -71,10 +71,10 @@ export async function createStripeCheckoutSession(
     );
     if (!session.url) return { ok: false as const, error: "Stripe checkout could not be created." };
     return { ok: true as const, url: session.url, id: session.id };
-  } catch (error) {
+  } catch {
     return {
       ok: false as const,
-      error: error instanceof Error ? error.message : "Stripe checkout could not be created.",
+      error: "Stripe checkout could not be created.",
     };
   }
 }

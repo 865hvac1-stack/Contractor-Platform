@@ -10,6 +10,7 @@ import {
   createAccountLoginLink,
   createAccountUpdateLink,
   createOrResumeConnectAccount,
+  publicPaymentsError,
   refreshConnectAccount,
 } from "@/lib/payments/connect";
 import { requirePermission } from "@/lib/tenant";
@@ -32,7 +33,7 @@ export async function startPaymentsOnboardingAction(): Promise<ActionResult> {
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
-      action: "payments.setup_started",
+      action: started.created ? "payments.connected_account_created" : "payments.setup_resumed",
       entityType: "StripeConnectAccount",
       entityId: started.stripeAccountId,
     });
@@ -40,7 +41,9 @@ export async function startPaymentsOnboardingAction(): Promise<ActionResult> {
   } catch (error) {
     if (isNextRedirect(error)) throw error;
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: error instanceof Error ? error.message : "Could not start payment setup." };
+    const safe = publicPaymentsError(error);
+    console.error("[payments.connect]", safe.diagnostic);
+    return { ok: false, error: safe.user, diagnostic: safe.diagnostic };
   }
 }
 
@@ -56,7 +59,7 @@ export async function refreshPaymentsStatusAction(): Promise<ActionResult> {
     return { ok: true };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: "Could not refresh payment status." };
+    return { ok: false, error: publicPaymentsError(error).user };
   }
 }
 
@@ -70,7 +73,7 @@ export async function manageStripeAccountAction(): Promise<ActionResult> {
   } catch (error) {
     if (isNextRedirect(error)) throw error;
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: "Could not open the payment account." };
+    return { ok: false, error: publicPaymentsError(error).user };
   }
 }
 
@@ -84,7 +87,7 @@ export async function updateStripePayoutAccountAction(): Promise<ActionResult> {
   } catch (error) {
     if (isNextRedirect(error)) throw error;
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: "Could not open payout setup." };
+    return { ok: false, error: publicPaymentsError(error).user };
   }
 }
 
