@@ -29,6 +29,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createDraftEstimateForJobAction } from "@/server/actions/estimate-options";
 import { createInvoiceFromJobAction } from "@/server/actions/field";
+import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
+import { appUrl } from "@/lib/payments/config";
 
 export default async function TechJobWorkspacePage({
   params,
@@ -39,7 +41,7 @@ export default async function TechJobWorkspacePage({
   const ctx = await requirePermission("jobs:view");
   const { job: assigned } = await requireAssignedJob(id);
 
-  const [full, workflow, plans, receipts, assignedMembership, pickerItems, membership] = await Promise.all([
+  const [full, workflow, plans, receipts, assignedMembership, pickerItems, membership, stripeAccount] = await Promise.all([
     prisma.job.findFirst({
       where: { id: assigned.id, companyId: ctx.company.id },
       include: {
@@ -80,6 +82,7 @@ export default async function TechJobWorkspacePage({
       take: 20,
     }),
     customerHasActiveMembership(prisma, ctx.company.id, assigned.customerId),
+    prisma.stripeConnectAccount.findUnique({ where: { companyId: ctx.company.id } }),
   ]);
 
   if (!full) notFound();
@@ -478,6 +481,19 @@ export default async function TechJobWorkspacePage({
               publicToken: invoice.publicToken,
             }}
             canPay={canPay}
+            card={
+              stripeClientConfigured() &&
+              stripeAccount &&
+              !stripeAccount.disabledAt &&
+              stripeAccount.chargesEnabled &&
+              stripePublishableKey()
+                ? {
+                    publishableKey: stripePublishableKey(),
+                    stripeAccountId: stripeAccount.stripeAccountId,
+                    returnUrl: `${appUrl()}/tech/jobs/${full.id}`,
+                  }
+                : null
+            }
           />
         ) : canInvoice ? (
           <form

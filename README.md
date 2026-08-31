@@ -38,6 +38,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Receipts:** Money → Receipts inbox. Photo/PDF upload, optional AI suggestions, confirm before creating an expense or job cost.
 - **Job costing:** Confirmed costs and verified invoice revenue only. Technicians cannot see company profit.
 - **QuickBooks Online:** Settings → QuickBooks. Real Intuit OAuth. Tokens encrypted at rest. Default invoice push is manual only. Historical imports never auto-sync.
+- **ContractorYou Payments:** Settings → Payments. Each company gets its own Stripe Express connected account. Stripe handles KYC, cards, ACH, and payouts. ContractorYou never stores card numbers, CVV, or bank credentials. Customer payment page is `/i/{publicToken}`. Webhook: `{APP_URL}/api/webhooks/stripe`. Missing Stripe keys show **Payments not configured** — the app does not crash. Recurring Stripe subscriptions are not implemented.
 
 ## Local setup
 
@@ -201,9 +202,11 @@ Never commit real values. Platform Admin → Integrations shows **presence only*
 | `QUICKBOOKS_CLIENT_SECRET` | No | Intuit client secret |
 | `QUICKBOOKS_ENVIRONMENT` | No | `sandbox` or `production`. Default `sandbox`. |
 | `QUICKBOOKS_REDIRECT_URI` | No | Defaults from `APP_URL` |
-| `STRIPE_SECRET_KEY` | No | Required for card checkout. Manual recorded payments work without it. |
-| `STRIPE_WEBHOOK_SECRET` | No | Required to confirm Stripe Checkout |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | No | Optional publishable key |
+| `STRIPE_SECRET_KEY` | No | Server-only Stripe secret. Required for ContractorYou Payments. App still deploys without it. |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | No | Publishable key for Payment Element. Safe for the browser. |
+| `STRIPE_WEBHOOK_SECRET` | No | Webhook signing secret for `{APP_URL}/api/webhooks/stripe` |
+| `STRIPE_CONNECT_CLIENT_ID` | No | Optional. Express Account Links do not require it. |
+| `STRIPE_PLATFORM_FEE_BPS` | No | Future platform fee in basis points. Default `0`. Do not invent fees. |
 | `RESEND_API_KEY` | No | Required to send team / technician invite emails. Without it, Team shows “Email is not configured.” |
 | `EMAIL_FROM` or `RESEND_FROM` | No | Verified Resend from-address |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | No | Required to send On My Way SMS. Job status still updates without them. |
@@ -246,6 +249,12 @@ Critical coverage includes:
 - External lead sync is idempotent
 - Jobs without a playbook continue to function
 - Message merge fields never execute code
+- Stripe Connect status is never CONNECTED unless Stripe reports charges + payouts + details submitted
+- Payment amount is taken from the invoice, never the browser
+- Webhook signature verification and event idempotency
+- Historical invoices cannot be charged
+- Cash/check overpayment is rejected
+- Technician cannot refund
 
 ## Project layout
 
@@ -276,7 +285,30 @@ Changing a playbook creates a new version. Jobs already started keep the snapsho
 
 ## Phase 2 (intentionally deferred)
 
-AI receptionist, live SMS/email send, connected automation execution, inventory, payroll, GPS/routing, native/PWA apps, full custom form builder. Stripe card checkout and QuickBooks live sync wait on credentials and provider approval. Recurring membership billing and tiered/threshold compensation are foundation-ready.
+AI receptionist, live SMS/email send, connected automation execution, inventory, payroll, GPS/routing, native/PWA apps, full custom form builder. Recurring Stripe subscriptions for memberships are foundation-ready, not live.
+
+## ContractorYou Payments (Stripe Connect)
+
+ContractorYou owns the contractor and customer experience. Stripe is the payment processor.
+
+**Architecture:** Stripe Connect **Express** connected accounts + **direct charges** (`stripeAccount` on PaymentIntents). Each ContractorYou company has its own connected account and payout bank. Funds are never mixed across tenants. A contractor does not need a Stripe account before clicking Set Up Payments.
+
+**Why Express:** Stripe-hosted identity/business verification and bank setup. ContractorYou does not collect KYC or bank credentials.
+
+**Test vs live:** Use `sk_test_` / `pk_test_` first. Switch to live keys only after a controlled test-mode pass. Mode is inferred from the secret key prefix.
+
+**Required Dashboard setup**
+
+1. Enable Stripe Connect (Express).
+2. Add the webhook endpoint `{APP_URL}/api/webhooks/stripe` (legacy alias: `{APP_URL}/api/payments/stripe`).
+3. Subscribe to: `account.updated`, `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `checkout.session.completed`, `charge.refunded`, `refund.updated`, `charge.dispute.created`. Listen on connected accounts as well as the platform.
+4. Set `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET` on Railway. Never commit keys.
+
+**Routing:** The server loads the invoice by id or public token, then charges that invoice's company connected account. The browser cannot choose company, destination, or amount.
+
+**Receipts:** ContractorYou sends a receipt through Resend when email is configured. Stripe `receipt_email` is not set, so Stripe and ContractorYou do not both email a receipt.
+
+**Safe testing:** Use Stripe test cards (`4242…`) and test bank accounts. Do not charge production customers to verify a deploy. Historical/imported invoices never create Stripe charges.
 
 ## License
 

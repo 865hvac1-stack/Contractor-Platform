@@ -99,6 +99,7 @@ const groups: NavGroup[] = [
   {
     title: "Money",
     items: [
+      { href: "/payments", label: "Payments", icon: Wallet, permission: "invoices:view" },
       { href: "/receipts", label: "Receipts", icon: Camera, permission: "receipts:view" },
       { href: "/expenses", label: "Expenses", icon: Wallet, permission: "expenses:view" },
       { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },

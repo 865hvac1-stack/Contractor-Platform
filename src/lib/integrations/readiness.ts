@@ -7,7 +7,9 @@ export function getIntegrationReadiness() {
     let implementation = "NOT IMPLEMENTED";
     if (provider.internalLive) implementation = "LIVE + VERIFIED (ContractorYou-hosted)";
     else if (provider.oauthReady) implementation = "CODE READY";
-    else if (provider.family === "twilio" || provider.family === "resend") implementation = "CODE READY";
+    else if (provider.family === "twilio" || provider.family === "resend" || provider.family === "stripe") {
+      implementation = "CODE READY";
+    }
 
     let status = "ACTION REQUIRED";
     if (provider.internalLive) status = "LIVE";

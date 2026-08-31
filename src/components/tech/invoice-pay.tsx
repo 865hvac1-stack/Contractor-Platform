@@ -4,13 +4,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMoney } from "@/lib/money";
-import { stripeConfigured } from "@/lib/payments/provider";
 import { recordPaymentAction } from "@/server/actions/billing";
+import { CardPay } from "@/components/payments/card-pay";
 import { cn } from "@/lib/utils";
 
 export function TechInvoicePay({
   invoice,
   canPay,
+  card,
 }: {
   invoice: {
     id: string;
@@ -22,9 +23,12 @@ export function TechInvoicePay({
     publicToken: string | null;
   };
   canPay: boolean;
+  card?: {
+    publishableKey: string;
+    stripeAccountId: string;
+    returnUrl: string;
+  } | null;
 }) {
-  const cardReady = stripeConfigured();
-
   return (
     <div className="mt-3 space-y-3">
       <p className="text-sm text-[var(--foreground)]">
@@ -50,6 +54,22 @@ export function TechInvoicePay({
         </p>
       ) : canPay ? (
         <>
+          {card ? (
+            <div className="rounded-xl border border-[var(--border)] p-3">
+              <p className="mb-2 text-sm font-medium">Collect card</p>
+              <CardPay
+                invoiceId={invoice.id}
+                amountCents={invoice.balanceCents}
+                publishableKey={card.publishableKey}
+                stripeAccountId={card.stripeAccountId}
+                returnUrl={card.returnUrl}
+              />
+            </div>
+          ) : invoice.publicToken ? (
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Card collection is not set up. Cash and check can still be recorded.
+            </p>
+          ) : null}
           <ActionForm action={recordPaymentAction} successMessage="Recorded as a manual payment. This is not a card charge.">
             <input type="hidden" name="invoiceId" value={invoice.id} />
             <Label htmlFor="pay-amount">Record cash / check / other</Label>
@@ -78,18 +98,12 @@ export function TechInvoicePay({
             </Button>
           </ActionForm>
           {invoice.publicToken ? (
-            cardReady ? (
-              <Link
-                href={`/i/${invoice.publicToken}`}
-                className={cn(buttonVariants({ variant: "outline" }), "flex h-12 w-full items-center justify-center")}
-              >
-                Collect card on invoice
-              </Link>
-            ) : (
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Card checkout is not configured. Cash and check can still be recorded.
-              </p>
-            )
+            <Link
+              href={`/i/${invoice.publicToken}`}
+              className={cn(buttonVariants({ variant: "outline" }), "flex h-12 w-full items-center justify-center")}
+            >
+              Open customer payment page
+            </Link>
           ) : null}
         </>
       ) : (

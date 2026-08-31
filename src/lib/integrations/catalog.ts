@@ -3,9 +3,10 @@ export type ProviderCategory =
   | "SOCIAL"
   | "COMMUNICATION"
   | "WEBSITE"
-  | "ACCOUNTING";
+  | "ACCOUNTING"
+  | "PAYMENTS";
 
-export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend" | "intuit";
+export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend" | "intuit" | "stripe";
 
 export type IntegrationProvider = {
   key: string;
@@ -275,6 +276,18 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     approvalRequired: true,
     futureCapabilities: ["Customers", "Invoices", "Recorded payments"],
   },
+  {
+    key: "stripe_connect",
+    name: "ContractorYou Payments (Stripe)",
+    category: "PAYMENTS",
+    family: "stripe",
+    description: "Stripe Connect Express for each company. ContractorYou never stores card or bank credentials.",
+    value: "Customer pays the contractor. Payouts go to that company's bank.",
+    oauthReady: false,
+    internalLive: false,
+    approvalRequired: true,
+    futureCapabilities: ["Connected-account onboarding", "Payment Element", "ACH", "Refunds", "Payouts"],
+  },
 ];
 
 export const PROVIDER_CATEGORIES: { key: ProviderCategory; label: string }[] = [
@@ -283,6 +296,7 @@ export const PROVIDER_CATEGORIES: { key: ProviderCategory; label: string }[] = [
   { key: "COMMUNICATION", label: "Communication" },
   { key: "WEBSITE", label: "Website" },
   { key: "ACCOUNTING", label: "Accounting" },
+  { key: "PAYMENTS", label: "Payments" },
 ];
 
 export function getProvider(key: string) {

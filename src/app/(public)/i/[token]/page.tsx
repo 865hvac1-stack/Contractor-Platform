@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney, lineTotalCents } from "@/lib/money";
-import { paymentLabel, stripeConfigured } from "@/lib/payments/provider";
-import { publicPayInvoiceAction } from "@/server/actions/public-billing";
-import { ActionForm } from "@/components/action-form";
-import { Button } from "@/components/ui/button";
+import { paymentLabel } from "@/lib/payments/provider";
+import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
+import { PublicCardPay } from "@/components/payments/card-pay";
 import { StatusBadge } from "@/components/status-badge";
+import { appUrl } from "@/lib/payments/config";
 
 export default async function PublicInvoicePage({
   params,
@@ -22,11 +22,35 @@ export default async function PublicInvoicePage({
       company: true,
       customer: true,
       lineItems: { orderBy: { sortOrder: "asc" } },
-      payments: { orderBy: { paidAt: "desc" } },
+      payments: {
+        where: { status: { notIn: ["CANCELED"] } },
+        orderBy: { paidAt: "desc" },
+        select: {
+          id: true,
+          amountCents: true,
+          method: true,
+          status: true,
+          provider: true,
+          paidAt: true,
+          refundedCents: true,
+        },
+      },
     },
   });
   if (!invoice) notFound();
-  const cardReady = stripeConfigured();
+
+  const account = await prisma.stripeConnectAccount.findUnique({
+    where: { companyId: invoice.companyId },
+  });
+  const publishable = stripePublishableKey();
+  const cardReady =
+    stripeClientConfigured() &&
+    Boolean(account && !account.disabledAt && account.chargesEnabled && publishable);
+  const visiblePayments = invoice.payments.filter((payment) =>
+    ["CONFIRMED", "SUCCEEDED", "RECORDED", "PROCESSING", "REFUNDED", "PARTIALLY_REFUNDED", "DISPUTED", "FAILED"].includes(
+      payment.status
+    )
+  );
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-8">
@@ -43,15 +67,18 @@ export default async function PublicInvoicePage({
 
       {query.paid ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
-          If payment succeeded, it will appear below after the processor confirms it. This is not a payroll receipt.
+          If payment succeeded, it will appear below after the processor confirms it.
         </p>
+      ) : null}
+      {query.canceled ? (
+        <p className="rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-sm">Payment was canceled.</p>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { label: "Invoice total", value: formatMoney(invoice.totalCents) },
           { label: "Paid", value: formatMoney(invoice.amountPaidCents) },
-          { label: "Balance due", value: formatMoney(invoice.balanceCents) },
+          { label: "Amount due", value: formatMoney(invoice.balanceCents) },
         ].map((card) => (
           <div key={card.label} className="rounded-xl border border-[var(--border)] bg-white p-4">
             <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{card.label}</p>
@@ -72,21 +99,32 @@ export default async function PublicInvoicePage({
       </ul>
 
       {invoice.balanceCents > 0 && invoice.status !== "VOID" ? (
-        cardReady ? (
-          <ActionForm action={publicPayInvoiceAction}>
-            <input type="hidden" name="token" value={token} />
-            <Button type="submit">Pay balance by card</Button>
-          </ActionForm>
-        ) : (
-          <p className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--muted-foreground)]">
-            Card payments are not configured. Please pay the office by cash, check, or another recorded method.
-          </p>
-        )
+        <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-white p-5">
+          <h2 className="font-medium">Secure payment</h2>
+          {cardReady && account && publishable ? (
+            <PublicCardPay
+              token={token}
+              amountCents={invoice.balanceCents}
+              publishableKey={publishable}
+              stripeAccountId={account.stripeAccountId}
+              returnUrl={`${appUrl()}/i/${token}?paid=1`}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Card payments are not available for this invoice. Please pay the office by cash, check, or another
+              recorded method.
+            </p>
+          )}
+        </section>
+      ) : invoice.balanceCents === 0 ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          This invoice is paid.
+        </p>
       ) : null}
 
-      {invoice.payments.length > 0 ? (
+      {visiblePayments.length > 0 ? (
         <ul className="space-y-2 text-sm">
-          {invoice.payments.map((payment) => (
+          {visiblePayments.map((payment) => (
             <li key={payment.id} className="flex justify-between gap-3">
               <span>{paymentLabel(payment)}</span>
               <span className="tabular-nums">{formatMoney(payment.amountCents)}</span>
@@ -96,6 +134,10 @@ export default async function PublicInvoicePage({
       ) : (
         <p className="text-sm text-[var(--muted-foreground)]">No payments recorded.</p>
       )}
+
+      <p className="text-center text-[11px] text-[var(--muted-foreground)]">
+        Powered by ContractorYou. Card and bank details are handled by Stripe.
+      </p>
     </main>
   );
 }

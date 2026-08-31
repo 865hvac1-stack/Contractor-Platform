@@ -119,6 +119,23 @@ export function getProviderEnv(providerKey: string): ProviderEnvStatus {
           : [],
       };
     }
+    case "stripe_connect": {
+      const missing: string[] = [];
+      if (!present("STRIPE_SECRET_KEY")) missing.push("STRIPE_SECRET_KEY");
+      if (!present("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY") && !present("STRIPE_PUBLISHABLE_KEY")) {
+        missing.push("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
+      }
+      if (!present("STRIPE_WEBHOOK_SECRET")) missing.push("STRIPE_WEBHOOK_SECRET");
+      return {
+        providerKey,
+        configured: missing.length === 0,
+        missing,
+        notes: [
+          "Each company uses its own Stripe Express connected account.",
+          `Webhook URL: ${appUrl()}/api/webhooks/stripe`,
+        ],
+      };
+    }
     case "quickbooks_online": {
       const missing: string[] = [];
       if (!present("QUICKBOOKS_CLIENT_ID")) missing.push("QUICKBOOKS_CLIENT_ID");

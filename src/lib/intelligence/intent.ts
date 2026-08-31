@@ -16,7 +16,15 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
     tools.add("getOpenEstimates");
     tools.add("getEstimateFollowUpOpportunities");
   }
-  if (/owe|overdue|invoice|money|collect|receivable/.test(q)) tools.add("getOutstandingInvoices");
+  if (/owe|overdue|invoice|money|collect|receivable|outstanding/.test(q)) {
+    tools.add("getOutstandingInvoices");
+    tools.add("getPaymentCollection");
+  }
+  if (/failed payment|declined|payment failed/.test(q)) tools.add("getFailedPayments");
+  if (/processing|ach|bank payment/.test(q)) tools.add("getProcessingPayments");
+  if (/collected today|collected this|paid today|how much did we collect/.test(q)) {
+    tools.add("getPaymentCollection");
+  }
   if (/lead|source|marketing|google|facebook|lsa|ads|organic/.test(q)) {
     tools.add("getLeadMetrics");
     tools.add("getMarketingPerformance");

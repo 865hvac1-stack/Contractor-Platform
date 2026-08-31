@@ -419,6 +419,12 @@ export async function recordPaymentAction(
     }
 
     const amountCents = Math.round(amountDollars * 100);
+    if (amountCents > invoice.balanceCents) {
+      return {
+        ok: false,
+        error: `Amount exceeds remaining balance. Remaining due is ${(invoice.balanceCents / 100).toFixed(2)}.`,
+      };
+    }
     const amountPaidCents = invoice.amountPaidCents + amountCents;
     const balanceCents = Math.max(0, invoice.totalCents - amountPaidCents);
     let status: InvoiceStatus = invoice.status;

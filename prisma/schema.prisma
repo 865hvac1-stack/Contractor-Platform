@@ -517,6 +517,8 @@ model Company {
   jobPhotos JobPhoto[]
   teamInvites TeamInvite[]
   routeOptimizationRuns RouteOptimizationRun[]
+  stripeConnectAccount StripeConnectAccount?
+  stripeWebhookEvents StripeWebhookEvent[]
   techDiscountLimitBps Int?
   routeStartKind String?
   routeEndKind String?
@@ -987,6 +989,9 @@ model Payment {
   externalId     String?
   importSessionId String?
   importMode     String         @default("LIVE")
+  refundedCents  Int            @default(0)
+  stripeAccountId String?
+  currency       String         @default("usd")
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -999,6 +1004,41 @@ model Payment {
   @@index([invoiceId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, status])
+}
+
+model StripeConnectAccount {
+  id                 String   @id @default(cuid())
+  companyId          String   @unique
+  stripeAccountId    String   @unique
+  onboardingStatus   String   @default("ONBOARDING")
+  chargesEnabled     Boolean  @default(false)
+  payoutsEnabled     Boolean  @default(false)
+  detailsSubmitted   Boolean  @default(false)
+  requirementsDue    String?
+  payoutSchedule     String?
+  bankLast4          String?
+  bankName           String?
+  disabledAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([onboardingStatus])
+}
+
+model StripeWebhookEvent {
+  id          String   @id
+  companyId   String?
+  eventType   String
+  processedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([companyId])
 }
 
 // ============================================================

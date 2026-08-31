@@ -7,9 +7,13 @@ import {
   recordPaymentAction,
   updateInvoiceStatusAction,
 } from "@/server/actions/billing";
-import { presentInvoiceAction, startInvoiceCheckoutAction } from "@/server/actions/payments";
+import { presentInvoiceAction } from "@/server/actions/payments";
 import { sellMembershipAction } from "@/server/actions/memberships";
-import { paymentLabel, stripeConfigured } from "@/lib/payments/provider";
+import { paymentLabel } from "@/lib/payments/provider";
+import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
+import { appUrl } from "@/lib/payments/config";
+import { CardPay } from "@/components/payments/card-pay";
+import { RefundForm } from "@/components/payments/refund-form";
 import { can } from "@/lib/permissions";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -52,7 +56,7 @@ export default async function InvoiceDetailPage({
       })
     : [];
 
-  const [invoiceMap, lastEvent, paymentMaps] = await Promise.all([
+  const [invoiceMap, lastEvent, paymentMaps, stripeAccount] = await Promise.all([
     prisma.quickBooksMapping.findFirst({
       where: { companyId: ctx.company.id, entityType: "INVOICE", internalId: invoice.id },
     }),
@@ -67,7 +71,14 @@ export default async function InvoiceDetailPage({
         internalId: { in: invoice.payments.map((payment) => payment.id) },
       },
     }),
+    prisma.stripeConnectAccount.findUnique({ where: { companyId: ctx.company.id } }),
   ]);
+  const publishable = stripePublishableKey();
+  const cardReady =
+    stripeClientConfigured() &&
+    Boolean(stripeAccount && !stripeAccount.disabledAt && stripeAccount.chargesEnabled && publishable);
+  const canCollect = can(ctx.role, "invoices:manage") || can(ctx.role, "invoices:field");
+  const canRefund = can(ctx.role, "payments:refund");
 
   return (
     <div className="space-y-6">
@@ -126,21 +137,28 @@ export default async function InvoiceDetailPage({
             </Button>
           </form>
         )}
-        {stripeConfigured() && invoice.balanceCents > 0 ? (
-          <form
-            action={async () => {
-              "use server";
-              await startInvoiceCheckoutAction(id);
-            }}
-          >
-            <Button type="submit" size="sm">
-              Collect card payment
-            </Button>
-          </form>
-        ) : !stripeConfigured() ? (
-          <p className="text-sm text-[var(--muted-foreground)]">Card payments are not configured.</p>
-        ) : null}
       </div>
+
+      {invoice.balanceCents > 0 && invoice.status !== "VOID" && canCollect ? (
+        <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+          <h2 className="font-medium">Collect card or bank payment</h2>
+          {cardReady && stripeAccount && publishable ? (
+            <div className="mt-3">
+              <CardPay
+                invoiceId={invoice.id}
+                amountCents={invoice.balanceCents}
+                publishableKey={publishable}
+                stripeAccountId={stripeAccount.stripeAccountId}
+                returnUrl={`${appUrl()}/invoices/${invoice.id}`}
+              />
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              Card collection is not available until ContractorYou Payments is connected in Settings → Payments.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-[var(--border)] bg-white">
         <Table>
@@ -298,11 +316,18 @@ export default async function InvoiceDetailPage({
           <h2 className="mb-3 font-medium">Payments</h2>
           <ul className="space-y-2 text-sm">
             {invoice.payments.map((p) => (
-              <li key={p.id} className="flex justify-between gap-4">
-                <span className="text-[var(--muted-foreground)]">
-                  {p.paidAt.toLocaleString()} · {paymentLabel(p)}
-                </span>
-                <span className="tabular-nums">{formatMoney(p.amountCents)}</span>
+              <li key={p.id} className="space-y-2 border-b border-[var(--border)] py-2 last:border-0">
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--muted-foreground)]">
+                    {p.paidAt.toLocaleString()} · {paymentLabel(p)}
+                    {p.status === "DISPUTED" ? " · Payment disputed" : ""}
+                    {p.refundedCents ? ` · Refunded ${formatMoney(p.refundedCents)}` : ""}
+                  </span>
+                  <span className="tabular-nums">{formatMoney(p.amountCents)}</span>
+                </div>
+                {canRefund && p.provider === "STRIPE" && p.amountCents - (p.refundedCents ?? 0) > 0 ? (
+                  <RefundForm paymentId={p.id} remainingCents={p.amountCents - (p.refundedCents ?? 0)} />
+                ) : null}
               </li>
             ))}
           </ul>

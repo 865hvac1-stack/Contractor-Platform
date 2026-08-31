@@ -27,7 +27,7 @@ export async function startInvoiceCheckoutAction(invoiceId: string): Promise<Act
     if (invoice.balanceCents <= 0) return { ok: false, error: "This invoice has no balance due." };
     const token = await ensureInvoicePublicToken(prisma, invoice.id);
     const origin = appUrl();
-    const session = await createStripeCheckoutSession({
+    const session = await createStripeCheckoutSession(prisma, {
       invoiceNumber: invoice.invoiceNumber,
       invoiceId: invoice.id,
       companyId: invoice.companyId,
@@ -59,7 +59,7 @@ export async function startPublicInvoiceCheckoutAction(token: string): Promise<A
   if (!invoice) return { ok: false, error: "Invoice not found." };
   if (invoice.balanceCents <= 0) return { ok: false, error: "This invoice has no balance due." };
   const origin = appUrl();
-  const session = await createStripeCheckoutSession({
+  const session = await createStripeCheckoutSession(prisma, {
     invoiceNumber: invoice.invoiceNumber,
     invoiceId: invoice.id,
     companyId: invoice.companyId,

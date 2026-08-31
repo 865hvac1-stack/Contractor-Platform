@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { stripeConfigured } from "@/lib/payments/provider";
+import { platformFeeBps, stripeConfigured } from "@/lib/payments/config";
+import { getConnectAccount } from "@/lib/payments/connect";
+import { requireStripe } from "@/lib/payments/stripe-client";
+import type { PrismaClient } from "@prisma/client";
 
 export function verifyStripeSignature(payload: string, header: string | null, secret: string) {
   if (!header || !secret) return false;
@@ -20,41 +23,60 @@ export function verifyStripeSignature(payload: string, header: string | null, se
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export async function createStripeCheckoutSession(input: {
-  invoiceNumber: string;
-  invoiceId: string;
-  companyId: string;
-  amountCents: number;
-  successUrl: string;
-  cancelUrl: string;
-}) {
+export async function createStripeCheckoutSession(
+  prisma: PrismaClient,
+  input: {
+    invoiceNumber: string;
+    invoiceId: string;
+    companyId: string;
+    amountCents: number;
+    successUrl: string;
+    cancelUrl: string;
+  }
+) {
   if (!stripeConfigured()) {
     return { ok: false as const, error: "Card payments are not configured." };
   }
-  const body = new URLSearchParams();
-  body.set("mode", "payment");
-  body.set("success_url", input.successUrl);
-  body.set("cancel_url", input.cancelUrl);
-  body.set("client_reference_id", input.invoiceId);
-  body.set("metadata[companyId]", input.companyId);
-  body.set("metadata[invoiceId]", input.invoiceId);
-  body.set("line_items[0][quantity]", "1");
-  body.set("line_items[0][price_data][currency]", "usd");
-  body.set("line_items[0][price_data][unit_amount]", String(input.amountCents));
-  body.set("line_items[0][price_data][product_data][name]", `Invoice ${input.invoiceNumber}`);
-  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-  const json = (await response.json()) as { id?: string; url?: string; error?: { message?: string } };
-  if (!response.ok || !json.url) {
-    return { ok: false as const, error: json.error?.message ?? "Stripe checkout could not be created." };
+  const account = await getConnectAccount(prisma, input.companyId);
+  if (!account || account.disabledAt) {
+    return { ok: false as const, error: "Payments are not set up for this company." };
   }
-  return { ok: true as const, url: json.url, id: json.id ?? "" };
+  if (!account.chargesEnabled) {
+    return { ok: false as const, error: "Card payments are not enabled yet. Complete payment setup." };
+  }
+  const feeBps = platformFeeBps();
+  const applicationFee = feeBps > 0 ? Math.round((input.amountCents * feeBps) / 10_000) : 0;
+  const stripe = requireStripe();
+  try {
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        success_url: input.successUrl,
+        cancel_url: input.cancelUrl,
+        client_reference_id: input.invoiceId,
+        metadata: { companyId: input.companyId, invoiceId: input.invoiceId },
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: input.amountCents,
+              product_data: { name: `Invoice ${input.invoiceNumber}` },
+            },
+          },
+        ],
+        ...(applicationFee > 0 ? { payment_intent_data: { application_fee_amount: applicationFee } } : {}),
+      },
+      { stripeAccount: account.stripeAccountId }
+    );
+    if (!session.url) return { ok: false as const, error: "Stripe checkout could not be created." };
+    return { ok: true as const, url: session.url, id: session.id };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Stripe checkout could not be created.",
+    };
+  }
 }
 
 export function parseStripeCheckoutCompleted(event: {
@@ -65,7 +87,9 @@ export function parseStripeCheckoutCompleted(event: {
   const session = event.data?.object ?? {};
   const metadata = (session.metadata as Record<string, string> | undefined) ?? {};
   const amount = Number(session.amount_total ?? 0);
-  const providerPaymentId = String(session.id ?? session.payment_intent ?? "");
+  const providerPaymentId = String(
+    typeof session.payment_intent === "string" ? session.payment_intent : (session.id ?? "")
+  );
   if (!metadata.companyId || !metadata.invoiceId || !providerPaymentId || !(amount > 0)) return null;
   return {
     companyId: metadata.companyId,

@@ -16,6 +16,8 @@ import { getCompanyProfitability, getVehicleExpenseTotals } from "@/lib/costing/
 import { technicianScorecard, type ScorePeriod } from "@/lib/performance/scorecard";
 import { summarizeCompensation } from "@/lib/compensation/calculate";
 import { compensationUserFilter } from "@/lib/compensation/access";
+import { companyPaymentMetrics } from "@/lib/payments/metrics";
+import { collectedAmountCents } from "@/lib/payments/record";
 
 export type ToolContext = {
   companyId: string;
@@ -69,6 +71,9 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getPricebookItemPerformance: "pricebook:view",
   getDispatchWorkload: "schedule:manage",
   getRouteOptimizationSavings: "routing:optimize",
+  getPaymentCollection: "invoices:view",
+  getFailedPayments: "invoices:view",
+  getProcessingPayments: "invoices:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -266,6 +271,21 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getRouteOptimizationSavings",
     description: "Verified route optimization savings from applied RouteOptimizationRun records only.",
+    parameters: {},
+  },
+  {
+    name: "getPaymentCollection",
+    description: "Verified collected, outstanding, processing, failed, and refunded payment totals. Never invents transactions.",
+    parameters: { period: { type: "string", enum: ["today", "week", "month"] } },
+  },
+  {
+    name: "getFailedPayments",
+    description: "Failed electronic payments this month from stored Payment records only.",
+    parameters: {},
+  },
+  {
+    name: "getProcessingPayments",
+    description: "Bank/card payments still processing. These are not collected yet.",
     parameters: {},
   },
 ] as const;
@@ -926,6 +946,59 @@ export async function runIntelligenceTool(
         });
       }
       return { ok: true, data: rows, grounding: { sources: ["invoices", "job_costs", "jobs"] } };
+    }
+    case "getPaymentCollection": {
+      const metrics = await companyPaymentMetrics(prisma, ctx.companyId);
+      return {
+        ok: true,
+        data: {
+          collectedTodayCents: metrics.collectedTodayCents,
+          collectedWeekCents: metrics.collectedWeekCents,
+          collectedMonthCents: metrics.collectedMonthCents,
+          outstandingCents: metrics.outstandingCents,
+          processingCents: metrics.processingCents,
+          failedCents: metrics.failedCents,
+          refundedMonthCents: metrics.refundedMonthCents,
+          note: "From stored Payment and Invoice rows only. Pending and failed payments are not collected.",
+        },
+        grounding: { sources: ["payments", "invoices"] },
+      };
+    }
+    case "getFailedPayments": {
+      const start = startOfDay(new Date());
+      start.setDate(1);
+      const failed = await prisma.payment.findMany({
+        where: { companyId: ctx.companyId, status: "FAILED", paidAt: { gte: start } },
+        select: { amountCents: true, method: true, paidAt: true, invoiceId: true },
+        take: 25,
+      });
+      return {
+        ok: true,
+        data: {
+          count: failed.length,
+          totalCents: failed.reduce((sum, row) => sum + row.amountCents, 0),
+          payments: failed,
+        },
+        grounding: { sources: ["payments"], period: "This month" },
+      };
+    }
+    case "getProcessingPayments": {
+      const processing = await prisma.payment.findMany({
+        where: { companyId: ctx.companyId, status: "PROCESSING" },
+        select: { amountCents: true, method: true, paidAt: true, invoiceId: true },
+        take: 25,
+      });
+      return {
+        ok: true,
+        data: {
+          count: processing.length,
+          totalCents: processing.reduce((sum, row) => sum + collectedAmountCents({ ...row, status: "PROCESSING" }), 0),
+          processingCents: processing.reduce((sum, row) => sum + row.amountCents, 0),
+          note: "Processing payments are not collected and do not mark invoices paid.",
+          payments: processing,
+        },
+        grounding: { sources: ["payments"] },
+      };
     }
     default:
       return deny("Unknown tool.");
