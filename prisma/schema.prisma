@@ -779,6 +779,9 @@ model Job {
   importSessionId     String?
   importMode          String      @default("LIVE")
   importedTechnicianName String?
+  importedSnapshot    Json?
+  importedOccurredAt  DateTime?
+  importedTotalCents  Int?
   scheduleLocked      Boolean     @default(false)
   routeOrder          Int?
   createdAt           DateTime    @default(now())
@@ -2208,6 +2211,7 @@ model ImportRow {
   @@unique([importSessionId, rowNumber])
   @@index([companyId, importSessionId])
   @@index([importSessionId, status])
+  @@index([companyId, targetRecordId])
 }
 
 model ImportExternalRef {

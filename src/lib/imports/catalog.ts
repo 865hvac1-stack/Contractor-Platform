@@ -90,6 +90,7 @@ export const ENTITY_FIELDS: Record<ImportRecordTypeId, CatalogField[]> = {
     { id: "notes", label: "Notes", kind: "text", tokens: ["notes", "internal notes", "comments"], confidence: "medium" },
     { id: "source", label: "Lead source", kind: "text", tokens: ["lead source", "source"], confidence: "medium" },
     { id: "tags", label: "Tags", kind: "text", tokens: ["tags", "tag"], confidence: "medium" },
+    { id: "createdDate", label: "Original job date", kind: "date", tokens: ["created", "created date", "job created", "date created"], confidence: "medium" },
     { id: "scheduledStart", label: "Scheduled start", kind: "date", tokens: ["scheduled", "scheduled start", "start date", "appointment"], confidence: "medium" },
     { id: "completedAt", label: "Completed date", kind: "date", tokens: ["completed", "completed date", "finished"], confidence: "medium" },
     { id: "technicianName", label: "Technician / employee name", kind: "name", tokens: ["technician", "tech", "employee", "assigned to"], confidence: "medium" },

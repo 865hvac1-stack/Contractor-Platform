@@ -14,6 +14,7 @@ import { mapEstimateStatus, mapExpenseCategory, mapInvoiceStatus, mapJobStatus, 
 import { nextNumber } from "@/lib/sequences";
 import { finalizeAccounting } from "@/lib/imports/quality";
 import { historicalProvenanceNote } from "@/lib/imports/safety";
+import { buildImportedJobSnapshot } from "@/lib/jobs/imported-history";
 
 export type RowAccounting = {
   sourceRows: number;
@@ -459,6 +460,7 @@ async function writeEntity(
     });
     const uniqueNumber = existingNumber ? `${jobNumber}-IMP` : jobNumber;
     const status = mapJobStatus(v.status);
+    const snapshot = buildImportedJobSnapshot(v);
     const created = await tx.job.create({
       data: {
         ...common,
@@ -469,14 +471,18 @@ async function writeEntity(
         status: status.status,
         source: v.source || null,
         description: v.description || null,
+        customerNotes: v.customerNotes || null,
         internalNotes: provenanceNote(input.sourceSystem, [
           v.notes,
           v.technicianName && !input.mapped.technicianUserId ? `Historical technician: ${v.technicianName}` : "",
         ]),
         scheduledStart: parseDate(v.scheduledStart),
         completedAt: parseDate(v.completedAt),
-        externalId: v.externalId || null,
+        externalId: v.externalId || v.jobNumber || null,
         importedTechnicianName: input.mapped.technicianName,
+        importedSnapshot: snapshot,
+        importedOccurredAt: parseDate(v.createdDate) ?? parseDate(v.issueDate),
+        importedTotalCents: parseCurrencyToCents(v.total),
         assignments:
           input.mapped.technicianUserId
             ? { create: { userId: input.mapped.technicianUserId } }
