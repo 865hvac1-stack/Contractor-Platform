@@ -28,6 +28,10 @@ enum Industry {
   CONCRETE
   LANDSCAPING
   GENERAL_CONTRACTOR
+  PAINTING
+  FLOORING
+  CLEANING
+  PEST_CONTROL
   OTHER
 }
 
@@ -519,6 +523,7 @@ model Company {
   routeOptimizationRuns RouteOptimizationRun[]
   stripeConnectAccount StripeConnectAccount?
   stripeWebhookEvents StripeWebhookEvent[]
+  serviceTypes ServiceType[]
   techDiscountLimitBps Int?
   routeStartKind String?
   routeEndKind String?
@@ -564,10 +569,36 @@ model NumberSequence {
   kind      String // JOB | ESTIMATE | INVOICE
   prefix    String
   nextValue Int    @default(1)
+  padding   Int    @default(5)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, kind])
+}
+
+/// Company-scoped “what kind of work” catalog. Distinct from Pricebook items.
+model ServiceType {
+  id          String    @id @default(cuid())
+  companyId   String
+  name        String
+  key         String
+  description String?
+  playbookKey String?
+  playbookId  String?
+  active      Boolean   @default(true)
+  archivedAt  DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  jobs     Job[]
+  invoices Invoice[]
+
+  @@unique([companyId, key])
+  @@index([companyId, active, sortOrder])
+  @@index([companyId, playbookId])
 }
 
 // ============================================================
@@ -725,6 +756,7 @@ model Job {
   propertyId          String
   jobNumber           String
   jobType             String?
+  serviceTypeId       String?
   trade               Industry?
   status              JobStatus   @default(NEW)
   priority            JobPriority @default(NORMAL)
@@ -753,6 +785,7 @@ model Job {
   updatedAt           DateTime    @updatedAt
 
   company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceType ServiceType?   @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
   playbook   Playbook?       @relation(fields: [playbookId], references: [id], onDelete: SetNull)
   playbookVersion PlaybookVersion? @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
   playbookSnapshot JobPlaybookSnapshot?
@@ -784,6 +817,7 @@ model Job {
   @@index([companyId, customerId])
   @@index([companyId, propertyId])
   @@index([companyId, playbookId])
+  @@index([companyId, serviceTypeId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
   @@index([companyId, scheduleLocked])
@@ -925,6 +959,7 @@ model Invoice {
   amountPaidCents Int          @default(0)
   balanceCents   Int           @default(0)
   notes          String?
+  serviceTypeId  String?
   sourceSystem   String?
   externalId     String?
   importSessionId String?
@@ -934,6 +969,7 @@ model Invoice {
   updatedAt      DateTime      @updatedAt
 
   company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceType ServiceType?    @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
   customer  Customer          @relation(fields: [customerId], references: [id])
   property  Property?         @relation(fields: [propertyId], references: [id])
   job       Job?              @relation(fields: [jobId], references: [id])
@@ -947,6 +983,7 @@ model Invoice {
   @@index([companyId])
   @@index([companyId, status])
   @@index([companyId, customerId])
+  @@index([companyId, serviceTypeId])
   @@index([companyId, dueDate])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
@@ -1900,6 +1937,7 @@ model Playbook {
   updatedAt        DateTime       @updatedAt
 
   company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceTypes ServiceType[]
   versions PlaybookVersion[]
   jobs     Job[]
   snapshots JobPlaybookSnapshot[]

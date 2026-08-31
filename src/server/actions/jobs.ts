@@ -30,6 +30,7 @@ export async function createJobAction(
       customerId: formData.get("customerId"),
       propertyId: formData.get("propertyId"),
       jobType: formData.get("jobType") || "",
+      serviceTypeId: formData.get("serviceTypeId") || "",
       trade: formData.get("trade") || undefined,
       priority: formData.get("priority") || "NORMAL",
       source: formData.get("source") || "",
@@ -54,6 +55,13 @@ export async function createJobAction(
     });
     if (!customer || !property) return { ok: false, error: "Customer or property not found." };
 
+    const serviceType = d.serviceTypeId
+      ? await prisma.serviceType.findFirst({
+          where: { id: d.serviceTypeId, companyId: ctx.company.id },
+        })
+      : null;
+    if (d.serviceTypeId && !serviceType) return { ok: false, error: "Service type not found." };
+
     const scheduledStart = emptyToNull(d.scheduledStart) ? new Date(d.scheduledStart!) : null;
     const scheduledEnd = emptyToNull(d.scheduledEnd) ? new Date(d.scheduledEnd!) : null;
     let status: JobStatus = "NEW";
@@ -67,12 +75,13 @@ export async function createJobAction(
         customerId: customer.id,
         propertyId: property.id,
         jobNumber,
-        jobType: emptyToNull(d.jobType),
+        jobType: emptyToNull(d.jobType) || serviceType?.name || null,
+        serviceTypeId: serviceType?.id ?? null,
         trade: d.trade ?? ctx.company.industry,
         status,
         priority: d.priority,
         source: emptyToNull(d.source),
-        description: emptyToNull(d.description),
+        description: emptyToNull(d.description) || serviceType?.description || null,
         internalNotes: emptyToNull(d.internalNotes),
         customerNotes: emptyToNull(d.customerNotes),
         scheduledStart,
@@ -85,11 +94,12 @@ export async function createJobAction(
       },
     });
 
-    if (emptyToNull(d.playbookId)) {
+    const playbookId = emptyToNull(d.playbookId) || serviceType?.playbookId || null;
+    if (playbookId) {
       await assignPlaybookToJob({
         companyId: ctx.company.id,
         jobId: job.id,
-        playbookId: d.playbookId!,
+        playbookId,
       });
     }
 

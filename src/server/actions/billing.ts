@@ -239,6 +239,7 @@ export async function createInvoiceAction(
       taxCents: Math.round(parseFloat(String(formData.get("tax") || "0")) * 100),
       notes: formData.get("notes") || "",
       dueDate: formData.get("dueDate") || "",
+      serviceTypeId: formData.get("serviceTypeId") || "",
       lineItems,
     });
     if (!parsed.success) {
@@ -256,6 +257,14 @@ export async function createInvoiceAction(
         where: { id: d.jobId, companyId: ctx.company.id },
       });
       if (!job) return { ok: false, error: "Job not found." };
+    }
+    let serviceTypeId: string | null = null;
+    if (d.serviceTypeId) {
+      const serviceType = await prisma.serviceType.findFirst({
+        where: { id: d.serviceTypeId, companyId: ctx.company.id },
+      });
+      if (!serviceType) return { ok: false, error: "Service type not found." };
+      serviceTypeId = serviceType.id;
     }
 
     const subtotalCents = sumCents(
@@ -281,6 +290,7 @@ export async function createInvoiceAction(
         amountPaidCents: 0,
         balanceCents: totalCents,
         notes: emptyToNull(d.notes),
+        serviceTypeId,
         lineItems: {
           create: d.lineItems.map((li, i) => ({
             name: li.name,

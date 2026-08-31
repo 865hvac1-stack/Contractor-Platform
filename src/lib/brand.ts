@@ -37,6 +37,10 @@ export const industries = [
   { value: "CONCRETE", label: "Concrete" },
   { value: "LANDSCAPING", label: "Landscaping" },
   { value: "GENERAL_CONTRACTOR", label: "General Contractor" },
+  { value: "PAINTING", label: "Painting" },
+  { value: "FLOORING", label: "Flooring" },
+  { value: "CLEANING", label: "Cleaning" },
+  { value: "PEST_CONTROL", label: "Pest Control" },
   { value: "OTHER", label: "Other" },
 ] as const;
 

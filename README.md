@@ -122,6 +122,8 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 10. Settings → Import Data → upload a customer export → match columns → preview → confirm.
 11. Settings → QuickBooks → Connect (after Intuit credentials) → optionally Sync to QuickBooks on an invoice.
 
+Invoice numbers are server-generated per company (`INV-00001`, `INV-00002`, …) from `NumberSequence` with a row-locked increment. Existing invoices are never renumbered. Service types (what kind of work) live on the company and are distinct from Pricebook items (what you charge). New HVAC companies get the HVAC starter list; other trades get a generic list. Settings expose primary trade, invoice prefix / next number, and service-type add/rename/reorder/deactivate.
+
 ## Security notes
 
 - Tenant isolation is enforced in server actions / queries.

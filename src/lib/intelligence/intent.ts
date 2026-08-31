@@ -45,7 +45,9 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
     tools.add("getReceiptSummary");
   }
   if (/fuel|truck|vehicle/.test(q)) tools.add("getVehicleExpenses");
-  if (/margin|job type|profitable/.test(q)) tools.add("getMarginByJobType");
+  if (/margin|job type|service type|service call|changeout|residential service|profitable/.test(q)) {
+    tools.add("getMarginByJobType");
+  }
   if (/missing cost|no cost/.test(q)) tools.add("getJobsMissingCosts");
   if (jobId && /make|profit|margin|cost/.test(q)) {
     tools.add("getJobProfitability");

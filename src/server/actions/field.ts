@@ -264,6 +264,7 @@ export async function createInvoiceFromJobAction(jobId: string): Promise<ActionR
         customerId: job.customerId,
         propertyId: job.propertyId,
         jobId: job.id,
+        serviceTypeId: job.serviceTypeId,
         invoiceNumber,
         publicToken: nanoid(24),
         status: "SENT",

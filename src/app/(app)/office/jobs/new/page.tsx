@@ -4,6 +4,7 @@ import { NewJobForm } from "@/components/jobs/new-job-form";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
+import { ensureCompanyServiceTypes, listActiveServiceTypes } from "@/lib/trades/service-types";
 import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
 
 export default async function OfficeNewJobPage({
@@ -17,7 +18,8 @@ export default async function OfficeNewJobPage({
   }
   const { customerId } = await searchParams;
 
-  const [customers, properties, memberships, playbooks] = await Promise.all([
+  await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
+  const [customers, properties, memberships, playbooks, serviceTypes] = await Promise.all([
     prisma.customer.findMany({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -39,6 +41,7 @@ export default async function OfficeNewJobPage({
       where: { companyId: ctx.company.id, status: "ACTIVE" },
       orderBy: { sortOrder: "asc" },
     }),
+    listActiveServiceTypes(prisma, ctx.company.id),
   ]);
 
   const defaultCustomerId =
@@ -84,6 +87,7 @@ export default async function OfficeNewJobPage({
               label: `${member.user.firstName} ${member.user.lastName}`,
             }))}
             playbooks={playbooks.map((playbook) => ({ id: playbook.id, label: playbook.name }))}
+            serviceTypes={serviceTypes}
           />
         </div>
       )}

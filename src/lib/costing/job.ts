@@ -27,6 +27,7 @@ export async function loadJobFinancials(companyId: string, jobId: string): Promi
   const job = await prisma.job.findFirst({
     where: { id: jobId, companyId },
     include: {
+      serviceType: { select: { name: true } },
       invoices: { where: { status: VERIFIED_INVOICE } },
       expenses: true,
       jobCosts: { orderBy: { createdAt: "desc" } },
@@ -91,7 +92,7 @@ export async function loadJobFinancials(companyId: string, jobId: string): Promi
   return {
     jobId: job.id,
     jobNumber: job.jobNumber,
-    jobType: job.jobType,
+    jobType: job.serviceType?.name || job.jobType,
     ...profit,
     breakdown: [...byCategory.values()].sort((a, b) => b.amountCents - a.amountCents),
     unconfirmedReceipts: job.receipts,

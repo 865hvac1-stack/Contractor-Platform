@@ -4,16 +4,18 @@ import { prisma } from "@/lib/db";
 import { createInvoiceAction } from "@/server/actions/billing";
 import { ActionForm } from "@/components/action-form";
 import { LineItemsEditor } from "@/components/line-items-editor";
+import { ServiceTypePicker } from "@/components/service-type-picker";
+import { ensureCompanyServiceTypes, listActiveServiceTypes } from "@/lib/trades/service-types";
 import { IsoDateField } from "@/components/iso-date-field";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export default async function NewInvoicePage() {
   const ctx = await requirePermission("invoices:manage");
-  const [customers, jobs] = await Promise.all([
+  await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
+  const [customers, jobs, serviceTypes] = await Promise.all([
     prisma.customer.findMany({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -23,6 +25,7 @@ export default async function NewInvoicePage() {
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
+    listActiveServiceTypes(prisma, ctx.company.id),
   ]);
 
   return (
@@ -31,7 +34,7 @@ export default async function NewInvoicePage() {
         <div>
           <h1 className="font-display text-3xl tracking-tight">New invoice</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Add line items and optionally link a job.
+            Choose a service type, add what you are charging, then save.
           </p>
         </div>
         <Link href="/invoices" className={cn(buttonVariants({ variant: "outline" }))}>
@@ -87,9 +90,8 @@ export default async function NewInvoicePage() {
               <Label htmlFor="tax">Tax ($)</Label>
               <Input id="tax" name="tax" type="number" min="0" step="0.01" defaultValue="0" />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" name="notes" rows={3} />
+            <div className="sm:col-span-2">
+              <ServiceTypePicker types={serviceTypes} descriptionName="notes" descriptionLabel="Description" />
             </div>
           </div>
 

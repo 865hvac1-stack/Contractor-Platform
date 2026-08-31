@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { industries } from "@/lib/brand";
 import { createJobFormAction } from "@/server/actions/job-form";
+import { ServiceTypePicker, type ServiceTypeOption } from "@/components/service-type-picker";
 
 const selectClassName =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -38,6 +39,7 @@ export function NewJobForm({
   properties,
   members,
   playbooks,
+  serviceTypes,
   defaultCustomerId,
   returnTo,
   canAssign = true,
@@ -47,6 +49,7 @@ export function NewJobForm({
   properties: PropertyOption[];
   members: MemberOption[];
   playbooks: PlaybookOption[];
+  serviceTypes: ServiceTypeOption[];
   defaultCustomerId?: string;
   returnTo?: string;
   canAssign?: boolean;
@@ -103,28 +106,22 @@ export function NewJobForm({
         </select>
       </div>
 
+      <ServiceTypePicker
+        types={serviceTypes}
+        descriptionName="description"
+        descriptionLabel="Description"
+        showPlaybookField
+      />
+      {playbooks.length === 0 ? (
+        <p className="text-sm text-[var(--muted-foreground)]">
+          No playbooks yet. Jobs still work without one.
+        </p>
+      ) : (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          A service type can attach its playbook automatically. You can still choose a different playbook in Settings.
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="playbookId">Job type / playbook</Label>
-          {playbooks.length > 0 ? (
-            <select id="playbookId" name="playbookId" className={selectClassName} defaultValue="">
-              <option value="">No playbook — keep it simple</option>
-              {playbooks.map((playbook) => (
-                <option key={playbook.id} value={playbook.id}>
-                  {playbook.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              No playbooks yet. Jobs still work without one.
-            </p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="jobType">Short label</Label>
-          <Input id="jobType" name="jobType" placeholder="Optional, if you are not using a playbook" />
-        </div>
         <div className="space-y-2">
           <Label htmlFor="trade">Trade</Label>
           <select id="trade" name="trade" className={selectClassName} defaultValue="">
@@ -157,11 +154,6 @@ export function NewJobForm({
           <Label htmlFor="source">Source</Label>
           <Input id="source" name="source" />
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" name="description" rows={3} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

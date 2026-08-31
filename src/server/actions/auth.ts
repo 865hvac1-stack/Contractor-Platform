@@ -211,7 +211,10 @@ export async function completeOnboardingAction(
         ],
       },
     },
-  });
+    });
+
+  const { ensureCompanyServiceTypes } = await import("@/lib/trades/service-types");
+  await ensureCompanyServiceTypes(prisma, company.id, company.industry);
 
   await setActiveCompany(company.id, user.id);
   await writeAudit({

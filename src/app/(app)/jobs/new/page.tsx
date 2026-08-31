@@ -3,6 +3,7 @@ import { can } from "@/lib/permissions";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { NewJobForm } from "@/components/jobs/new-job-form";
+import { ensureCompanyServiceTypes, listActiveServiceTypes } from "@/lib/trades/service-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function NewJobPage({
@@ -13,7 +14,8 @@ export default async function NewJobPage({
   const ctx = await requirePermission("jobs:manage");
   const { customerId, returnTo } = await searchParams;
 
-  const [customers, properties, memberships, playbooks] = await Promise.all([
+  await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
+  const [customers, properties, memberships, playbooks, serviceTypes] = await Promise.all([
     prisma.customer.findMany({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -31,6 +33,7 @@ export default async function NewJobPage({
       where: { companyId: ctx.company.id, status: "ACTIVE" },
       orderBy: { sortOrder: "asc" },
     }),
+    listActiveServiceTypes(prisma, ctx.company.id),
   ]);
 
   const defaultCustomerId =
@@ -86,6 +89,7 @@ export default async function NewJobPage({
                 label: `${m.user.firstName} ${m.user.lastName} · ${m.role.replaceAll("_", " ")}`,
               }))}
               playbooks={playbooks.map((p) => ({ id: p.id, label: p.name }))}
+              serviceTypes={serviceTypes}
             />
           )}
         </CardContent>

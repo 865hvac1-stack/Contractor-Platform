@@ -34,6 +34,10 @@ export const companyOnboardingSchema = z.object({
     "CONCRETE",
     "LANDSCAPING",
     "GENERAL_CONTRACTOR",
+    "PAINTING",
+    "FLOORING",
+    "CLEANING",
+    "PEST_CONTROL",
     "OTHER",
   ]),
   phone: z.string().max(40).optional().or(z.literal("")),
@@ -89,9 +93,14 @@ export const jobSchema = z.object({
       "CONCRETE",
       "LANDSCAPING",
       "GENERAL_CONTRACTOR",
+      "PAINTING",
+      "FLOORING",
+      "CLEANING",
+      "PEST_CONTROL",
       "OTHER",
     ])
     .optional(),
+  serviceTypeId: z.string().cuid().optional().or(z.literal("")),
   status: z
     .enum([
       "NEW",
@@ -142,6 +151,7 @@ export const invoiceSchema = z.object({
   customerId: z.string().cuid(),
   propertyId: z.string().cuid().optional().or(z.literal("")),
   jobId: z.string().cuid().optional().or(z.literal("")),
+  serviceTypeId: z.string().cuid().optional().or(z.literal("")),
   status: z.enum(["DRAFT", "SENT", "PARTIALLY_PAID", "PAID", "OVERDUE", "VOID"]).optional(),
   dueDate: z.string().datetime().optional().or(z.literal("")),
   taxCents: z.coerce.number().int().min(0).default(0),
