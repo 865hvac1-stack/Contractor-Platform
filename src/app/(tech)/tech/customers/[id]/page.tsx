@@ -48,6 +48,7 @@ export default async function TechCustomerPage({
       canPay={false}
       canAsk={can(ctx.role, "intelligence:view")}
       jobBase="/tech/jobs"
+      selfHref={`/tech/customers/${workspace.customer.id}`}
     />
   );
 }

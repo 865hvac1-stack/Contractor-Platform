@@ -49,6 +49,7 @@ export async function getCustomer360(input: Customer360Options) {
     recentJobs,
     jobCount,
     completedCount,
+    completedAtProperty,
     openEstimates,
     invoices,
     payments,
@@ -80,6 +81,16 @@ export async function getCustomer360(input: Customer360Options) {
     prisma.job.count({
       where: { companyId: input.companyId, customerId: customer.id, status: "COMPLETED" },
     }),
+    selected
+      ? prisma.job.count({
+          where: {
+            companyId: input.companyId,
+            customerId: customer.id,
+            propertyId: selected.id,
+            status: "COMPLETED",
+          },
+        })
+      : Promise.resolve(0),
     prisma.estimate.findMany({
       where: { companyId: input.companyId, customerId: customer.id },
       orderBy: { createdAt: "desc" },
@@ -299,7 +310,11 @@ export async function getCustomer360(input: Customer360Options) {
             }
           : null,
         { label: "Equipment", value: `${equipmentCards.length} asset${equipmentCards.length === 1 ? "" : "s"}`, source: "Company entered" },
-        { label: "Service history", value: `${completedCount} completed job${completedCount === 1 ? "" : "s"}`, source: "Company entered" },
+        {
+          label: "Service history",
+          value: `${completedAtProperty} completed job${completedAtProperty === 1 ? "" : "s"}`,
+          source: "Company entered",
+        },
         canSeeMoney ? { label: "Lifetime collected", value: `$${(lifetimeCollected / 100).toLocaleString("en-US")}`, source: "Company entered" } : null,
       ].filter(Boolean)
     : [];
@@ -346,7 +361,16 @@ export async function getCustomer360(input: Customer360Options) {
     })),
     selectedProperty: selected
       ? {
-          ...selected,
+          id: selected.id,
+          name: selected.name,
+          address: selected.address,
+          city: selected.city,
+          state: selected.state,
+          zip: selected.zip,
+          propertyType: selected.propertyType,
+          isPrimary: selected.isPrimary,
+          propertyClass: selected.propertyClass,
+          accessNotes: selected.accessNotes,
           image,
           enrichmentLabel:
             selected.enrichmentStatus === "DEMO"
@@ -406,7 +430,7 @@ export async function getCustomer360(input: Customer360Options) {
         technician: job.assignments[0]
           ? `${job.assignments[0].user.firstName} ${job.assignments[0].user.lastName}`
           : null,
-        property: job.property.address,
+        property: job.property?.address ?? "Unknown property",
       })),
       estimates: openEstimates
         .filter((row) => OPEN_ESTIMATE.includes(row.status))
@@ -428,7 +452,7 @@ export async function getCustomer360(input: Customer360Options) {
         ? `${job.assignments[0].user.firstName} ${job.assignments[0].user.lastName}`
         : null,
       amountCents: canSeeMoney ? job.invoices[0]?.totalCents ?? null : null,
-      property: job.property.address,
+      property: job.property?.address ?? "Unknown property",
     })),
     jobCount,
     estimates: openEstimates,
@@ -465,23 +489,25 @@ export async function getCustomer360(input: Customer360Options) {
 }
 
 function buildCustomerInsights(input: {
-  equipment: { ageYears: number | null; repairCount: number; name: string }[];
+  equipment: { id: string; ageYears: number | null; repairCount: number; name: string }[];
   completedCount: number;
   activeMembership: boolean;
   openReplacement: boolean;
   openEstimateValue: number;
   outstanding: number;
 }) {
-  const rows: { title: string; detail: string }[] = [];
+  const rows: { id: string; title: string; detail: string }[] = [];
   for (const item of input.equipment) {
     if (item.ageYears != null && item.ageYears >= 12) {
       rows.push({
+        id: `older-${item.id}`,
         title: "Older equipment",
         detail: `${item.name} is about ${item.ageYears} years old based on the recorded install date.`,
       });
     }
     if (item.repairCount >= 2) {
       rows.push({
+        id: `repairs-${item.id}`,
         title: "Repeated repairs",
         detail: `${item.name} has ${item.repairCount} documented repair-related jobs in the last 18 months.`,
       });
@@ -489,18 +515,21 @@ function buildCustomerInsights(input: {
   }
   if (!input.activeMembership && input.completedCount >= 3) {
     rows.push({
+      id: "membership-opportunity",
       title: "Membership opportunity",
       detail: `${input.completedCount} completed jobs and no active membership on file.`,
     });
   }
   if (input.openEstimateValue > 0) {
     rows.push({
+      id: "open-estimate",
       title: "Open estimate",
       detail: `Open estimates total $${(input.openEstimateValue / 100).toLocaleString("en-US")}.`,
     });
   }
   if (input.outstanding > 0) {
     rows.push({
+      id: "open-balance",
       title: "Open balance",
       detail: `Outstanding invoices total $${(input.outstanding / 100).toLocaleString("en-US")}.`,
     });

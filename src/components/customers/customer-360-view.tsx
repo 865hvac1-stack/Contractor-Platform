@@ -30,6 +30,7 @@ export function Customer360View({
   canAsk,
   jobBase = "/jobs",
   newJobHref,
+  selfHref,
 }: {
   workspace: Customer360;
   role: CompanyRole;
@@ -41,11 +42,13 @@ export function Customer360View({
   canAsk: boolean;
   jobBase?: string;
   newJobHref?: string;
+  selfHref: string;
 }) {
   const { customer, selectedProperty, properties } = workspace;
   const call = telHref(customer.phone);
   const text = smsHref(customer.phone);
   const propertyQuery = selectedProperty ? `?propertyId=${selectedProperty.id}` : "";
+  const propertyTypeLabel = (selectedProperty?.propertyType ?? "RESIDENTIAL").replaceAll("_", " ").toLowerCase();
 
   return (
     <div className="space-y-8">
@@ -157,9 +160,7 @@ export function Customer360View({
                   {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zip}
                 </span>
               </h2>
-              <p className="text-sm text-white/65">
-                {selectedProperty.propertyType.replaceAll("_", " ").toLowerCase()}
-              </p>
+              <p className="text-sm text-white/65">{propertyTypeLabel}</p>
               <p className="text-xs text-white/45">{selectedProperty.enrichmentLabel}</p>
               {workspace.mapsConfigured ? (
                 <a
@@ -189,7 +190,7 @@ export function Customer360View({
               return (
                 <li key={property.id}>
                   <Link
-                    href={`${property.id === selectedProperty?.id ? "#" : `?propertyId=${property.id}`}`}
+                    href={active ? selfHref : `${selfHref}?propertyId=${property.id}`}
                     className={`block min-w-[11rem] rounded-2xl border px-4 py-3 text-sm ${
                       active
                         ? "border-[var(--cy-navy)] bg-[var(--cy-navy)] text-white"
@@ -199,7 +200,7 @@ export function Customer360View({
                     <p className="font-medium">{property.address}</p>
                     <p className={active ? "text-white/70" : "text-[var(--muted-foreground)]"}>
                       {property.propertyClass?.replaceAll("_", " ") ||
-                        (property.isPrimary ? "Primary residence" : property.propertyType.replaceAll("_", " "))}
+                        (property.isPrimary ? "Primary residence" : (property.propertyType ?? "RESIDENTIAL").replaceAll("_", " "))}
                     </p>
                   </Link>
                 </li>
@@ -246,7 +247,7 @@ export function Customer360View({
           <h2 className="text-xl font-semibold text-[var(--cy-navy)]">What ContractorYou noticed</h2>
           <ul className="mt-3 space-y-2 text-sm">
             {workspace.insights.map((row) => (
-              <li key={row.title}>
+              <li key={row.id}>
                 <span className="font-medium text-[var(--cy-navy)]">{row.title}.</span>{" "}
                 <span className="text-[var(--muted-foreground)]">{row.detail}</span>
               </li>

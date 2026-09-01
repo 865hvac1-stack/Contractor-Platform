@@ -38,6 +38,7 @@ export default async function CustomerDetailPage({
         canPay={workspace.canSeeMoney}
         canAsk={can(ctx.role, "intelligence:view")}
         jobBase="/jobs"
+        selfHref={`/customers/${workspace.customer.id}`}
       />
       {can(ctx.role, "customers:manage") ? (
         <CustomerRecordEditor

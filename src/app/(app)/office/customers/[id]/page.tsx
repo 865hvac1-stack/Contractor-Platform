@@ -40,6 +40,7 @@ export default async function OfficeCustomer360Page({
       canPay={workspace.canSeeMoney}
       canAsk={can(ctx.role, "intelligence:view")}
       jobBase="/jobs"
+      selfHref={`/office/customers/${workspace.customer.id}`}
       newJobHref={`/office/jobs/new?customerId=${workspace.customer.id}${
         workspace.selectedProperty ? `&propertyId=${workspace.selectedProperty.id}` : ""
       }`}

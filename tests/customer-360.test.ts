@@ -285,6 +285,13 @@ describe("Customer 360 V2", () => {
     expect(primary?.photos.length).toBeGreaterThan(0);
     expect(rental?.photos).toHaveLength(0);
     expect(primary?.customer.phone).toBe(rental?.customer.phone);
+    expect(rental?.selectedProperty?.address).toBe("456 Oak Ave");
+    expect(rental?.snapshot.some((row) => row && row.label === "Service history" && row.value === "0 completed jobs")).toBe(
+      true
+    );
+    const insightIds = (primary?.insights ?? []).map((row) => row.id);
+    expect(insightIds.length).toBeGreaterThan(0);
+    expect(new Set(insightIds).size).toBe(insightIds.length);
   });
 
   it("keeps customer-level and property-level data distinct", async () => {
@@ -313,6 +320,7 @@ describe("Customer 360 V2", () => {
     expect(upstairs?.repairCount).toBeGreaterThanOrEqual(2);
     expect(upstairs?.ageYears).toBeGreaterThanOrEqual(12);
     expect(workspace?.insights.some((row) => /older equipment/i.test(row.title))).toBe(true);
+    expect(new Set((workspace?.insights ?? []).map((row) => row.id)).size).toBe(workspace?.insights.length);
   });
 
   it("hides financials from technicians", async () => {
@@ -430,6 +438,8 @@ describe("Customer 360 V2", () => {
     expect(ui).toMatch(/Ask ContractorYou about/);
     expect(ui).toMatch(/JobPhotoUpload/);
     expect(ui).toMatch(/flex-col/);
+    expect(ui).toMatch(/key=\{row\.id\}/);
+    expect(ui).toMatch(/selfHref\?propertyId=/);
   });
 
   it("does not treat Summit demo facts as a live provider", async () => {
