@@ -14,6 +14,7 @@ import { JOB_COST_LABELS } from "@/lib/costing/categories";
 import { ActionForm } from "@/components/action-form";
 import { JobStatusControls } from "@/components/jobs/job-status-controls";
 import { Job360View } from "@/components/jobs/job-360-view";
+import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { loadJob360 } from "@/lib/jobs/job-360";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,6 +118,20 @@ export default async function JobDetailPage({
               <JobStatusControls jobId={view.job.id} status={view.job.status as never} />
             </CardContent>
           </Card>
+          {can(ctx.role, "jobs:manage") ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Remove job</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Deletes this job from the list. Invoices and payments stay on the customer.
+                  Cancel only changes status — use Delete if you want it gone.
+                </p>
+                <DeleteJobButton jobId={view.job.id} jobNumber={view.job.jobNumber} />
+              </CardContent>
+            </Card>
+          ) : null}
           {can(ctx.role, "jobs:manage") && !view.job.historical ? (
             <Card>
               <CardHeader>
