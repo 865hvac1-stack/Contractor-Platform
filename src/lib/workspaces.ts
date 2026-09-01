@@ -10,7 +10,7 @@ export const WORKSPACES: {
   blurb: string;
 }[] = [
   { id: "command", href: "/dashboard", label: "Command Center", blurb: "The whole business" },
-  { id: "dispatch", href: "/dispatch", label: "Dispatch Center", blurb: "Today's board" },
+  { id: "dispatch", href: "/dispatch", label: "Dispatch Center", blurb: "Today's dispatch" },
   { id: "office", href: "/office", label: "Customer Hub", blurb: "Find and help customers" },
   { id: "field", href: "/tech", label: "Field", blurb: "Your next job" },
 ];

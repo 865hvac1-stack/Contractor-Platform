@@ -169,7 +169,7 @@ const ACTIONS: ActionDefinition[] = [
     category: "communication",
     level: "PREPARE",
     riskLevel: "MEDIUM",
-    requiredPermission: "marketing:manage",
+    requiredPermission: ["marketing:manage", "schedule:manage"],
     requiresApproval: true,
     externalSideEffect: false,
     provider: "none",

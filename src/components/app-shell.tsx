@@ -365,8 +365,10 @@ export function AppShell({
 
         <main className="flex-1 overflow-x-hidden">
           <div
-            className={`mx-auto w-full px-4 py-6 md:px-8 md:py-8 ${
-              pathname.startsWith("/dispatch") ? "max-w-[1600px]" : "max-w-7xl"
+            className={`mx-auto w-full px-4 ${
+              pathname.startsWith("/dispatch")
+                ? "max-w-[1600px] py-3 md:px-6 md:py-4"
+                : "max-w-7xl py-6 md:px-8 md:py-8"
             }`}
           >
             {children}

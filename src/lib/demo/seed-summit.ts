@@ -391,6 +391,9 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
     completed?: boolean;
     description: string;
     showcase?: boolean;
+    unassigned?: boolean;
+    priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+    scheduleLocked?: boolean;
   }) {
     const number = `SUM-${String(jobSeq).padStart(5, "0")}`;
     jobSeq += 1;
@@ -405,12 +408,13 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
         serviceTypeId: serviceType?.id,
         trade: input.type.trade,
         status: input.status,
-        priority: input.type.type.includes("No Cooling") ? "HIGH" : "NORMAL",
+        priority: input.priority ?? (input.type.type.includes("No Cooling") ? "HIGH" : "NORMAL"),
         source: input.customer.showcase === "google-emergency" ? "GOOGLE_LSA" : "Repeat",
         description: input.description,
         internalNotes: input.showcase ? "Showcase job for sales walkthrough." : null,
         scheduledStart: input.when,
         scheduledEnd: new Date(input.when.getTime() + 90 * 60 * 1000),
+        scheduleLocked: input.scheduleLocked ?? false,
         completedAt: input.completed ? new Date(input.when.getTime() + 2 * 60 * 60 * 1000) : null,
         playbookId: input.type.playbook,
         sourceSystem: DEMO_SOURCE,
@@ -418,7 +422,7 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
       },
     });
     const tech = users[input.techKey];
-    if (tech) {
+    if (tech && !input.unassigned) {
       await prisma.jobAssignment.create({ data: { jobId: job.id, userId: tech.id } });
     }
     if (input.showcase || input.status !== "COMPLETED") {
@@ -454,7 +458,16 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
     });
   }
 
-  const todayPlan: Array<{ hour: number; minute: number; type: (typeof jobTypes)[number]; status: "SCHEDULED" | "DISPATCHED" | "IN_PROGRESS" | "COMPLETED" | "ON_HOLD"; tech: string; customer: number; description: string }> = [
+  const todayPlan: Array<{
+    hour: number;
+    minute: number;
+    type: (typeof jobTypes)[number];
+    status: "SCHEDULED" | "DISPATCHED" | "IN_PROGRESS" | "COMPLETED" | "ON_HOLD";
+    tech: string;
+    customer: number;
+    description: string;
+    scheduleLocked?: boolean;
+  }> = [
     { hour: 7, minute: 30, type: jobTypes[3]!, status: "COMPLETED", tech: "chris", customer: 0, description: "Comfort Club maintenance, upstairs system." },
     { hour: 8, minute: 0, type: jobTypes[0]!, status: "COMPLETED", tech: "daniel", customer: 2, description: "Upstairs unit stopped cooling overnight." },
     { hour: 8, minute: 30, type: jobTypes[7]!, status: "IN_PROGRESS", tech: "jordan", customer: 8, description: "Kitchen supply line leak." },
@@ -463,10 +476,13 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
     { hour: 11, minute: 0, type: jobTypes[0]!, status: "DISPATCHED", tech: "ryan", customer: 12, description: "No cooling in the bonus room." },
     { hour: 12, minute: 30, type: jobTypes[9]!, status: "SCHEDULED", tech: "ethan", customer: 4, description: "System replacement walkthrough and start." },
     { hour: 13, minute: 0, type: jobTypes[8]!, status: "SCHEDULED", tech: "jordan", customer: 15, description: "Water heater making popping sounds." },
-    { hour: 14, minute: 0, type: jobTypes[4]!, status: "SCHEDULED", tech: "chris", customer: 18, description: "Follow-up AC repair after Saturday call." },
+    { hour: 14, minute: 0, type: jobTypes[4]!, status: "SCHEDULED", tech: "chris", customer: 18, description: "Follow-up AC repair after Saturday call.", scheduleLocked: true },
     { hour: 14, minute: 30, type: jobTypes[3]!, status: "SCHEDULED", tech: "daniel", customer: 21, description: "Member tune-up." },
     { hour: 15, minute: 30, type: jobTypes[0]!, status: "SCHEDULED", tech: "marcus", customer: 24, description: "No cooling, older condenser." },
     { hour: 16, minute: 0, type: jobTypes[2]!, status: "ON_HOLD", tech: "austin", customer: 1, description: "Estimate follow-up after diagnostic." },
+    { hour: 16, minute: 0, type: jobTypes[9]!, status: "SCHEDULED", tech: "chris", customer: 6, description: "Replacement estimate for the aging outdoor unit." },
+    { hour: 16, minute: 30, type: jobTypes[4]!, status: "SCHEDULED", tech: "daniel", customer: 7, description: "Repair after the morning no-cooling call." },
+    { hour: 11, minute: 30, type: jobTypes[4]!, status: "SCHEDULED", tech: "marcus", customer: 9, description: "Callback after Saturday diagnostic." },
   ];
 
   let todayJobs = 0;
@@ -480,9 +496,23 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
       completed: row.status === "COMPLETED",
       description: row.description,
       showcase: row.customer < 5,
+      scheduleLocked: row.scheduleLocked,
     });
     todayJobs += 1;
   }
+
+  await createJob({
+    customer: customers[30]!,
+    when: atDemoHour(now, 13, 0),
+    type: jobTypes[0]!,
+    status: "SCHEDULED",
+    techKey: "chris",
+    unassigned: true,
+    priority: "URGENT",
+    description: "Emergency no cooling — waiting for the next available HVAC technician.",
+    showcase: true,
+  });
+  todayJobs += 1;
 
   let upcomingJobs = 0;
   for (let i = 1; i <= 12; i += 1) {

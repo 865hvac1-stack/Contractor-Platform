@@ -124,10 +124,27 @@ export function planFromQuestion(question: string, lastResult?: LastResultSet | 
     };
   }
 
-  if (/unassigned|who should take|who can take|fix tomorrow|dispatch/.test(q) && /job|call|technician|assign/.test(q)) {
+  if (
+    /unassigned|who should take|who can take|fix tomorrow|dispatch|no-?cooling|emergency call|has room|available technician/.test(q) &&
+    /job|call|technician|assign|room|unassigned|dispatch/.test(q)
+  ) {
     return {
       handled: true,
-      steps: [{ key: "job.propose_assignment", input: { when: /today/.test(q) ? "today" : "tomorrow" } }],
+      steps: [{ key: "job.propose_assignment", input: { when: /tomorrow/.test(q) ? "tomorrow" : "today" } }],
+    };
+  }
+
+  if (/running late|late customer|prepare.*customer update|message.*late|text.*late/.test(q) && /message|text|sms|prepare|update|draft/.test(q)) {
+    return {
+      handled: true,
+      steps: [
+        {
+          key: "communication.draft_sms",
+          input: {
+            purpose: "Your technician is running behind. We will update you as soon as we have a new arrival window.",
+          },
+        },
+      ],
     };
   }
 

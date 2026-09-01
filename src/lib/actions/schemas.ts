@@ -39,6 +39,7 @@ export const reportInput = z.object({
 export const draftFromIdsInput = z.object({
   recordIds: idList,
   requestId: z.string().min(1).max(64).optional(),
+  purpose: z.string().trim().max(400).optional(),
 });
 
 export const socialDraftInput = z.object({

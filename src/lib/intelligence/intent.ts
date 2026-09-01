@@ -103,10 +103,11 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
   }
   if (workspace === "dispatch") {
     return [
-      "Which technician has the most jobs today?",
-      "Which jobs are still unassigned?",
-      "How much drive time did optimization save this week?",
       "Who is running late?",
+      "Which technician has room today?",
+      "What jobs are still unassigned?",
+      "Who should take the next no-cooling call?",
+      "Where are today's schedule conflicts?",
     ];
   }
   if (workspace === "office") {

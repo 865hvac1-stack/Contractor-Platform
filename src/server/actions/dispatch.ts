@@ -25,13 +25,15 @@ export async function assignJobToTechnicianAction(input: {
   jobId: string;
   technicianUserId: string | null;
   scheduledStart?: string | null;
-}): Promise<ActionResult> {
+  confirmLocked?: boolean;
+  confirmConflict?: boolean;
+}): Promise<ActionResult & { conflict?: boolean; locked?: boolean; warning?: string }> {
   try {
     const ctx = await requirePermission("schedule:manage");
     const job = await prisma.job.findFirst({ where: { id: input.jobId, companyId: ctx.company.id } });
     if (!job) return { ok: false, error: "Job not found." };
-    if (job.scheduleLocked && input.scheduledStart) {
-      return { ok: false, error: "This job is locked. Unlock it before changing the time." };
+    if (job.scheduleLocked && input.scheduledStart && !input.confirmLocked) {
+      return { ok: false, error: "This job is locked. Unlock it before changing the time.", locked: true };
     }
 
     if (input.technicianUserId) {
@@ -50,6 +52,42 @@ export async function assignJobToTechnicianAction(input: {
       where: { jobId: job.id },
       select: { userId: true },
     });
+    const changingAssignee = (previous[0]?.userId ?? null) !== (input.technicianUserId ?? null);
+    if (job.scheduleLocked && changingAssignee && !input.confirmLocked) {
+      return {
+        ok: false,
+        error: "This appointment is locked. Confirm if you still want to move it.",
+        locked: true,
+      };
+    }
+
+    if (input.technicianUserId && job.scheduledStart && !input.confirmConflict) {
+      const { findScheduleConflict } = await import("@/lib/dispatch/validate");
+      const others = await prisma.job.findMany({
+        where: {
+          companyId: ctx.company.id,
+          id: { not: job.id },
+          status: { notIn: ["CANCELED", "COMPLETED"] },
+          assignments: { some: { userId: input.technicianUserId } },
+        },
+        select: { id: true, scheduledStart: true, scheduledEnd: true, status: true },
+      });
+      const conflict = findScheduleConflict(others, {
+        id: job.id,
+        scheduledStart: input.scheduledStart ? new Date(input.scheduledStart) : job.scheduledStart,
+        scheduledEnd: job.scheduledEnd,
+        status: job.status,
+      });
+      if (conflict) {
+        return {
+          ok: false,
+          error: "That technician already has a job in this window.",
+          conflict: true,
+          warning: "SCHEDULE CONFLICT",
+        };
+      }
+    }
+
     await prisma.jobAssignment.deleteMany({ where: { jobId: job.id } });
     if (input.technicianUserId) {
       await prisma.jobAssignment.create({ data: { jobId: job.id, userId: input.technicianUserId } });
@@ -73,6 +111,8 @@ export async function assignJobToTechnicianAction(input: {
       metadata: {
         from: previous.map((row) => row.userId),
         to: input.technicianUserId,
+        confirmLocked: Boolean(input.confirmLocked),
+        confirmConflict: Boolean(input.confirmConflict),
       },
     });
     revalidateDispatch(job.id);

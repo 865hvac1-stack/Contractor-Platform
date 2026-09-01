@@ -1,13 +1,15 @@
 import { format } from "date-fns";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AskContractorYou } from "@/components/ask-contractoryou";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { DispatchBoard } from "@/components/dispatch/board";
+import { buttonVariants } from "@/components/ui/button";
 import { getDispatchBoard } from "@/lib/dispatch/board";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
 import { can } from "@/lib/permissions";
 import { routingConfigured } from "@/lib/routing/provider";
 import { requirePermission } from "@/lib/tenant";
+import { cn } from "@/lib/utils";
 import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,8 @@ export default async function DispatchCenterPage({
     ? params.date!
     : format(new Date(), "yyyy-MM-dd");
   const day = new Date(`${date}T12:00:00`);
+  const today = format(new Date(), "yyyy-MM-dd");
+  const isToday = date === today;
   const board = await getDispatchBoard(ctx.company.id, day);
   const prevDay = new Date(day);
   prevDay.setDate(prevDay.getDate() - 1);
@@ -34,58 +38,73 @@ export default async function DispatchCenterPage({
   nextDay.setDate(nextDay.getDate() + 1);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
             Dispatch Center
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--cy-navy)]">
-            Today&apos;s board
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--cy-navy)]">
+            Today&apos;s Dispatch
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--muted-foreground)]">
-            Assign work, lock promised windows, and optimize a technician&apos;s day. Same jobs the
-            Owner Command Center and Technician Portal already use.
-          </p>
+          {!isToday ? (
+            <p className="mt-0.5 text-xs font-medium text-[var(--cy-orange)]">
+              Viewing {format(day, "EEEE, MMM d")} — not today
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/dispatch?date=${format(prevDay, "yyyy-MM-dd")}`}
-            className="rounded-md border px-3 py-1.5 text-sm"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            aria-label="Previous day"
           >
+            <ChevronLeft className="size-4" />
             Previous
           </Link>
-          <span className="text-sm font-medium">{format(day, "EEE, MMM d")}</span>
+          <span className="min-w-[7.5rem] text-center text-sm font-semibold text-[var(--cy-navy)]">
+            {format(day, "EEE, MMM d")}
+          </span>
           <Link
             href={`/dispatch?date=${format(nextDay, "yyyy-MM-dd")}`}
-            className="rounded-md border px-3 py-1.5 text-sm"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            aria-label="Next day"
           >
             Next
+            <ChevronRight className="size-4" />
           </Link>
+          {!isToday ? (
+            <Link href="/dispatch" className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}>
+              Today
+            </Link>
+          ) : null}
           {can(ctx.role, "jobs:manage") ? (
-            <Link
-              href="/jobs/new?returnTo=dispatch"
-              className="rounded-md bg-[var(--cy-orange)] px-3 py-1.5 text-sm font-medium text-white"
-            >
-              New job
+            <Link href="/jobs/new?returnTo=dispatch" className={cn(buttonVariants({ size: "sm" }))}>
+              <Plus className="size-4" />
+              New Job
             </Link>
           ) : null}
         </div>
       </div>
+
       <DispatchBoard
         date={date}
-        technicians={board.technicians}
-        unassigned={board.unassigned}
-        exceptions={board.exceptions}
-        openings={board.openings}
+        isToday={isToday}
+        board={{
+          technicians: board.technicians,
+          unassigned: board.unassigned,
+          issues: board.issues,
+          metrics: board.metrics,
+          jobTypes: board.jobTypes,
+        }}
         canAssign={can(ctx.role, "schedule:manage")}
         canLock={can(ctx.role, "jobs:lock")}
         canOptimize={can(ctx.role, "routing:optimize")}
+        canChangeStatus={can(ctx.role, "jobs:manage")}
         routingConfigured={routingConfigured()}
+        canAsk={can(ctx.role, "intelligence:view")}
+        suggestions={suggestedQuestions(ctx.role, null, "dispatch")}
       />
-      {can(ctx.role, "intelligence:view") ? (
-        <AskContractorYou suggestions={suggestedQuestions(ctx.role, null, "dispatch")} />
-      ) : null}
     </div>
   );
 }

@@ -235,7 +235,21 @@ async function draftMembershipRenewals(ctx: ActionContext, input: Record<string,
 }
 
 async function draftGenericMessages(ctx: ActionContext, input: Record<string, unknown>) {
-  const ids = Array.isArray(input.recordIds) ? (input.recordIds as string[]) : [];
+  let ids = Array.isArray(input.recordIds) ? (input.recordIds as string[]) : [];
+  const purposeHint = String(input.purpose || "");
+  if (ids.length === 0 && /running behind|running late|behind schedule/i.test(purposeHint)) {
+    const now = new Date();
+    const late = await prisma.job.findMany({
+      where: {
+        companyId: ctx.companyId,
+        status: { in: ["SCHEDULED", "DISPATCHED"] },
+        scheduledStart: { lt: now, gte: startOfDay(now) },
+      },
+      select: { customerId: true },
+      take: 15,
+    });
+    ids = [...new Set(late.map((row) => row.customerId))];
+  }
   const customers = await prisma.customer.findMany({
     where: { companyId: ctx.companyId, id: { in: ids } },
     select: { id: true, firstName: true, lastName: true, businessName: true, phone: true, secondaryPhone: true, tags: true },

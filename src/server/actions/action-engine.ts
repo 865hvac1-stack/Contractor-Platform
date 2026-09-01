@@ -125,6 +125,26 @@ export async function startAttentionActionAction(input: {
   }
 }
 
+export async function prepareDispatchMessageAction(customerId: string): Promise<ActionEngineState> {
+  try {
+    const { ctx } = await actionContext();
+    const result = await invokeRegisteredAction({
+      ctx: { ...ctx, source: "ui" },
+      actionKey: "communication.draft_sms",
+      rawInput: {
+        recordIds: [customerId],
+        purpose: "Your technician is running behind. We will update you as soon as we have a new arrival window.",
+      },
+    });
+    refresh();
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, request: result.actionRequest ?? null };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
 export async function loadActionRequestAction(requestId: string): Promise<ActionEngineState> {
   try {
     const { ctx } = await actionContext();
