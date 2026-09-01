@@ -118,13 +118,13 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
     ];
   }
   return [
-    "What needs my attention today?",
-    "How are we doing this month?",
-    "Which estimates should we follow up on?",
+    "Take care of my estimate follow-ups.",
     "Who owes us money?",
+    "Handle overdue invoices.",
     "Which jobs are losing money?",
-    "Where are our best leads coming from?",
+    "Follow up with memberships expiring this month.",
+    "Fix tomorrow's unassigned jobs.",
     "How is my team performing?",
-    "What revenue are we missing?",
+    "What needs my attention today?",
   ];
 }

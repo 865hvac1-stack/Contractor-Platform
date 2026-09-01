@@ -100,6 +100,6 @@ describe("Command Center calculations", () => {
     const questions = suggestedQuestions("COMPANY_OWNER", null, "command");
     expect(questions).toContain("What needs my attention today?");
     expect(questions).toContain("Who owes us money?");
-    expect(questions).toContain("Which estimates should we follow up on?");
+    expect(questions).toContain("Take care of my estimate follow-ups.");
   });
 });

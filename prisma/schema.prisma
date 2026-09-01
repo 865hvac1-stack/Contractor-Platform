@@ -369,6 +369,10 @@ model User {
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
+  aiActionsRequested AIActionRequest[] @relation("AIActionRequestedBy")
+  aiActionsApproved AIActionRequest[] @relation("AIActionApprovedBy")
+  companyTasksAssigned CompanyTask[] @relation("CompanyTaskAssignee")
+  companyTasksCreated CompanyTask[] @relation("CompanyTaskCreator")
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -503,6 +507,9 @@ model Company {
   aiMessages AIMessage[]
   aiUsageEvents AIUsageEvent[]
   aiActionDrafts AIActionDraft[]
+  aiActionRequests AIActionRequest[]
+  aiActionTargets AIActionTarget[]
+  companyTasks CompanyTask[]
   intelligenceSetting CompanyIntelligenceSetting?
   importSessions ImportSession[]
   importRows ImportRow[]
@@ -1853,19 +1860,21 @@ model CompanyIntelligenceSetting {
 }
 
 model AIConversation {
-  id        String   @id @default(cuid())
-  companyId String
-  userId    String
-  title     String?
-  scope     String   @default("COMPANY")
-  jobId     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  companyId     String
+  userId        String
+  title         String?
+  scope         String   @default("COMPANY")
+  jobId         String?
+  lastResultSet Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  company  Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages AIMessage[]
-  usages   AIUsageEvent[]
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       AIMessage[]
+  usages         AIUsageEvent[]
+  actionRequests AIActionRequest[]
 
   @@index([companyId, userId])
   @@index([companyId, updatedAt])
@@ -1922,6 +1931,136 @@ model AIActionDraft {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([companyId, status])
+}
+
+enum AIActionLevel {
+  READ
+  PREPARE
+  EXECUTE
+}
+
+enum AIActionRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AIActionRequestStatus {
+  DRAFT
+  AWAITING_APPROVAL
+  APPROVED
+  EXECUTING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELED
+  EXPIRED
+}
+
+enum AIActionTargetStatus {
+  PENDING
+  EXCLUDED
+  EXECUTED
+  SKIPPED
+  FAILED
+}
+
+model AIActionRequest {
+  id                   String                 @id @default(cuid())
+  companyId            String
+  requestedByUserId    String
+  conversationId       String?
+  approvedByUserId     String?
+  actionKey            String
+  actionVersion        Int                    @default(1)
+  level                AIActionLevel
+  riskLevel            AIActionRisk
+  status               AIActionRequestStatus  @default(DRAFT)
+  title                String
+  summary              String                 @db.Text
+  input                Json
+  preview              Json
+  criteria             Json?
+  estimatedImpactCents Int?
+  targetCount          Int                    @default(0)
+  executedCount        Int                    @default(0)
+  skippedCount         Int                    @default(0)
+  failedCount          Int                    @default(0)
+  provider             String?
+  executionMode        String?
+  idempotencyKey       String
+  failureReason        String?
+  expiresAt            DateTime
+  approvedAt           DateTime?
+  executedAt           DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy User            @relation("AIActionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  approvedBy  User?           @relation("AIActionApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  conversation AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  targets     AIActionTarget[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, createdAt])
+  @@index([companyId, conversationId])
+  @@index([companyId, actionKey])
+}
+
+model AIActionTarget {
+  id               String               @id @default(cuid())
+  companyId        String
+  requestId        String
+  recordType       String
+  recordId         String
+  customerId       String?
+  customerName     String?
+  amountCents      Int?
+  daysValue        Int?
+  channel          String?
+  recipient        String?
+  draftMessage     String?              @db.Text
+  reason           String?
+  payload          Json?
+  status           AIActionTargetStatus @default(PENDING)
+  skipReason       String?
+  failureReason    String?
+  provider         String?
+  providerResultId String?
+  executedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  request AIActionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, requestId])
+  @@index([companyId, recordType, recordId])
+  @@index([companyId, status])
+}
+
+model CompanyTask {
+  id               String    @id @default(cuid())
+  companyId        String
+  assignedToUserId String?
+  createdByUserId  String?
+  actionRequestId  String?
+  title            String
+  details          String?   @db.Text
+  dueAt            DateTime?
+  status           String    @default("OPEN")
+  relatedType      String?
+  relatedId        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTo User?   @relation("CompanyTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdBy  User?   @relation("CompanyTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, dueAt])
+  @@index([companyId, assignedToUserId])
 }
 
 model MetricSnapshot {

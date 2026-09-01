@@ -1,5 +1,6 @@
 import { getOpenAIApiKey, INTELLIGENCE_MODELS, estimateCostMicrousd } from "@/lib/intelligence/config";
 import { openaiToolSpecs } from "@/lib/intelligence/tools";
+import { openaiActionToolSpecs } from "@/lib/actions/registry";
 
 export type ChatMessage = { role: "system" | "user" | "assistant" | "tool"; content: string; toolCallId?: string; name?: string };
 
@@ -50,7 +51,7 @@ export class OpenAIProvider implements AIProvider {
       model,
       temperature: 0.2,
       messages,
-      ...(input.tools ? { tools: openaiToolSpecs(), tool_choice: "auto" } : {}),
+      ...(input.tools ? { tools: [...openaiToolSpecs(), ...openaiActionToolSpecs()], tool_choice: "auto" } : {}),
     });
     const choice = response.choices[0];
     const toolCalls = (choice?.message.tool_calls ?? []).flatMap((call) => {

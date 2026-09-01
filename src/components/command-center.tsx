@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { format, formatDistanceToNow } from "date-fns";
-import { ArrowUpRight } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { StatusBadge } from "@/components/status-badge";
+import { AttentionCardActions } from "@/components/attention-card-actions";
 import type { RankedAttention } from "@/lib/attention-priority";
 import { HOME_ATTENTION_LIMIT } from "@/lib/attention-priority";
 
@@ -40,10 +40,7 @@ export function AttentionCard({ item }: { item: RankedAttention }) {
   const money = item.amountCents != null && item.amountCents > 0 ? formatMoney(item.amountCents) : null;
   return (
     <li>
-      <Link
-        href={item.href}
-        className="block rounded-2xl border border-[var(--border)] bg-white p-4 transition hover:border-[var(--cy-navy)]/15"
-      >
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-4 transition hover:border-[var(--cy-navy)]/15">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">
@@ -64,11 +61,8 @@ export function AttentionCard({ item }: { item: RankedAttention }) {
             {item.priority}
           </span>
         </div>
-        <p className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[var(--cy-orange)]">
-          Open
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </p>
-      </Link>
+        <AttentionCardActions type={item.type} entityId={item.entityId} href={item.href} />
+      </div>
     </li>
   );
 }

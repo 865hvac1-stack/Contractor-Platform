@@ -10,10 +10,14 @@ import { askContractorYou } from "@/lib/intelligence/service";
 import { refreshCompanyInsights } from "@/lib/intelligence/generate";
 import type { ActionResult } from "@/server/actions/auth";
 
+import type { AskKind, PublicActionRequest } from "@/lib/actions/types";
+
 export type AskState = ActionResult & {
   answer?: string;
   conversationId?: string;
-  grounding?: { sources: string[]; lastUpdated?: string; model?: string };
+  kind?: AskKind;
+  actionRequest?: PublicActionRequest | null;
+  grounding?: { sources: string[]; lastUpdated?: string; model?: string; kind?: string };
   providerConfigured?: boolean;
 };
 
@@ -41,6 +45,8 @@ export async function askContractorYouAction(
       ok: true,
       answer: result.answer,
       conversationId: result.conversationId,
+      kind: result.kind,
+      actionRequest: result.actionRequest,
       grounding: result.grounding,
       providerConfigured: result.providerConfigured,
     };

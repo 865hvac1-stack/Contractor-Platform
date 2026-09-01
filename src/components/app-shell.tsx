@@ -28,6 +28,7 @@ import {
   X,
   Bell,
   CircleHelp,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
@@ -69,6 +70,7 @@ const groups: NavGroup[] = [
       { href: "/dispatch", label: "Dispatch", icon: CalendarDays, permission: "schedule:view" },
       { href: "/office", label: "Customer Hub", icon: Users, permission: "customers:view" },
       { href: "/intelligence", label: "Intelligence", icon: CircleHelp, permission: "intelligence:view" },
+      { href: "/actions", label: "Action Center", icon: ListChecks, permission: "intelligence:view" },
       { href: "/marketing/communications", label: "Inbox", icon: Inbox, permission: "marketing:view" },
     ],
   },

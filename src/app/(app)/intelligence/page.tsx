@@ -12,8 +12,13 @@ import { recommendAutomationDraftAction } from "@/server/actions/intelligence";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 
-export default async function IntelligencePage() {
+export default async function IntelligencePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ask?: string }>;
+}) {
   const ctx = await requirePermission("intelligence:view");
+  const params = await searchParams;
   const insights = await refreshCompanyInsights(ctx.company.id).catch(() => listActiveInsights(ctx.company.id));
   const [brief, opportunities] = await Promise.all([
     getDailyOwnerBrief(ctx.company.id, ctx.user.firstName),
@@ -41,7 +46,11 @@ export default async function IntelligencePage() {
         </Link>
       </header>
 
-      <AskContractorYou suggestions={suggestedQuestions(ctx.role, null, "command")} />
+      <AskContractorYou
+        suggestions={suggestedQuestions(ctx.role, null, "command")}
+        initialQuestion={params.ask || ""}
+        autoSubmit={Boolean(params.ask)}
+      />
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
         <h2 className="text-lg font-semibold text-[var(--cy-navy)]">Daily owner brief</h2>

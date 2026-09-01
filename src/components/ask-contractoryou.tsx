@@ -4,24 +4,37 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { askContractorYouAction, type AskState } from "@/server/actions/intelligence";
 import { Button } from "@/components/ui/button";
+import { ActionCard, KindBadge } from "@/components/action-card";
 
 export function AskContractorYou({
   suggestions,
   jobId,
   compact = false,
+  initialQuestion = "",
+  autoSubmit = false,
 }: {
   suggestions: string[];
   jobId?: string;
   compact?: boolean;
+  initialQuestion?: string;
+  autoSubmit?: boolean;
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(initialQuestion);
   const [conversationId, setConversationId] = useState("");
   const [state, formAction, pending] = useActionState(askContractorYouAction, null as AskState | null);
   const formRef = useRef<HTMLFormElement>(null);
+  const autoRef = useRef(false);
 
   useEffect(() => {
     if (state?.ok && state.conversationId) setConversationId(state.conversationId);
   }, [state]);
+
+  useEffect(() => {
+    if (!autoSubmit || !initialQuestion || autoRef.current) return;
+    autoRef.current = true;
+    flushSync(() => setQuestion(initialQuestion));
+    formRef.current?.requestSubmit();
+  }, [autoSubmit, initialQuestion]);
 
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[var(--cy-navy)] p-5 text-white md:p-6">
@@ -31,9 +44,10 @@ export function AskContractorYou({
             Ask ContractorYou
           </p>
           <p className="mt-1 text-sm text-white/65">
-            Answers come from this company&apos;s records. Numbers are calculated before any wording.
+            It reads your records, prepares the work, and waits for you before anything goes out.
           </p>
         </div>
+        {state?.ok && state.kind ? <KindBadge kind={state.kind} /> : null}
       </div>
 
       <form ref={formRef} action={formAction} className="mt-4 space-y-3">
@@ -47,7 +61,7 @@ export function AskContractorYou({
           name="question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder={jobId ? "Ask about this job..." : "What should I do today?"}
+          placeholder={jobId ? "Ask about this job..." : "Take care of my estimate follow-ups."}
           className="h-12 w-full rounded-xl border border-white/10 bg-white/8 px-4 text-sm text-white placeholder:text-white/35"
         />
         <Button type="submit" disabled={pending} className="h-11 w-full sm:w-auto">
@@ -73,6 +87,12 @@ export function AskContractorYou({
               {state.providerConfigured ? "" : " · From ContractorYou records (language model off)"}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {state?.ok && state.actionRequest ? (
+        <div className="mt-4">
+          <ActionCard request={state.actionRequest} />
         </div>
       ) : null}
 
