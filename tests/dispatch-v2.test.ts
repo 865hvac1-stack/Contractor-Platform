@@ -179,8 +179,10 @@ describe("dispatch V2 helpers", () => {
     expect(drawer).toContain("sticky bottom-0");
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
     expect(shell).toContain("overflow-hidden");
-    expect(shell).toContain("MobileWorkspaceLinks");
+    expect(shell).toContain("AppNav");
+    expect(shell).toContain("WorkspaceSwitcher");
     expect(shell).toContain("shrink-0");
+    expect(shell).not.toContain("MobileWorkspaceLinks");
     const switcher = readFileSync(resolve("src/components/workspace-switcher.tsx"), "utf8");
     expect(switcher).toContain("hidden min-w-0 md:flex");
     expect(switcher).not.toContain("flex-wrap");
