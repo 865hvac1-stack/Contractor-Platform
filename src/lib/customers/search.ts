@@ -95,6 +95,17 @@ export async function searchCustomers(input: {
         orderBy: [{ isPrimary: "desc" }, { address: "asc" }],
         select: { id: true, name: true, address: true, city: true, state: true, zip: true },
       },
+      estimates: {
+        where: { status: { in: ["SENT", "VIEWED"] } },
+        orderBy: { totalCents: "desc" },
+        take: 1,
+        select: { id: true, totalCents: true, estimateNumber: true },
+      },
+      customerMemberships: {
+        where: { status: "ACTIVE" },
+        take: 1,
+        select: { id: true, plan: { select: { name: true } } },
+      },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     take: input.take ?? 12,

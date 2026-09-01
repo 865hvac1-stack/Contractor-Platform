@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { InvoiceStatus, Prisma } from "@prisma/client";
 import {
   Table,
   TableBody,
@@ -15,10 +16,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const ctx = await requirePermission("invoices:view");
+  const { status } = await searchParams;
+  const now = new Date();
+  const overdueStatuses: InvoiceStatus[] = ["SENT", "PARTIALLY_PAID", "OVERDUE"];
+  const where: Prisma.InvoiceWhereInput =
+    status === "overdue"
+      ? {
+          companyId: ctx.company.id,
+          status: { in: overdueStatuses },
+          balanceCents: { gt: 0 },
+          dueDate: { lt: now },
+        }
+      : { companyId: ctx.company.id };
   const invoices = await prisma.invoice.findMany({
-    where: { companyId: ctx.company.id },
+    where,
     include: { customer: true },
     orderBy: { createdAt: "desc" },
   });
@@ -29,7 +46,9 @@ export default async function InvoicesPage() {
         <div>
           <h1 className="font-display text-3xl tracking-tight">Invoices</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Bill customers and track balances.
+            {status === "overdue"
+              ? "Showing overdue invoices with an outstanding balance."
+              : "Bill customers and track balances."}
           </p>
         </div>
         <Link href="/invoices/new" className={cn(buttonVariants())}>
