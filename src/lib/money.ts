@@ -18,6 +18,19 @@ export function formatMoney(cents: number, currency = "USD"): string {
   }).format(centsToDollars(cents));
 }
 
+export function formatMoneyCompact(cents: number, currency = "USD"): string {
+  const dollars = centsToDollars(cents);
+  if (Math.abs(dollars) >= 10_000) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(dollars);
+  }
+  return formatMoney(cents, currency);
+}
+
 export function lineTotalCents(quantity: number | string, unitPriceCents: number): number {
   const q = typeof quantity === "string" ? parseFloat(quantity) : quantity;
   if (!Number.isFinite(q)) return 0;

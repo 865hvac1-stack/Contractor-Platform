@@ -36,26 +36,30 @@ export function KpiCard({
   );
 }
 
-export function AttentionCard({ item }: { item: RankedAttention }) {
+export function AttentionCard({ item, compact = false }: { item: RankedAttention; compact?: boolean }) {
   const money = item.amountCents != null && item.amountCents > 0 ? formatMoney(item.amountCents) : null;
   return (
     <li>
-      <div className="rounded-2xl border border-[var(--border)] bg-white p-4 transition hover:border-[var(--cy-navy)]/15">
+      <div
+        className={`border border-[var(--border)] bg-white transition hover:border-[var(--cy-navy)]/15 ${
+          compact ? "rounded-xl px-3 py-2.5" : "rounded-2xl p-4"
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">
-              {item.title}
+              {item.priority} · {item.title}
             </p>
-            <p className="mt-1 font-medium text-[var(--cy-navy)]">
+            <p className="mt-0.5 font-medium text-[var(--cy-navy)]">
               {item.customerName || item.description}
             </p>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              {[money, item.description, item.ageDays > 0 ? `${item.ageDays} day${item.ageDays === 1 ? "" : "s"} old` : "Today"]
+            <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
+              {[money, item.description, item.ageDays > 0 ? `${item.ageDays} day${item.ageDays === 1 ? "" : "s"}` : "Today"]
                 .filter(Boolean)
                 .slice(0, 2)
                 .join(" · ")}
             </p>
-            <p className="mt-2 text-sm text-[var(--cy-navy)]">{item.recommendedAction}</p>
+            {!compact ? <p className="mt-2 text-sm text-[var(--cy-navy)]">{item.recommendedAction}</p> : null}
           </div>
           <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${priorityTone[item.priority]}`}>
             {item.priority}
@@ -90,14 +94,16 @@ export function SnapshotCard({
           {cta}
         </Link>
       </div>
-      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {metrics.map((metric) => (
-          <div key={metric.label}>
-            <dt className="text-xs text-[var(--muted-foreground)]">{metric.label}</dt>
-            <dd className="mt-1 text-lg font-semibold tabular-nums text-[var(--cy-navy)]">{metric.value}</dd>
-          </div>
-        ))}
-      </dl>
+      {metrics.length > 0 ? (
+        <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {metrics.map((metric) => (
+            <div key={metric.label}>
+              <dt className="text-xs text-[var(--muted-foreground)]">{metric.label}</dt>
+              <dd className="mt-1 text-lg font-semibold tabular-nums text-[var(--cy-navy)]">{metric.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       {insight ? <p className="mt-4 text-sm text-[var(--muted-foreground)]">{insight}</p> : null}
       {items && items.length > 0 ? (
         <ul className="mt-4 space-y-2">

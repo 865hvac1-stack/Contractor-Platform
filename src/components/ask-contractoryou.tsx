@@ -10,12 +10,14 @@ export function AskContractorYou({
   suggestions,
   jobId,
   compact = false,
+  variant = "panel",
   initialQuestion = "",
   autoSubmit = false,
 }: {
   suggestions: string[];
   jobId?: string;
   compact?: boolean;
+  variant?: "panel" | "bar";
   initialQuestion?: string;
   autoSubmit?: boolean;
 }) {
@@ -35,6 +37,69 @@ export function AskContractorYou({
     flushSync(() => setQuestion(initialQuestion));
     formRef.current?.requestSubmit();
   }, [autoSubmit, initialQuestion]);
+
+  if (variant === "bar") {
+    return (
+      <section className="rounded-2xl bg-[var(--cy-navy)] px-4 py-3 text-white md:px-5">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
+          {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
+          <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Ask ContractorYou
+          </p>
+          <label htmlFor={jobId ? `ask-cy-${jobId}` : "ask-cy"} className="sr-only">
+            Ask ContractorYou
+          </label>
+          <input
+            id={jobId ? `ask-cy-${jobId}` : "ask-cy"}
+            name="question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Ask anything about your business..."
+            className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/8 px-3 text-sm text-white placeholder:text-white/40"
+          />
+          <Button type="submit" disabled={pending} className="h-10 shrink-0">
+            {pending ? "Looking…" : "Ask"}
+          </Button>
+        </form>
+        <ul className="mt-2 flex gap-2 overflow-x-auto pb-1">
+          {suggestions.slice(0, 6).map((item) => (
+            <li key={item}>
+              <button
+                type="button"
+                onClick={() => {
+                  flushSync(() => setQuestion(item));
+                  formRef.current?.requestSubmit();
+                }}
+                className="shrink-0 rounded-full bg-white/8 px-3 py-1 text-[11px] text-white/70 hover:bg-white/12"
+              >
+                {item}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {state && !state.ok ? (
+          <p className="mt-2 text-sm text-rose-200" role="alert">
+            {state.error}
+          </p>
+        ) : null}
+        {state?.ok && state.answer ? (
+          <div className="mt-3 rounded-xl bg-white/8 p-3">
+            {state.kind ? <KindBadge kind={state.kind} /> : null}
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white">{state.answer}</p>
+            {state.grounding?.sources?.length ? (
+              <p className="mt-2 text-xs text-white/45">Data used: {state.grounding.sources.join(", ")}</p>
+            ) : null}
+          </div>
+        ) : null}
+        {state?.ok && state.actionRequest ? (
+          <div className="mt-3">
+            <ActionCard request={state.actionRequest} />
+          </div>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[var(--cy-navy)] p-5 text-white md:p-6">

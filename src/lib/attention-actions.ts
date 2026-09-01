@@ -27,6 +27,13 @@ export function attentionCardActions(type: string, entityId: string): AttentionC
       { label: "View", href: `/jobs/${entityId}` },
     ];
   }
+  if (type === "job_running_behind") {
+    return [
+      { label: "Ask AI", ask: "Who is running late?" },
+      { label: "View Dispatch", href: "/dispatch" },
+      { label: "View", href: `/jobs/${entityId}` },
+    ];
+  }
   if (type === "membership_needs_review") {
     return [
       { label: "Ask AI", ask: "Follow up with memberships expiring this month." },

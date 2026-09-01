@@ -68,7 +68,7 @@ describe("attention priority scoring", () => {
     expect(["HIGH", "MEDIUM", "LOW"]).toContain(scored.priority);
   });
 
-  it("limits the home queue to the top 5 critical and high items first", () => {
+  it("limits the home queue to the top critical and high items first", () => {
     const items = Array.from({ length: 12 }, (_, index) =>
       item({
         id: `inv-${index}`,

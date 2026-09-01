@@ -1,10 +1,19 @@
 import type { AttentionItem, AttentionSeverity } from "@/lib/attention";
 
-export const HOME_ATTENTION_LIMIT = 5;
+export const HOME_ATTENTION_LIMIT = 10;
 
 export type AttentionPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team";
-export type AttentionFilter = "all" | "critical" | "sales" | "money" | "customers" | "operations" | "team";
+export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team" | "memberships";
+export type AttentionFilter =
+  | "all"
+  | "critical"
+  | "sales"
+  | "money"
+  | "dispatch"
+  | "customers"
+  | "memberships"
+  | "team"
+  | "operations";
 export type AttentionSort = "priority" | "dollars" | "age" | "newest";
 
 export type RankedAttention = AttentionItem & {
@@ -49,7 +58,7 @@ const TYPE_CATEGORY: Record<string, AttentionCategory> = {
   job_missing_completion: "operations",
   playbook_required_remaining: "operations",
   missed_call_no_follow_up: "customers",
-  membership_needs_review: "customers",
+  membership_needs_review: "memberships",
   compensation_needs_approval: "team",
   receipt_missing_category: "operations",
   expense_not_assigned_to_job: "operations",
@@ -163,7 +172,23 @@ export function homeAttentionItems(items: RankedAttention[], limit = HOME_ATTENT
 export function filterAttention(items: RankedAttention[], filter: AttentionFilter): RankedAttention[] {
   if (filter === "all") return items;
   if (filter === "critical") return items.filter((item) => item.priority === "CRITICAL");
+  if (filter === "dispatch" || filter === "operations") {
+    return items.filter((item) => item.category === "operations");
+  }
   return items.filter((item) => item.category === filter);
+}
+
+export function attentionFilterCounts(items: RankedAttention[]) {
+  return {
+    all: items.length,
+    critical: filterAttention(items, "critical").length,
+    sales: filterAttention(items, "sales").length,
+    money: filterAttention(items, "money").length,
+    dispatch: filterAttention(items, "dispatch").length,
+    customers: filterAttention(items, "customers").length,
+    memberships: filterAttention(items, "memberships").length,
+    team: filterAttention(items, "team").length,
+  };
 }
 
 export function sortAttention(items: RankedAttention[], sort: AttentionSort): RankedAttention[] {
@@ -181,7 +206,17 @@ export function sortAttention(items: RankedAttention[], sort: AttentionSort): Ra
 }
 
 export function parseAttentionFilter(value: string | undefined): AttentionFilter {
-  const allowed: AttentionFilter[] = ["all", "critical", "sales", "money", "customers", "operations", "team"];
+  const allowed: AttentionFilter[] = [
+    "all",
+    "critical",
+    "sales",
+    "money",
+    "dispatch",
+    "customers",
+    "memberships",
+    "team",
+    "operations",
+  ];
   return allowed.includes(value as AttentionFilter) ? (value as AttentionFilter) : "all";
 }
 

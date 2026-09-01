@@ -17,8 +17,9 @@ const FILTERS: { id: AttentionFilter; label: string }[] = [
   { id: "critical", label: "Critical" },
   { id: "sales", label: "Sales" },
   { id: "money", label: "Money" },
+  { id: "dispatch", label: "Dispatch" },
   { id: "customers", label: "Customers" },
-  { id: "operations", label: "Operations" },
+  { id: "memberships", label: "Memberships" },
   { id: "team", label: "Team" },
 ];
 
@@ -88,9 +89,9 @@ export default async function AttentionPage({
           </Link>
         </div>
       ) : (
-        <ul className="grid gap-3 lg:grid-cols-2">
+        <ul className="space-y-2">
           {ranked.map((item) => (
-            <AttentionCard key={item.id} item={item} />
+            <AttentionCard key={item.id} item={item} compact />
           ))}
         </ul>
       )}

@@ -555,6 +555,7 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
         amountPaidCents: paid,
         balanceCents: total - paid,
         notes: "Demo invoice — no live processor.",
+        updatedAt: job.when,
         sourceSystem: DEMO_SOURCE,
         publicToken: nanoid(12),
         lineItems: {
@@ -689,7 +690,7 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
         soldById: i % 4 === 0 ? users.chris!.id : users.tyler!.id,
         status,
         priceCents: 19900,
-        saleDate: monthsAgo(now, (i % 10) + 1),
+        saleDate: i < 2 ? now : monthsAgo(now, (i % 10) + 1),
         startDate: monthsAgo(now, (i % 10) + 1),
         renewalDate: addDemoDays(now, i > 28 ? 12 : 80 + i),
         visitsUsed: i % 3,
@@ -903,7 +904,7 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
         rating: i % 9 === 0 ? 4 : 5,
         authorName: `${customer.firstName} ${customer.lastName[0]}.`,
         body: reviewBodies[i % reviewBodies.length],
-        reviewedAt: addDemoDays(now, -(i + 2)),
+        reviewedAt: i < 4 ? now : addDemoDays(now, -(i + 2)),
         customerId: customer.id,
         jobId: completedJobs[i]?.id,
       },
@@ -986,6 +987,14 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
       },
     });
   }
+
+  await prisma.performanceGoal.createMany({
+    data: [
+      { companyId: tenant.id, metricKey: "revenue", target: 5_000_000, period: "MONTH" },
+      { companyId: tenant.id, metricKey: "close_rate", target: 400, period: "MONTH" },
+      { companyId: tenant.id, metricKey: "reviews", target: 30, period: "MONTH" },
+    ],
+  });
 
   await prisma.vehicle.createMany({
     data: [

@@ -7,7 +7,7 @@ import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine"
  */
 
 export type AttentionSeverity = "critical" | "warning" | "info";
-export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team";
+export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team" | "memberships";
 
 export type AttentionItem = {
   id: string;

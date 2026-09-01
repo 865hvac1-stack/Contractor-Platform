@@ -6,13 +6,16 @@ import {
   startOfWeek,
   endOfWeek,
   subMonths,
+  subYears,
   addDays,
 } from "date-fns";
 import { prisma } from "@/lib/db";
 import { getNeedsAttention } from "@/lib/attention";
-import { homeAttentionItems, prioritizeAttention } from "@/lib/attention-priority";
+import { attentionFilterCounts, homeAttentionItems, prioritizeAttention } from "@/lib/attention-priority";
 import { BOOKED_LEAD_STATUSES, LEAD_SOURCE_LABELS } from "@/lib/leads/sources";
 import { technicianScorecard } from "@/lib/performance/scorecard";
+import { arAgingBuckets, bucketRevenueSeries, computeHealthScore } from "@/lib/health-score";
+import { buildCommandObservations } from "@/lib/command-observations";
 
 export async function getCommandCenterData(companyId: string) {
   const now = new Date();
@@ -83,7 +86,7 @@ export async function getCommandCenterData(companyId: string) {
         status: "APPROVED",
         approvedAt: { gte: monthStart, lte: monthEnd },
       },
-      select: { totalCents: true },
+      select: { totalCents: true, approvedAt: true },
     }),
     prisma.invoice.aggregate({
       where: {
@@ -99,7 +102,7 @@ export async function getCommandCenterData(companyId: string) {
         status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         balanceCents: { gt: 0 },
       },
-      select: { balanceCents: true },
+      select: { balanceCents: true, dueDate: true },
     }),
     prisma.invoice.count({
       where: {
@@ -221,6 +224,87 @@ export async function getCommandCenterData(companyId: string) {
     }),
   ]);
 
+  const [
+    paymentsForSeries,
+    membershipsSoldToday,
+    reviewsTodayRows,
+    reviewsMonthRows,
+    reviewRequestsPending,
+    newCustomersToday,
+    estimateStages,
+    companyGoals,
+    completedTodayJobs,
+    membershipsSoldTodayRows,
+    repeatCustomerGroups,
+    lostEstimatesThisMonth,
+  ] = await Promise.all([
+    prisma.payment.findMany({
+      where: {
+        companyId,
+        status: "SUCCEEDED",
+        paidAt: { gte: subMonths(now, 12) },
+      },
+      select: { paidAt: true, amountCents: true },
+    }),
+    prisma.customerMembership.count({
+      where: { companyId, saleDate: { gte: dayStart, lte: dayEnd } },
+    }),
+    prisma.review.findMany({
+      where: { companyId, reviewedAt: { gte: dayStart, lte: dayEnd } },
+      select: { rating: true },
+    }),
+    prisma.review.findMany({
+      where: { companyId, reviewedAt: { gte: monthStart, lte: monthEnd } },
+      select: { rating: true },
+    }),
+    prisma.reviewRequest.count({
+      where: { companyId, status: { in: ["SUGGESTED", "QUEUED", "SENT"] } },
+    }),
+    prisma.customer.count({
+      where: { companyId, createdAt: { gte: dayStart, lte: dayEnd } },
+    }),
+    prisma.estimate.groupBy({
+      by: ["status"],
+      where: { companyId },
+      _count: true,
+      _sum: { totalCents: true },
+    }),
+    prisma.performanceGoal.findMany({
+      where: { companyId, userId: null },
+      select: { metricKey: true, target: true, period: true },
+    }),
+    prisma.job.findMany({
+      where: {
+        companyId,
+        status: "COMPLETED",
+        completedAt: { gte: dayStart, lte: dayEnd },
+      },
+      select: {
+        id: true,
+        assignments: { select: { userId: true, user: { select: { firstName: true, lastName: true } } } },
+        invoices: { select: { totalCents: true, status: true } },
+      },
+    }),
+    prisma.customerMembership.findMany({
+      where: { companyId, saleDate: { gte: dayStart, lte: dayEnd } },
+      select: { soldById: true, priceCents: true },
+    }),
+    prisma.job.groupBy({
+      by: ["customerId"],
+      where: {
+        companyId,
+        status: "COMPLETED",
+        completedAt: { gte: subYears(now, 1) },
+      },
+      _count: { customerId: true },
+    }),
+    prisma.estimate.aggregate({
+      where: { companyId, status: "DECLINED", updatedAt: { gte: monthStart, lte: monthEnd } },
+      _count: true,
+      _sum: { totalCents: true },
+    }),
+  ]);
+
   const openEstimateValue = openEstimates.reduce((s, e) => s + e.totalCents, 0);
   const awaitingDecision = openEstimates.filter((estimate) => estimate.status === "SENT" || estimate.status === "VIEWED").length;
   const wonEstimateValue = wonEstimatesThisMonth.reduce((s, e) => s + e.totalCents, 0);
@@ -287,7 +371,104 @@ export async function getCommandCenterData(companyId: string) {
   const nameOf = (customer: { firstName: string; lastName: string; businessName: string | null }) =>
     `${customer.firstName} ${customer.lastName}`.trim() || customer.businessName || "Customer";
 
+  const collectedToday = paymentsForSeries
+    .filter((payment) => payment.paidAt && payment.paidAt >= dayStart && payment.paidAt <= dayEnd)
+    .reduce((sum, payment) => sum + payment.amountCents, 0);
+  const soldTodayCents = wonEstimatesThisMonth
+    .filter((estimate) => estimate.approvedAt && estimate.approvedAt >= dayStart && estimate.approvedAt <= dayEnd)
+    .reduce((sum, estimate) => sum + estimate.totalCents, 0);
+  const aging = arAgingBuckets(unpaidInvoices, now);
+  const paymentPoints = paymentsForSeries
+    .filter((payment) => payment.paidAt)
+    .map((payment) => ({ at: payment.paidAt as Date, amountCents: payment.amountCents }));
+  const revenueSeries = {
+    d30: bucketRevenueSeries(paymentPoints, "30d", now),
+    d90: bucketRevenueSeries(paymentPoints, "90d", now),
+    m12: bucketRevenueSeries(paymentPoints, "12m", now),
+  };
+  const reviewRatings = (rows: Array<{ rating: number | null }>) => {
+    const rated = rows.map((row) => row.rating).filter((value): value is number => value != null);
+    const average = rated.length > 0 ? Math.round((rated.reduce((sum, value) => sum + value, 0) / rated.length) * 10) / 10 : null;
+    return { count: rows.length, average };
+  };
+  const reviewsToday = reviewRatings(reviewsTodayRows);
+  const reviewsMonth = reviewRatings(reviewsMonthRows);
+  const goalByKey = (key: string) => companyGoals.find((goal) => goal.metricKey === key)?.target ?? null;
+  const revenueGoalCents = goalByKey("revenue");
+  const closeRateGoal = goalByKey("close_rate") != null ? goalByKey("close_rate")! / 10 : null;
+  const membershipGoal = goalByKey("memberships") ?? goalByKey("membership_conversion");
+  const stageValue = (status: string) => estimateStages.find((row) => row.status === status)?._sum.totalCents ?? 0;
+  const stageCount = (status: string) => estimateStages.find((row) => row.status === status)?._count ?? 0;
+  const techToday = new Map<
+    string,
+    { name: string; revenueCents: number; jobsCompleted: number; membershipsSold: number }
+  >();
+  for (const job of completedTodayJobs) {
+    const revenue = job.invoices
+      .filter((invoice) => invoice.status !== "DRAFT" && invoice.status !== "VOID")
+      .reduce((sum, invoice) => sum + invoice.totalCents, 0);
+    const assignees = job.assignments.length > 0 ? job.assignments : [];
+    for (const assignment of assignees) {
+      const current = techToday.get(assignment.userId) ?? {
+        name: `${assignment.user.firstName} ${assignment.user.lastName}`.trim(),
+        revenueCents: 0,
+        jobsCompleted: 0,
+        membershipsSold: 0,
+      };
+      current.revenueCents += revenue;
+      current.jobsCompleted += 1;
+      techToday.set(assignment.userId, current);
+    }
+  }
+  for (const membership of membershipsSoldTodayRows) {
+    if (!membership.soldById) continue;
+    const current = techToday.get(membership.soldById);
+    if (current) current.membershipsSold += 1;
+  }
+  const leaderboard = [...techToday.values()]
+    .sort((a, b) => b.revenueCents - a.revenueCents || b.jobsCompleted - a.jobsCompleted)
+    .slice(0, 3)
+    .map((row) => ({
+      ...row,
+      averageTicketCents: row.jobsCompleted > 0 ? Math.round(row.revenueCents / row.jobsCompleted) : null,
+    }));
+  const topTechToday = leaderboard[0] && leaderboard[0].revenueCents > 0 ? leaderboard[0] : null;
+  const health = computeHealthScore({
+    closeRate: reports.estimateConversionPercent,
+    openEstimateValue,
+    estimatesNeedingFollowUp,
+    revenueThisMonth,
+    outstandingBalance,
+    overdueBalance,
+    jobsToday,
+    runningLate: runningBehind,
+    unassignedJobs,
+    callbacks: callbackJobs,
+    completedThisMonth: jobsCompletedThisMonth,
+    activeMemberships,
+    reviewsThisMonth: reviewsMonth.count,
+    missedCallsOpen,
+    averageTicketCents: ticketLeaders[0]?.card.averageTicketCents ?? null,
+    teamCallbacks: callbackLeaders[0]?.card.callbacks ?? 0,
+    leadsThisMonth: leadsThisMonthRows.length,
+    bookedLeads,
+  });
+  const observations = buildCommandObservations({
+    revenueThisMonth,
+    lastMonthRevenue,
+    overdueBalance,
+    openEstimateValue,
+    estimatesNeedingFollowUp,
+    topTechName: topTechToday?.name ?? null,
+    topTechRevenueCents: topTechToday?.revenueCents ?? null,
+    runningLate: runningBehind,
+  });
+  const repeatCustomers = repeatCustomerGroups.filter((row) => row._count.customerId >= 2).length;
+
   return {
+    generatedAt: now,
+    health,
+    observations,
     today: {
       jobsToday,
       completedJobs: jobsCompletedToday,
@@ -297,6 +478,11 @@ export async function getCommandCenterData(companyId: string) {
       unassignedJobs,
       runningBehind,
       technicianCount: technicians,
+      collectedCents: collectedToday,
+      soldCents: soldTodayCents,
+      membershipsSold: membershipsSoldToday,
+      reviews: reviewsToday.count,
+      topTech: topTechToday,
     },
     sales: {
       openEstimates: openEstimates.length,
@@ -305,6 +491,13 @@ export async function getCommandCenterData(companyId: string) {
       closeRate: reports.estimateConversionPercent,
       wonEstimateValue,
       membershipsSoldThisMonth,
+      pipeline: {
+        draft: { count: stageCount("DRAFT"), valueCents: stageValue("DRAFT") },
+        sent: { count: stageCount("SENT"), valueCents: stageValue("SENT") },
+        viewed: { count: stageCount("VIEWED"), valueCents: stageValue("VIEWED") },
+        approved: { count: stageCount("APPROVED"), valueCents: stageValue("APPROVED") },
+        declinedThisMonth: lostEstimatesThisMonth._count,
+      },
       opportunities: openEstimateRows.map((estimate) => ({
         id: estimate.id,
         href: `/estimates/${estimate.id}`,
@@ -332,6 +525,10 @@ export async function getCommandCenterData(companyId: string) {
       expensesThisMonth: expensesCents,
       contributionThisMonth: revenueThisMonth - expensesCents,
       grossMarginPercent,
+      aging,
+      revenueSeries,
+      revenueGoalCents,
+      closeRateGoal,
       issues: overdueInvoiceRows.map((invoice) => ({
         id: invoice.id,
         href: `/invoices/${invoice.id}`,
@@ -345,7 +542,33 @@ export async function getCommandCenterData(companyId: string) {
       renewalsDue,
       revenueCents: membershipRevenue._sum.priceCents ?? 0,
       soldThisMonth: membershipsSoldThisMonth,
+      soldToday: membershipsSoldToday,
+      goal: membershipGoal,
     },
+    reviews: {
+      today: reviewsToday.count,
+      month: reviewsMonth.count,
+      average: reviewsToday.average ?? reviewsMonth.average,
+      pendingRequests: reviewRequestsPending,
+    },
+    customers: {
+      newToday: newCustomersToday,
+      repeatLastYear: repeatCustomers,
+      missedCallsOpen,
+    },
+    goals: {
+      revenueCents: revenueGoalCents,
+      closeRate: closeRateGoal,
+      memberships: membershipGoal,
+    },
+    team: {
+      workingToday: technicians,
+      averageTicketCents: ticketLeaders[0]?.card.averageTicketCents ?? null,
+      insights: teamInsights.slice(0, 2),
+      leaderboard,
+      topTechToday,
+    },
+    attentionCounts: attentionFilterCounts(rankedAttention),
     followUp: {
       estimatesNeedingFollowUp,
       overdueInvoices,
@@ -357,11 +580,6 @@ export async function getCommandCenterData(companyId: string) {
       completedThisMonth: jobsCompletedThisMonth,
       callbacks: callbackJobs,
       unassignedJobs,
-    },
-    team: {
-      workingToday: technicians,
-      averageTicketCents: ticketLeaders[0]?.card.averageTicketCents ?? null,
-      insights: teamInsights.slice(0, 2),
     },
     attention: rankedAttention,
     homeAttention: homeAttentionItems(rankedAttention),

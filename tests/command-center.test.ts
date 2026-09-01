@@ -67,11 +67,16 @@ describe("Command Center calculations", () => {
     expect(b.sales.estimateValue).toBe(0);
     expect(b.attention).toHaveLength(0);
     expect(a.attention.some((item) => item.href.startsWith("/invoices/") || item.href.startsWith("/estimates/"))).toBe(true);
+    expect(b.health.score).toBeNull();
+    expect(a.money.aging.d1to30 + a.money.aging.d31to60 + a.money.aging.d61to90 + a.money.aging.d90plus + a.money.aging.current).toBe(
+      a.money.outstandingBalance
+    );
   });
 
   it("shows only a top-N attention queue on Home", async () => {
     const data = await getCommandCenterData(ids.companyA);
-    expect(data.homeAttention.length).toBeLessThanOrEqual(5);
+    expect(data.homeAttention.length).toBeLessThanOrEqual(10);
+    expect(data.attention.length).toBeGreaterThanOrEqual(data.homeAttention.length);
     expect(data.homeAttention.length).toBeGreaterThan(0);
     const money = filterAttention(data.attention, "money");
     expect(money.length).toBeGreaterThan(0);
