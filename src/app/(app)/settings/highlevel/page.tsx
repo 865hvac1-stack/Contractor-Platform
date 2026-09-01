@@ -33,12 +33,30 @@ export default async function HighLevelSettingsPage({
   const mapped = await prisma.providerIdentityMap.count({
     where: { companyId: ctx.company.id, provider: HIGHLEVEL_PROVIDER_KEY },
   });
+  const lastCommsSync = connection
+    ? await prisma.integrationSync.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id, kind: "communications" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
+  const socialAccounts = connection
+    ? await prisma.integrationAccount.count({
+        where: { companyId: ctx.company.id, connectionId: connection.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+      })
+    : 0;
   const oauth = highlevelOAuthNotes();
   const isConnected = connection?.status === "CONNECTED";
+  const verifiedKeys = [
+    lastEvent || mapped ? "contacts" : null,
+    lastCommsSync ? "conversations" : null,
+    lastCommsSync ? "sms" : null,
+    lastCommsSync ? "phone" : null,
+    socialAccounts > 0 ? "social" : null,
+  ].filter((key): key is string => Boolean(key));
   const capabilities = highlevelCapabilities({
     connected: Boolean(isConnected),
     scopes: connection?.scopes ?? [],
-    verifiedKeys: lastEvent ? ["contacts"] : [],
+    verifiedKeys,
   });
 
   return (
@@ -49,8 +67,8 @@ export default async function HighLevelSettingsPage({
         </Link>
         <h1 className="mt-2 font-display text-3xl tracking-tight">HighLevel</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Marketing and communications infrastructure. ContractorYou stays the system of record for jobs,
-          customers, invoices, and payments.
+          Platform: ContractorYou. Company: {ctx.company.businessName}. HighLevel is the location-level
+          communications provider, not the company name.
         </p>
       </div>
 
@@ -71,7 +89,11 @@ export default async function HighLevelSettingsPage({
         <CardContent className="space-y-3 text-sm">
           <dl className="grid gap-3 sm:grid-cols-2">
             <div>
-              <dt className="text-[var(--muted-foreground)]">Location name</dt>
+              <dt className="text-[var(--muted-foreground)]">ContractorYou company</dt>
+              <dd>{ctx.company.businessName}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">HighLevel location</dt>
               <dd>{connection?.accountLabel ?? "—"}</dd>
             </div>
             <div>
@@ -107,6 +129,14 @@ export default async function HighLevelSettingsPage({
             <div>
               <dt className="text-[var(--muted-foreground)]">Records mapped</dt>
               <dd>{mapped}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Last communications sync</dt>
+              <dd>
+                {lastCommsSync?.finishedAt
+                  ? `${lastCommsSync.finishedAt.toLocaleString()} · ${lastCommsSync.recordsIn} conversations / ${lastCommsSync.recordsOut} messages`
+                  : "Never"}
+              </dd>
             </div>
           </dl>
           {connection?.healthMessage ? (

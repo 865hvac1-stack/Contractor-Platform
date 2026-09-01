@@ -15,6 +15,10 @@ export const HIGHLEVEL_SCOPES = [
   "opportunities.readonly",
   "calendars.readonly",
   "workflows.readonly",
+  "socialplanner/account.readonly",
+  "socialplanner/account.write",
+  "socialplanner/post.readonly",
+  "socialplanner/post.write",
 ] as const;
 
 export const HIGHLEVEL_MANAGED_CHANNELS = new Set([
@@ -24,6 +28,9 @@ export const HIGHLEVEL_MANAGED_CHANNELS = new Set([
   "facebook",
   "instagram",
   "google_business_profile",
+  "tiktok",
+  "linkedin",
+  "youtube",
 ]);
 
 export const HIGHLEVEL_DEEP_LINKS = {

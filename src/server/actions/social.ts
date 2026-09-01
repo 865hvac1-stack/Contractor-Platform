@@ -29,6 +29,14 @@ export async function publishSocialPostAction(
     });
     if (!post) return { ok: false, error: "Draft not found." };
 
+    const { isHighLevelConnected } = await import("@/lib/highlevel/connection");
+    if (await isHighLevelConnected(prisma, ctx.company.id)) {
+      return {
+        ok: false,
+        error: "This company uses HighLevel Social Planner. Publish from the HighLevel composer — do not also publish through a direct Facebook/Google connection.",
+      };
+    }
+
     const providerKey = CHANNEL_TO_PROVIDER[post.channel];
     const connection = providerKey
       ? await getCompanyConnection(ctx.company.id, providerKey)

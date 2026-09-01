@@ -1741,6 +1741,7 @@ model CommunicationThread {
   leadId         String?
   contactName    String?
   phone          String?
+  email          String?
   lastPreview    String?
   lastActivityAt DateTime
   unread         Boolean  @default(false)
@@ -1935,6 +1936,8 @@ model SocialPost {
   id          String    @id @default(cuid())
   companyId   String
   channel     String
+  provider    String?
+  externalId  String?
   status      String    @default("DRAFT")
   body        String
   linkUrl     String?

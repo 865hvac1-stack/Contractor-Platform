@@ -10,6 +10,8 @@ import {
   disconnectHighLevelAction,
   previewHighLevelSyncAction,
   refreshHighLevelConnectionAction,
+  refreshHighLevelSocialAccountsAction,
+  syncHighLevelCommunicationsAction,
 } from "@/server/actions/highlevel";
 import { cn } from "@/lib/utils";
 
@@ -49,10 +51,10 @@ export function HighLevelSettingsForm({
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
-        <h2 className="font-medium">865 HVAC / single-location testing</h2>
+        <h2 className="font-medium">Testing / single-location</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Paste the existing location Private Integration Token. This is not the long-term SaaS architecture.
-          Tokens are encrypted and never shown again.
+          Paste the existing location Private Integration Token. This is for 865 HVAC testing only — not the
+          long-term multi-tenant SaaS path. Tokens are encrypted and never shown again.
         </p>
         <ActionForm action={connectHighLevelPrivateTokenAction} className="space-y-3" successMessage="Location saved.">
           <div className="space-y-1.5">
@@ -88,6 +90,16 @@ export function HighLevelSettingsForm({
             <ActionForm action={applyHighLevelSyncAction}>
               <Button type="submit" variant="outline">
                 Run initial sync
+              </Button>
+            </ActionForm>
+            <ActionForm action={syncHighLevelCommunicationsAction}>
+              <Button type="submit" variant="outline">
+                Sync communications
+              </Button>
+            </ActionForm>
+            <ActionForm action={refreshHighLevelSocialAccountsAction}>
+              <Button type="submit" variant="outline">
+                Refresh social accounts
               </Button>
             </ActionForm>
             <ActionForm action={disconnectHighLevelAction}>

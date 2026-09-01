@@ -3,6 +3,69 @@ import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { matchHighLevelContact, mapContactToCustomer } from "@/lib/highlevel/contacts";
 import { upsertIdentityMap } from "@/lib/highlevel/identity";
 
+export async function upsertConversationThread(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    conversationId: string;
+    channel?: string | null;
+    contactId?: string | null;
+    contactName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    lastPreview?: string | null;
+    lastActivityAt?: Date;
+    unread?: boolean;
+  }
+) {
+  const match = await matchHighLevelContact(prisma, {
+    companyId: input.companyId,
+    contactId: input.contactId,
+    email: input.email,
+    phone: input.phone,
+    name: input.contactName,
+  });
+  if (match.customerId && input.contactId) {
+    await mapContactToCustomer(prisma, {
+      companyId: input.companyId,
+      customerId: match.customerId,
+      contactId: input.contactId,
+    });
+  }
+  const thread = await prisma.communicationThread.upsert({
+    where: {
+      companyId_provider_externalId: {
+        companyId: input.companyId,
+        provider: HIGHLEVEL_PROVIDER_KEY,
+        externalId: input.conversationId,
+      },
+    },
+    create: {
+      companyId: input.companyId,
+      provider: HIGHLEVEL_PROVIDER_KEY,
+      externalId: input.conversationId,
+      channel: (input.channel || "SMS").toUpperCase(),
+      customerId: match.customerId,
+      contactName: input.contactName ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      lastPreview: (input.lastPreview ?? "").slice(0, 240) || null,
+      lastActivityAt: input.lastActivityAt ?? new Date(),
+      unread: input.unread ?? false,
+    },
+    update: {
+      customerId: match.customerId ?? undefined,
+      contactName: input.contactName ?? undefined,
+      phone: input.phone ?? undefined,
+      email: input.email ?? undefined,
+      lastPreview: input.lastPreview ? input.lastPreview.slice(0, 240) : undefined,
+      lastActivityAt: input.lastActivityAt ?? undefined,
+      unread: input.unread,
+    },
+  });
+  return { thread, customerId: match.customerId };
+}
+
 export async function upsertConversationMessage(
   prisma: PrismaClient,
   input: {
@@ -22,6 +85,7 @@ export async function upsertConversationMessage(
     unread?: boolean;
     callDuration?: number | null;
     callStatus?: string | null;
+    recordingUrl?: string | null;
   }
 ) {
   const match = await matchHighLevelContact(prisma, {
@@ -58,6 +122,7 @@ export async function upsertConversationMessage(
       customerId: match.customerId,
       contactName: input.contactName ?? null,
       phone: input.phone ?? null,
+      email: input.email ?? null,
       lastPreview: (input.body ?? "").slice(0, 240) || kind,
       lastActivityAt: occurredAt,
       unread: input.unread ?? input.direction === "inbound",
@@ -67,6 +132,7 @@ export async function upsertConversationMessage(
       customerId: match.customerId ?? undefined,
       contactName: input.contactName ?? undefined,
       phone: input.phone ?? undefined,
+      email: input.email ?? undefined,
       lastPreview: (input.body ?? "").slice(0, 240) || kind,
       lastActivityAt: occurredAt,
       unread: input.unread ?? input.direction === "inbound",
@@ -96,6 +162,7 @@ export async function upsertConversationMessage(
         contactId: input.contactId,
         callDuration: input.callDuration,
         callStatus: input.callStatus,
+        recordingUrl: input.recordingUrl ?? null,
       } as Prisma.InputJsonValue,
     },
     update: {
@@ -124,7 +191,7 @@ export async function upsertConversationMessage(
           durationSeconds: input.callDuration ?? null,
           answered: !missed,
           missed,
-          recordingRef: input.messageId,
+          recordingRef: input.recordingUrl || input.messageId,
           source: "highlevel",
         },
       });

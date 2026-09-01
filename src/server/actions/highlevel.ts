@@ -10,6 +10,8 @@ import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { deleteConnectionCredentials, saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
 import { probeHighLevelLocation } from "@/lib/highlevel/connection";
 import { applyHighLevelContactSync, previewHighLevelContactSync } from "@/lib/highlevel/sync";
+import { syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
+import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 
 export async function connectHighLevelPrivateTokenAction(
@@ -192,6 +194,144 @@ export async function applyHighLevelSyncAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: error instanceof Error ? error.message : "Sync failed." };
+  }
+}
+
+export async function syncHighLevelCommunicationsAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const result = await syncHighLevelCommunications(prisma, ctx.company.id);
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.communications_synced",
+      entityType: "IntegrationConnection",
+      entityId: ctx.company.id,
+      metadata: result,
+    });
+    revalidatePath("/settings/highlevel");
+    revalidatePath("/marketing/communications");
+    return {
+      ok: true,
+      message: `Communications sync: ${result.conversationsFound} found, ${result.conversationsMapped} mapped, ${result.messagesImported} messages, ${result.unmatched} unmatched, ${result.failed} failed. Nothing was sent.`,
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Communications sync failed." };
+  }
+}
+
+export async function refreshHighLevelSocialAccountsAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const result = await discoverHighLevelSocialAccounts(prisma, ctx.company.id);
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.social_discovered",
+      entityType: "IntegrationConnection",
+      entityId: ctx.company.id,
+      metadata: { count: result.accounts.length, authorized: result.authorized },
+    });
+    revalidatePath("/marketing/social");
+    revalidatePath("/settings/highlevel");
+    if (!result.authorized) return { ok: false, error: result.error || "Social Planner is not authorized." };
+    return {
+      ok: true,
+      message: result.accounts.length
+        ? `Found ${result.accounts.length} HighLevel social account${result.accounts.length === 1 ? "" : "s"}.`
+        : "HighLevel Social Planner is reachable. No social accounts are connected in HighLevel.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Social discovery failed." };
+  }
+}
+
+export async function createHighLevelSocialPostAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const intent = String(formData.get("intent") || "draft");
+    const body = String(formData.get("body") || "").trim();
+    const mediaUrl = String(formData.get("mediaUrl") || "").trim() || null;
+    const linkUrl = String(formData.get("linkUrl") || "").trim() || null;
+    const ctaLabel = String(formData.get("ctaLabel") || "").trim() || null;
+    const scheduledRaw = String(formData.get("scheduledAt") || "");
+    const accountIds = formData.getAll("accountId").map((value) => String(value)).filter(Boolean);
+    const discovered = await discoverHighLevelSocialAccounts(prisma, ctx.company.id);
+    const selected = discovered.accounts.filter((account) => accountIds.includes(account.id));
+    if (!body && intent !== "draft") return { ok: false, error: "Write the post before scheduling or publishing." };
+    const status = intent === "publish" ? "published" : intent === "schedule" ? "scheduled" : "draft";
+    if (status === "published" && !accountIds.length) {
+      return { ok: false, error: "Select a HighLevel social account before publishing." };
+    }
+    const scheduledAt = scheduledRaw ? new Date(scheduledRaw) : null;
+    const result = await publishThroughHighLevel(prisma, {
+      companyId: ctx.company.id,
+      accountIds,
+      body: linkUrl ? `${body}\n${linkUrl}` : body,
+      mediaUrl,
+      status,
+      scheduleDate: scheduledAt,
+      channels: selected.map((account) => account.channel),
+    });
+    if (!result.ok) return { ok: false, error: result.error };
+    const channel = selected[0]?.channel || "FACEBOOK";
+    const publications = new Map(selected.map((account) => [account.channel, account]));
+    const post = await prisma.socialPost.create({
+      data: {
+        companyId: ctx.company.id,
+        channel,
+        provider: HIGHLEVEL_PROVIDER_KEY,
+        externalId: result.externalId,
+        body,
+        linkUrl,
+        mediaUrl,
+        ctaLabel,
+        scheduledAt: status === "scheduled" ? scheduledAt : null,
+        publishedAt: status === "published" ? new Date() : null,
+        status: status === "published" ? "PUBLISHED" : status === "scheduled" ? "SCHEDULED" : "DRAFT",
+        publications: {
+          create: [...publications.values()].map((account) => ({
+            companyId: ctx.company.id,
+            channel: account.channel,
+            status: status === "published" ? "PUBLISHED" : status === "scheduled" ? "SCHEDULED" : "DRAFT",
+            externalId: result.externalId,
+            publishedAt: status === "published" ? new Date() : null,
+          })),
+        },
+      },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: `highlevel.social_${status}`,
+      entityType: "SocialPost",
+      entityId: post.id,
+      metadata: { intent, accounts: accountIds.length },
+    });
+    revalidatePath("/marketing/social");
+    return {
+      ok: true,
+      message:
+        status === "published"
+          ? "Published through HighLevel."
+          : status === "scheduled"
+            ? "Scheduled in HighLevel. It was not published immediately."
+            : "Draft saved in HighLevel. It was not published.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Social post failed." };
   }
 }
 

@@ -19,6 +19,7 @@ const CAPABILITIES: { key: string; label: string; scopes: string[]; verified?: b
   { key: "calendars", label: "Calendars", scopes: ["calendars.readonly"] },
   { key: "workflows", label: "Workflows", scopes: ["workflows.readonly"] },
   { key: "reviews", label: "Reviews", scopes: [] },
+  { key: "social", label: "Social Planner", scopes: ["socialplanner/account.readonly", "socialplanner/post.write"] },
 ];
 
 function hasScope(granted: string[], needed: string[]) {
