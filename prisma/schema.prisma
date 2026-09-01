@@ -1367,6 +1367,7 @@ model IntegrationSync {
   recordsIn    Int       @default(0)
   recordsOut   Int       @default(0)
   errorMessage String?
+  summary      Json?
 
   company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
@@ -1739,14 +1740,15 @@ model CommunicationThread {
   channel        String
   customerId     String?
   leadId         String?
-  contactName    String?
-  phone          String?
-  email          String?
-  lastPreview    String?
-  lastActivityAt DateTime
-  unread         Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  contactName       String?
+  phone             String?
+  email             String?
+  externalContactId String?
+  lastPreview       String?
+  lastActivityAt    DateTime
+  unread            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company  Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customer Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1756,6 +1758,7 @@ model CommunicationThread {
   @@unique([companyId, provider, externalId])
   @@index([companyId, lastActivityAt])
   @@index([companyId, unread])
+  @@index([companyId, externalContactId])
 }
 
 model CommunicationMessage {

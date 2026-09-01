@@ -48,7 +48,15 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
               <Link href={`/customers/${thread.customer.id}`} className="mt-2 inline-block text-sm underline">
                 Open customer
               </Link>
-            ) : null}
+            ) : thread.lead ? (
+              <Link href={`/marketing/leads/${thread.lead.id}`} className="mt-2 inline-block text-sm underline">
+                Open lead
+              </Link>
+            ) : (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                HighLevel-only conversation. It is visible without a ContractorYou customer match.
+              </p>
+            )}
           </div>
           <StatusBadge status={thread.channel} />
         </div>

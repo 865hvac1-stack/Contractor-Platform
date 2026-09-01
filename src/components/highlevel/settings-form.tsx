@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,12 +21,21 @@ export function HighLevelSettingsForm({
   connected,
   missing,
   webhookUrl,
+  storedLocationId,
+  storedLocationName,
+  tokenStored,
 }: {
   oauthReady: boolean;
   connected: boolean;
   missing: string[];
   webhookUrl: string;
+  storedLocationId: string | null;
+  storedLocationName: string | null;
+  tokenStored: boolean;
 }) {
+  const [replaceToken, setReplaceToken] = useState(false);
+  const tokenRequired = !tokenStored || replaceToken;
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
@@ -53,23 +63,84 @@ export function HighLevelSettingsForm({
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
         <h2 className="font-medium">Testing / single-location</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Paste the existing location Private Integration Token. This is for 865 HVAC testing only — not the
-          long-term multi-tenant SaaS path. Tokens are encrypted and never shown again.
+          Paste the existing location Private Integration Token once. ContractorYou keeps the encrypted token
+          after refresh. This is for 865 HVAC testing only — not the long-term multi-tenant SaaS path.
         </p>
-        <ActionForm action={connectHighLevelPrivateTokenAction} className="space-y-3" successMessage="Location saved.">
+        <ActionForm
+          action={connectHighLevelPrivateTokenAction}
+          className="space-y-3"
+          successMessage="Location saved."
+        >
+          <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+            <input type="text" name="username" tabIndex={-1} autoComplete="username" />
+            <input type="password" name="password" tabIndex={-1} autoComplete="current-password" />
+          </div>
           <div className="space-y-1.5">
-            <Label htmlFor="locationId">HighLevel Location ID</Label>
-            <Input id="locationId" name="locationId" placeholder="Existing 865 HVAC location id" required />
+            <Label htmlFor="highlevelLocationId">HighLevel Location ID</Label>
+            <Input
+              id="highlevelLocationId"
+              name="highlevelLocationId"
+              defaultValue={storedLocationId ?? ""}
+              placeholder="Provider location id only"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              required={!storedLocationId}
+              data-1p-ignore
+              data-lpignore="true"
+            />
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Must be the HighLevel location id. Never a login, company, or contact email.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="locationName">Location name</Label>
-            <Input id="locationName" name="locationName" placeholder="865 HVAC" />
+            <Input
+              id="locationName"
+              name="locationName"
+              defaultValue={storedLocationName ?? ""}
+              placeholder="865 HVAC"
+              autoComplete="off"
+            />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="privateToken">Private Integration Token</Label>
-            <Input id="privateToken" name="privateToken" type="password" autoComplete="off" required />
+            <Label htmlFor="highlevelPrivateToken">Private Integration Token</Label>
+            {tokenStored && !replaceToken ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium">Stored securely</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">•••••••• · token is not shown again</p>
+                </div>
+                <Button type="button" variant="outline" onClick={() => setReplaceToken(true)}>
+                  Replace token
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="highlevelPrivateToken"
+                  name="highlevelPrivateToken"
+                  type="password"
+                  autoComplete="new-password"
+                  required={tokenRequired}
+                  data-1p-ignore
+                  data-lpignore="true"
+                />
+                {tokenStored ? (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Submitting a new token replaces the stored credential. Leave this closed if you only need to
+                    keep the current connection.
+                  </p>
+                ) : (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Encrypted server-side. ContractorYou never returns the raw token to the browser.
+                  </p>
+                )}
+              </>
+            )}
           </div>
-          <Button type="submit">Connect existing location</Button>
+          <Button type="submit">{tokenStored ? "Update connection" : "Connect existing location"}</Button>
         </ActionForm>
       </section>
 

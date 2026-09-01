@@ -70,7 +70,13 @@ export default async function CommunicationsPage() {
                         </p>
                         <p className="text-sm text-[var(--muted-foreground)]">
                           {thread.channel} · {thread.phone || thread.email || "No contact detail"}
-                          {thread.lead ? ` · Lead ${thread.lead.source}` : thread.customerId ? " · Customer" : " · Unmatched"}
+                          {thread.customerId
+                            ? " · Customer"
+                            : thread.lead
+                              ? ` · Lead ${thread.lead.source}`
+                              : thread.externalContactId
+                                ? " · HighLevel-only contact"
+                                : " · Unmatched"}
                         </p>
                         <p className="mt-1 text-sm">{thread.lastPreview || "No preview"}</p>
                       </div>

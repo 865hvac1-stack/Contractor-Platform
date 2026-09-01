@@ -7,12 +7,13 @@ import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/server/actions/auth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
-import { deleteConnectionCredentials, saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
+import { deleteConnectionCredentials, getValidAccessToken, saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
 import { probeHighLevelLocation } from "@/lib/highlevel/connection";
 import { applyHighLevelContactSync, previewHighLevelContactSync } from "@/lib/highlevel/sync";
-import { syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
+import { formatCommunicationsSyncMessage, syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
 import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
+import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 
 export async function connectHighLevelPrivateTokenAction(
   _prev: ActionResult | null,
@@ -20,37 +21,64 @@ export async function connectHighLevelPrivateTokenAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
-    const locationId = String(formData.get("locationId") || "").trim();
-    const token = String(formData.get("privateToken") || "").trim();
+    const submittedLocationId = String(formData.get("highlevelLocationId") || formData.get("locationId") || "").trim();
+    const submittedToken = String(formData.get("highlevelPrivateToken") || formData.get("privateToken") || "").trim();
     const locationName = String(formData.get("locationName") || "").trim();
-    if (!locationId || !token) {
-      return { ok: false, error: "Location ID and Private Integration Token are required." };
+    const locationId = sanitizeHighLevelLocationId(submittedLocationId);
+    if (submittedLocationId && !locationId) {
+      return { ok: false, error: "HighLevel Location ID cannot be an email or profile value. Use the provider location id." };
     }
-    const probe = await probeHighLevelLocation(token, locationId);
+
+    const existing = await prisma.integrationConnection.findFirst({
+      where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+      include: { credentials: true },
+    });
+    const storedLocationId = sanitizeHighLevelLocationId(existing?.externalAccountId);
+    const resolvedLocationId = locationId || storedLocationId;
+    if (!resolvedLocationId) {
+      return { ok: false, error: "HighLevel Location ID is required." };
+    }
+
+    let token = submittedToken;
+    if (!token && existing) {
+      const stored = await getValidAccessToken({
+        companyId: ctx.company.id,
+        connectionId: existing.id,
+        providerKey: HIGHLEVEL_PROVIDER_KEY,
+      });
+      token = stored?.accessToken ?? "";
+    }
+    if (!token) {
+      return { ok: false, error: "Private Integration Token is required for the first connection." };
+    }
+
+    const probe = await probeHighLevelLocation(token, resolvedLocationId);
     const connection = await upsertConnection({
       companyId: ctx.company.id,
       providerKey: HIGHLEVEL_PROVIDER_KEY,
       status: probe.ok ? "CONNECTED" : "ERROR",
-      accountLabel: probe.ok ? probe.location.name || locationName || "HighLevel location" : locationName || null,
-      externalAccountId: locationId,
+      accountLabel: probe.ok ? probe.location.name || locationName || existing?.accountLabel || "HighLevel location" : locationName || existing?.accountLabel || null,
+      externalAccountId: resolvedLocationId,
       scopes: ["private_token"],
       healthMessage: probe.ok
         ? "Connected with a location Private Integration Token (testing / single-location)."
         : probe.error,
       errorMessage: probe.ok ? null : probe.error,
     });
-    await saveConnectionTokens({
-      companyId: ctx.company.id,
-      connectionId: connection.id,
-      tokens: { accessToken: token, scopes: ["private_token"] },
-    });
+    if (submittedToken) {
+      await saveConnectionTokens({
+        companyId: ctx.company.id,
+        connectionId: connection.id,
+        tokens: { accessToken: submittedToken, scopes: ["private_token"] },
+      });
+    }
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
       action: probe.ok ? "highlevel.connected" : "highlevel.connect_failed",
       entityType: "IntegrationConnection",
       entityId: connection.id,
-      metadata: { mode: "private_token", locationId },
+      metadata: { mode: "private_token", locationId: resolvedLocationId },
     });
     revalidatePath("/settings/highlevel");
     revalidatePath("/marketing/channels");
@@ -110,7 +138,8 @@ export async function refreshHighLevelConnectionAction(
       where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
       include: { credentials: true },
     });
-    if (!connection?.externalAccountId || !connection.credentials) {
+    const storedLocationId = sanitizeHighLevelLocationId(connection?.externalAccountId);
+    if (!connection || !storedLocationId || !connection.credentials) {
       return { ok: false, error: "HighLevel is not connected." };
     }
     const { decryptProviderTokens } = await import("@/lib/integrations/crypto");
@@ -120,7 +149,7 @@ export async function refreshHighLevelConnectionAction(
       authTag: Buffer.from(connection.credentials.authTag),
       keyVersion: connection.credentials.keyVersion,
     });
-    const probe = await probeHighLevelLocation(tokens.accessToken, connection.externalAccountId);
+    const probe = await probeHighLevelLocation(tokens.accessToken, storedLocationId);
     await prisma.integrationConnection.update({
       where: { id: connection.id },
       data: {
@@ -216,7 +245,7 @@ export async function syncHighLevelCommunicationsAction(
     revalidatePath("/marketing/communications");
     return {
       ok: true,
-      message: `Communications sync: ${result.conversationsFound} found, ${result.conversationsMapped} mapped, ${result.messagesImported} messages, ${result.unmatched} unmatched, ${result.failed} failed. Nothing was sent.`,
+      message: formatCommunicationsSyncMessage(result),
     };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };

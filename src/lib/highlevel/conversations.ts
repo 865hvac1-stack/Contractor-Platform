@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
-import { matchHighLevelContact, mapContactToCustomer } from "@/lib/highlevel/contacts";
+import { mapContactToCustomer, resolveHighLevelParticipant } from "@/lib/highlevel/contacts";
 import { upsertIdentityMap } from "@/lib/highlevel/identity";
 
 export async function upsertConversationThread(
@@ -18,7 +18,7 @@ export async function upsertConversationThread(
     unread?: boolean;
   }
 ) {
-  const match = await matchHighLevelContact(prisma, {
+  const match = await resolveHighLevelParticipant(prisma, {
     companyId: input.companyId,
     contactId: input.contactId,
     email: input.email,
@@ -46,6 +46,8 @@ export async function upsertConversationThread(
       externalId: input.conversationId,
       channel: (input.channel || "SMS").toUpperCase(),
       customerId: match.customerId,
+      leadId: match.leadId,
+      externalContactId: input.contactId ?? null,
       contactName: input.contactName ?? null,
       phone: input.phone ?? null,
       email: input.email ?? null,
@@ -55,6 +57,8 @@ export async function upsertConversationThread(
     },
     update: {
       customerId: match.customerId ?? undefined,
+      leadId: match.leadId ?? undefined,
+      externalContactId: input.contactId ?? undefined,
       contactName: input.contactName ?? undefined,
       phone: input.phone ?? undefined,
       email: input.email ?? undefined,
@@ -63,7 +67,15 @@ export async function upsertConversationThread(
       unread: input.unread,
     },
   });
-  return { thread, customerId: match.customerId };
+  if (input.contactId) {
+    await upsertIdentityMap(prisma, {
+      companyId: input.companyId,
+      entityType: "CONTACT",
+      internalId: thread.id,
+      externalId: input.contactId,
+    });
+  }
+  return { thread, customerId: match.customerId, leadId: match.leadId, bucket: match.bucket, kind: match.kind };
 }
 
 export async function upsertConversationMessage(
@@ -88,7 +100,7 @@ export async function upsertConversationMessage(
     recordingUrl?: string | null;
   }
 ) {
-  const match = await matchHighLevelContact(prisma, {
+  const match = await resolveHighLevelParticipant(prisma, {
     companyId: input.companyId,
     contactId: input.contactId,
     email: input.email,
@@ -120,6 +132,8 @@ export async function upsertConversationMessage(
       externalId: input.conversationId,
       channel,
       customerId: match.customerId,
+      leadId: match.leadId,
+      externalContactId: input.contactId ?? null,
       contactName: input.contactName ?? null,
       phone: input.phone ?? null,
       email: input.email ?? null,
@@ -130,6 +144,8 @@ export async function upsertConversationMessage(
     update: {
       channel,
       customerId: match.customerId ?? undefined,
+      leadId: match.leadId ?? undefined,
+      externalContactId: input.contactId ?? undefined,
       contactName: input.contactName ?? undefined,
       phone: input.phone ?? undefined,
       email: input.email ?? undefined,
@@ -138,6 +154,14 @@ export async function upsertConversationMessage(
       unread: input.unread ?? input.direction === "inbound",
     },
   });
+  if (input.contactId) {
+    await upsertIdentityMap(prisma, {
+      companyId: input.companyId,
+      entityType: "CONTACT",
+      internalId: thread.id,
+      externalId: input.contactId,
+    });
+  }
 
   const message = await prisma.communicationMessage.upsert({
     where: {
@@ -207,5 +231,5 @@ export async function upsertConversationMessage(
     });
   }
 
-  return { thread, message, customerId: match.customerId };
+  return { thread, message, customerId: match.customerId, leadId: match.leadId, bucket: match.bucket };
 }

@@ -1,4 +1,4 @@
-import { HIGHLEVEL_API_BASE, HIGHLEVEL_API_VERSION } from "@/lib/highlevel/config";
+import { HIGHLEVEL_API_BASE, HIGHLEVEL_API_VERSION, HIGHLEVEL_CONVERSATIONS_API_VERSION } from "@/lib/highlevel/config";
 
 export type HighLevelContact = {
   id: string;
@@ -128,8 +128,10 @@ export async function sendHighLevelSms(input: {
 }
 
 export type HighLevelConversation = {
-  id: string;
+  id?: string;
+  conversationId?: string;
   contactId?: string;
+  locationId?: string;
   fullName?: string;
   contactName?: string;
   phone?: string;
@@ -139,7 +141,61 @@ export type HighLevelConversation = {
   lastMessageType?: string;
   unreadCount?: number;
   inbox?: boolean;
+  deleted?: boolean;
 };
+
+export function highLevelConversationId(conversation: { id?: string | null; conversationId?: string | null } | null | undefined) {
+  const raw = conversation?.id || conversation?.conversationId;
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  if (!id || id.includes("@") || id === "undefined" || id === "null") return null;
+  return id;
+}
+
+export function extractHighLevelConversations(payload: {
+  conversations?: HighLevelConversation[] | { conversations?: HighLevelConversation[]; total?: number };
+  total?: number;
+}) {
+  const block = payload.conversations;
+  const rows = Array.isArray(block) ? block : Array.isArray(block?.conversations) ? block.conversations : [];
+  const total = typeof payload.total === "number" ? payload.total : typeof block === "object" && block && "total" in block && typeof block.total === "number" ? block.total : rows.length;
+  return { rows, total };
+}
+
+export function extractHighLevelMessages(payload: {
+  messages?:
+    | HighLevelConversationMessage[]
+    | {
+        messages?: HighLevelConversationMessage[];
+        nextPage?: boolean;
+        lastMessageId?: string;
+      };
+}) {
+  const block = payload.messages;
+  if (Array.isArray(block)) return { rows: block, nextPage: false, lastMessageId: undefined as string | undefined };
+  return {
+    rows: block?.messages ?? [],
+    nextPage: Boolean(block?.nextPage),
+    lastMessageId: block?.lastMessageId,
+  };
+}
+
+export function parseHighLevelDate(raw: unknown): Date | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber) && raw.trim() !== "") {
+      const numeric = new Date(asNumber);
+      if (!Number.isNaN(numeric.getTime()) && (asNumber > 1_000_000_000_000 || raw.length >= 12)) return numeric;
+    }
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return undefined;
+}
 
 export type HighLevelConversationMessage = {
   id?: string;
@@ -152,8 +208,8 @@ export type HighLevelConversationMessage = {
   type?: string;
   messageType?: string;
   status?: string;
-  dateAdded?: string;
-  dateUpdated?: string;
+  dateAdded?: string | number;
+  dateUpdated?: string | number;
   attachments?: Array<{ url?: string; type?: string }>;
   meta?: { recordingUrl?: string; callDuration?: number; callStatus?: string };
 };
@@ -164,9 +220,13 @@ export async function searchHighLevelConversations(input: {
   limit?: number;
   startAfterDate?: string;
 }) {
-  return highlevelRequest<{ conversations?: HighLevelConversation[]; total?: number }>({
+  return highlevelRequest<{
+    conversations?: HighLevelConversation[] | { conversations?: HighLevelConversation[]; total?: number };
+    total?: number;
+  }>({
     accessToken: input.accessToken,
     path: "/conversations/search",
+    version: HIGHLEVEL_CONVERSATIONS_API_VERSION,
     query: {
       locationId: input.locationId,
       limit: String(input.limit ?? 20),
@@ -174,6 +234,16 @@ export async function searchHighLevelConversations(input: {
       startAfterDate: input.startAfterDate,
     },
   });
+}
+
+export async function getHighLevelConversation(input: { accessToken: string; conversationId: string }) {
+  const data = await highlevelRequest<{ conversation?: HighLevelConversation } | HighLevelConversation>({
+    accessToken: input.accessToken,
+    path: `/conversations/${input.conversationId}`,
+    version: HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  });
+  if (data && typeof data === "object" && "conversation" in data && data.conversation) return data.conversation;
+  return data as HighLevelConversation;
 }
 
 export async function getHighLevelConversationMessages(input: {
@@ -193,6 +263,7 @@ export async function getHighLevelConversationMessages(input: {
   }>({
     accessToken: input.accessToken,
     path: `/conversations/${input.conversationId}/messages`,
+    version: HIGHLEVEL_CONVERSATIONS_API_VERSION,
     query: {
       lastMessageId: input.lastMessageId,
       limit: String(input.limit ?? 20),

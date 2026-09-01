@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 
-export type IdentityEntity = "CUSTOMER" | "LEAD" | "USER" | "COMPANY";
+export type IdentityEntity = "CUSTOMER" | "LEAD" | "USER" | "COMPANY" | "CONTACT";
 
 export async function getIdentityMap(
   prisma: PrismaClient,

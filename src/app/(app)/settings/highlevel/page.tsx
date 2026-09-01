@@ -5,9 +5,33 @@ import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/co
 import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
 import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
 import { highlevelAuthMode } from "@/lib/highlevel/connection";
+import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+
+function commsSummaryText(summary: unknown, fallback: string) {
+  if (!summary || typeof summary !== "object") return fallback;
+  const row = summary as {
+    conversationsFound?: number;
+    mapped?: number;
+    providerOnly?: number;
+    unmatched?: number;
+    skipped?: number;
+    failed?: number;
+    messagesImported?: number;
+  };
+  if (typeof row.conversationsFound !== "number") return fallback;
+  return [
+    `${row.conversationsFound} found`,
+    `${row.mapped ?? 0} mapped`,
+    `${row.providerOnly ?? 0} HighLevel-only`,
+    `${row.unmatched ?? 0} unmatched`,
+    `${row.skipped ?? 0} skipped`,
+    `${row.failed ?? 0} failed`,
+    `${row.messagesImported ?? 0} messages`,
+  ].join(" · ");
+}
 
 export default async function HighLevelSettingsPage({
   searchParams,
@@ -44,8 +68,22 @@ export default async function HighLevelSettingsPage({
         where: { companyId: ctx.company.id, connectionId: connection.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
       })
     : 0;
+  const credential = connection
+    ? await prisma.integrationCredential.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id },
+        select: { id: true },
+      })
+    : null;
+  const publicConnection = publicHighLevelConnectionView({
+    status: connection?.status,
+    externalAccountId: connection?.externalAccountId,
+    accountLabel: connection?.accountLabel,
+    hasCredential: Boolean(credential),
+    companyEmail: ctx.company.email,
+    userEmail: ctx.user.email,
+  });
   const oauth = highlevelOAuthNotes();
-  const isConnected = connection?.status === "CONNECTED";
+  const isConnected = connection?.status === "CONNECTED" && Boolean(publicConnection.locationId);
   const verifiedKeys = [
     lastEvent || mapped ? "contacts" : null,
     lastCommsSync ? "conversations" : null,
@@ -98,7 +136,11 @@ export default async function HighLevelSettingsPage({
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Location ID</dt>
-              <dd className="break-all">{connection?.externalAccountId ?? "—"}</dd>
+              <dd className="break-all">{publicConnection.locationId ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Private Integration Token</dt>
+              <dd>{publicConnection.tokenStored ? "Stored securely" : "Not stored"}</dd>
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Auth mode</dt>
@@ -134,7 +176,10 @@ export default async function HighLevelSettingsPage({
               <dt className="text-[var(--muted-foreground)]">Last communications sync</dt>
               <dd>
                 {lastCommsSync?.finishedAt
-                  ? `${lastCommsSync.finishedAt.toLocaleString()} · ${lastCommsSync.recordsIn} conversations / ${lastCommsSync.recordsOut} messages`
+                  ? `${lastCommsSync.finishedAt.toLocaleString()} · ${commsSummaryText(
+                      lastCommsSync.summary,
+                      `${lastCommsSync.recordsIn} conversations / ${lastCommsSync.recordsOut} messages`
+                    )}`
                   : "Never"}
               </dd>
             </div>
@@ -171,6 +216,9 @@ export default async function HighLevelSettingsPage({
         connected={Boolean(isConnected)}
         missing={oauth.missing}
         webhookUrl={highlevelWebhookUrl()}
+        storedLocationId={publicConnection.locationId}
+        storedLocationName={publicConnection.locationName}
+        tokenStored={publicConnection.tokenStored}
       />
 
       <Card>
