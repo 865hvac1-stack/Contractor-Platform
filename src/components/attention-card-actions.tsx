@@ -12,7 +12,7 @@ export function AttentionCardActions({ type, entityId, href }: { type: string; e
   const actions = attentionCardActions(type, entityId);
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-2 flex flex-wrap gap-2">
       {actions.map((action) => {
         if (action.prepare) {
           return (

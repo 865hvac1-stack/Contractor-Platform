@@ -4,13 +4,13 @@ export function HealthHero({ health }: { health: HealthScore }) {
   const scored = health.components.filter((row) => row.score != null);
   return (
     <section className="overflow-hidden rounded-3xl bg-[var(--cy-navy)] px-5 py-5 text-white md:px-7 md:py-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-5">
           <div
-            className="flex size-24 shrink-0 flex-col items-center justify-center rounded-full border-4 border-[var(--cy-orange)] bg-white/5 md:size-28"
+            className="flex size-28 shrink-0 flex-col items-center justify-center rounded-full border-[6px] border-[var(--cy-orange)] bg-white/5 md:size-36"
             aria-label={health.score == null ? "Business health not enough data" : `Business health ${health.score}`}
           >
-            <p className="text-4xl font-semibold tabular-nums md:text-5xl">{health.score ?? "—"}</p>
+            <p className="text-5xl font-semibold tabular-nums md:text-6xl">{health.score ?? "—"}</p>
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">Business Health</p>
@@ -39,7 +39,7 @@ export function HealthHero({ health }: { health: HealthScore }) {
           </ul>
         </details>
       </div>
-      <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {health.components.map((component) => (
           <div key={component.id} className="rounded-xl bg-white/6 px-3 py-2">
             <dt className="text-[11px] text-white/50">{component.label}</dt>

@@ -1,6 +1,7 @@
 import type { AttentionItem, AttentionSeverity } from "@/lib/attention";
 
 export const HOME_ATTENTION_LIMIT = 10;
+export const DASHBOARD_ATTENTION_LIMIT = 3;
 
 export type AttentionPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team" | "memberships";
@@ -188,6 +189,7 @@ export function attentionFilterCounts(items: RankedAttention[]) {
     customers: filterAttention(items, "customers").length,
     memberships: filterAttention(items, "memberships").length,
     team: filterAttention(items, "team").length,
+    other: filterAttention(items, "customers").length + filterAttention(items, "team").length,
   };
 }
 

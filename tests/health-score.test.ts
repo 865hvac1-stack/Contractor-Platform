@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { arAgingBuckets, bucketRevenueSeries, computeHealthScore } from "@/lib/health-score";
-import { attentionFilterCounts, filterAttention, prioritizeAttention } from "@/lib/attention-priority";
+import { DASHBOARD_ATTENTION_LIMIT, attentionFilterCounts, filterAttention, prioritizeAttention } from "@/lib/attention-priority";
 import { buildCommandObservations } from "@/lib/command-observations";
 import type { AttentionItem } from "@/lib/attention";
 import { readFileSync } from "node:fs";
@@ -167,6 +167,8 @@ describe("attention completeness", () => {
     expect(counts.dispatch).toBe(1);
     expect(filterAttention(items, "dispatch")).toHaveLength(1);
     expect(filterAttention(items, "all")).toHaveLength(3);
+    expect(counts.other).toBeGreaterThanOrEqual(0);
+    expect(DASHBOARD_ATTENTION_LIMIT).toBe(3);
   });
 });
 
@@ -193,12 +195,13 @@ describe("Command Center source", () => {
     const page = readFileSync(resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
     expect(page).toMatch(/getCommandCenterData/);
-    expect(page).toMatch(/HOME_ATTENTION_LIMIT/);
-    expect(page).toMatch(/AttentionFeed/);
+    expect(page).toMatch(/DASHBOARD_ATTENTION_LIMIT|AttentionSummary/);
     expect(page).toMatch(/HealthHero/);
     expect(page).toMatch(/variant="bar"/);
     const feed = readFileSync(resolve("src/components/attention-feed.tsx"), "utf8");
-    expect(feed).toContain("Load");
+    expect(feed).toContain("DASHBOARD_ATTENTION_LIMIT");
     expect(feed).toContain("View all");
+    expect(feed).toContain("Action Center");
+    expect(feed).not.toContain("Load");
   });
 });

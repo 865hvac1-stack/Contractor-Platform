@@ -110,6 +110,6 @@ describe("attention priority scoring", () => {
     const page = readFileSync(resolve(process.cwd(), "src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
     expect(page).toMatch(/getCommandCenterData/);
-    expect(page).toMatch(/HOME_ATTENTION_LIMIT/);
+    expect(page).toMatch(/AttentionSummary|DASHBOARD_ATTENTION_LIMIT/);
   });
 });

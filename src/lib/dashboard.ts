@@ -237,6 +237,10 @@ export async function getCommandCenterData(companyId: string) {
     membershipsSoldTodayRows,
     repeatCustomerGroups,
     lostEstimatesThisMonth,
+    leadsTodayRows,
+    callsToday,
+    missedCallsToday,
+    reviewCount,
   ] = await Promise.all([
     prisma.payment.findMany({
       where: {
@@ -303,6 +307,17 @@ export async function getCommandCenterData(companyId: string) {
       _count: true,
       _sum: { totalCents: true },
     }),
+    prisma.lead.findMany({
+      where: { companyId, receivedAt: { gte: dayStart, lte: dayEnd } },
+      select: { status: true, attributedRevenueCents: true },
+    }),
+    prisma.callRecord.count({
+      where: { companyId, startedAt: { gte: dayStart, lte: dayEnd } },
+    }),
+    prisma.callRecord.count({
+      where: { companyId, startedAt: { gte: dayStart, lte: dayEnd }, missed: true },
+    }),
+    prisma.review.count({ where: { companyId } }),
   ]);
 
   const openEstimateValue = openEstimates.reduce((s, e) => s + e.totalCents, 0);
@@ -510,6 +525,8 @@ export async function getCommandCenterData(companyId: string) {
     marketing: {
       leadsThisMonth: leadsThisMonthRows.length,
       bookedLeads,
+      leadsToday: leadsTodayRows.length,
+      bookedToday: leadsTodayRows.filter((lead) => BOOKED_LEAD_STATUSES.includes(lead.status)).length,
       revenueCents: marketingRevenue,
       missedCallsOpen,
       bestSource: bestSource && (bestSource.revenue > 0 || bestSource.booked > 0 || bestSource.leads > 0) ? bestSource : null,
@@ -550,16 +567,21 @@ export async function getCommandCenterData(companyId: string) {
       month: reviewsMonth.count,
       average: reviewsToday.average ?? reviewsMonth.average,
       pendingRequests: reviewRequestsPending,
+      connected: reviewCount > 0,
     },
     customers: {
       newToday: newCustomersToday,
       repeatLastYear: repeatCustomers,
       missedCallsOpen,
+      callsToday,
+      missedCallsToday,
+      bookedToday: leadsTodayRows.filter((lead) => BOOKED_LEAD_STATUSES.includes(lead.status)).length,
     },
     goals: {
       revenueCents: revenueGoalCents,
       closeRate: closeRateGoal,
       memberships: membershipGoal,
+      marginPercent: goalByKey("gross_margin") != null ? goalByKey("gross_margin")! / 10 : null,
     },
     team: {
       workingToday: technicians,

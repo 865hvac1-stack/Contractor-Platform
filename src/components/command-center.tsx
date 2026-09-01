@@ -87,7 +87,7 @@ export function SnapshotCard({
   insight?: string | null;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+    <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">{title}</h2>
         <Link href={href} className="text-sm font-medium text-[var(--cy-orange)]">
