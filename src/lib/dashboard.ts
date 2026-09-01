@@ -1,6 +1,18 @@
-import { startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from "date-fns";
+import {
+  startOfDay,
+  endOfDay,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  subMonths,
+  addDays,
+} from "date-fns";
 import { prisma } from "@/lib/db";
 import { getNeedsAttention } from "@/lib/attention";
+import { homeAttentionItems, prioritizeAttention } from "@/lib/attention-priority";
+import { BOOKED_LEAD_STATUSES, LEAD_SOURCE_LABELS } from "@/lib/leads/sources";
+import { technicianScorecard } from "@/lib/performance/scorecard";
 
 export async function getCommandCenterData(companyId: string) {
   const now = new Date();
@@ -18,16 +30,28 @@ export async function getCommandCenterData(companyId: string) {
     paidInvoicesThisMonth,
     unpaidInvoices,
     overdueInvoices,
+    overdueInvoiceRows,
+    lastMonthPaid,
+    jobsInProgress,
+    jobsCompletedThisMonth,
+    callbackJobs,
     unscheduledApproved,
     jobsNeedingAttention,
     attention,
     technicians,
     scheduledJobsToday,
     expensesThisMonth,
+    jobCostsThisMonth,
     unassignedJobs,
     membershipsSoldThisMonth,
-    leadsThisMonth,
+    activeMemberships,
+    renewalsDue,
+    membershipRevenue,
+    leadsThisMonthRows,
     missedCallsOpen,
+    reports,
+    openEstimateRows,
+    techMembers,
   ] = await Promise.all([
     prisma.job.count({
       where: {
@@ -51,7 +75,7 @@ export async function getCommandCenterData(companyId: string) {
     }),
     prisma.estimate.findMany({
       where: { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] } },
-      select: { totalCents: true },
+      select: { totalCents: true, status: true },
     }),
     prisma.estimate.findMany({
       where: {
@@ -85,6 +109,42 @@ export async function getCommandCenterData(companyId: string) {
         dueDate: { lt: now },
       },
     }),
+    prisma.invoice.findMany({
+      where: {
+        companyId,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        balanceCents: { gt: 0 },
+        dueDate: { lt: now },
+      },
+      include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
+      orderBy: { balanceCents: "desc" },
+      take: 3,
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        companyId,
+        status: "PAID",
+        updatedAt: { gte: startOfMonth(subMonths(now, 1)), lte: endOfMonth(subMonths(now, 1)) },
+      },
+      _sum: { totalCents: true },
+    }),
+    prisma.job.count({
+      where: {
+        companyId,
+        status: { in: ["DISPATCHED", "IN_PROGRESS"] },
+        scheduledStart: { gte: dayStart, lte: dayEnd },
+      },
+    }),
+    prisma.job.count({
+      where: { companyId, status: "COMPLETED", completedAt: { gte: monthStart, lte: monthEnd } },
+    }),
+    prisma.job.count({
+      where: {
+        companyId,
+        completedAt: { gte: monthStart, lte: monthEnd },
+        OR: [{ jobType: { contains: "callback", mode: "insensitive" } }, { description: { contains: "callback", mode: "insensitive" } }],
+      },
+    }),
     prisma.estimate.count({
       where: {
         companyId,
@@ -112,6 +172,10 @@ export async function getCommandCenterData(companyId: string) {
       where: { companyId, date: { gte: monthStart, lte: monthEnd } },
       _sum: { amountCents: true },
     }),
+    prisma.jobCost.aggregate({
+      where: { companyId, createdAt: { gte: monthStart, lte: monthEnd }, confirmed: true },
+      _sum: { amountCents: true },
+    }),
     prisma.job.count({
       where: {
         companyId,
@@ -122,46 +186,165 @@ export async function getCommandCenterData(companyId: string) {
     prisma.customerMembership.count({
       where: { companyId, saleDate: { gte: monthStart, lte: monthEnd } },
     }),
-    prisma.lead.count({
+    prisma.customerMembership.count({
+      where: { companyId, status: "ACTIVE" },
+    }),
+    prisma.customerMembership.count({
+      where: {
+        companyId,
+        status: "ACTIVE",
+        renewalDate: { gte: now, lte: addDays(now, 30) },
+      },
+    }),
+    prisma.customerMembership.aggregate({
+      where: { companyId, status: "ACTIVE" },
+      _sum: { priceCents: true },
+    }),
+    prisma.lead.findMany({
       where: { companyId, receivedAt: { gte: monthStart, lte: monthEnd } },
+      select: { source: true, status: true, attributedRevenueCents: true },
     }),
     prisma.callRecord.count({
       where: { companyId, missed: true, booked: { not: true } },
     }),
+    getReportsSummary(companyId),
+    prisma.estimate.findMany({
+      where: { companyId, status: { in: ["SENT", "VIEWED"] } },
+      include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
+      orderBy: { totalCents: "desc" },
+      take: 3,
+    }),
+    prisma.membership.findMany({
+      where: { companyId, status: "ACTIVE", role: { in: ["TECHNICIAN", "INSTALLER"] } },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+      take: 8,
+    }),
   ]);
 
   const openEstimateValue = openEstimates.reduce((s, e) => s + e.totalCents, 0);
+  const awaitingDecision = openEstimates.filter((estimate) => estimate.status === "SENT" || estimate.status === "VIEWED").length;
   const wonEstimateValue = wonEstimatesThisMonth.reduce((s, e) => s + e.totalCents, 0);
   const outstandingBalance = unpaidInvoices.reduce((s, i) => s + i.balanceCents, 0);
+  const overdueBalance = overdueInvoiceRows.reduce((s, i) => s + i.balanceCents, 0);
   const revenueThisMonth = paidInvoicesThisMonth._sum.totalCents ?? 0;
+  const lastMonthRevenue = lastMonthPaid._sum.totalCents ?? 0;
   const expensesCents = expensesThisMonth._sum.amountCents ?? 0;
+  const jobCostCents = jobCostsThisMonth._sum.amountCents ?? 0;
+  const revenueChangePercent =
+    lastMonthRevenue > 0 ? Math.round(((revenueThisMonth - lastMonthRevenue) / lastMonthRevenue) * 100) : null;
+  const grossMarginPercent =
+    revenueThisMonth > 0 && jobCostCents > 0
+      ? Math.round(((revenueThisMonth - jobCostCents) / revenueThisMonth) * 1000) / 10
+      : null;
 
+  const rankedAttention = prioritizeAttention(attention);
   const estimatesNeedingFollowUp = attention.filter((a) => a.type === "estimate_not_followed_up").length;
+  const runningBehind = attention.filter((a) => a.type === "job_running_behind").length;
+  const nextJobs = scheduledJobsToday
+    .filter((job) => job.status !== "COMPLETED" && job.status !== "CANCELED")
+    .slice(0, 4);
+  const upcomingJobs = Math.max(0, jobsToday - jobsCompletedToday - jobsInProgress);
+
+  const bookedLeads = leadsThisMonthRows.filter((lead) => BOOKED_LEAD_STATUSES.includes(lead.status)).length;
+  const marketingRevenue = leadsThisMonthRows.reduce((sum, lead) => sum + (lead.attributedRevenueCents ?? 0), 0);
+  const sourceTotals = new Map<string, { leads: number; booked: number; revenue: number }>();
+  for (const lead of leadsThisMonthRows) {
+    const current = sourceTotals.get(lead.source) ?? { leads: 0, booked: 0, revenue: 0 };
+    current.leads += 1;
+    if (BOOKED_LEAD_STATUSES.includes(lead.status)) current.booked += 1;
+    current.revenue += lead.attributedRevenueCents ?? 0;
+    sourceTotals.set(lead.source, current);
+  }
+  const bestSource = [...sourceTotals.entries()]
+    .map(([source, totals]) => ({
+      source,
+      label: LEAD_SOURCE_LABELS[source as keyof typeof LEAD_SOURCE_LABELS] ?? source.replaceAll("_", " "),
+      ...totals,
+    }))
+    .sort((a, b) => b.revenue - a.revenue || b.booked - a.booked || b.leads - a.leads)[0] ?? null;
+
+  const teamCards = await Promise.all(
+    techMembers.map(async (member) => ({
+      name: `${member.user.firstName} ${member.user.lastName}`.trim(),
+      card: await technicianScorecard({ companyId, userId: member.userId, period: "this_month" }),
+    }))
+  );
+  const ticketLeaders = teamCards
+    .filter((row) => row.card.averageTicketCents != null)
+    .sort((a, b) => (b.card.averageTicketCents ?? 0) - (a.card.averageTicketCents ?? 0));
+  const callbackLeaders = teamCards
+    .filter((row) => row.card.callbacks > 0)
+    .sort((a, b) => b.card.callbacks - a.card.callbacks);
+  const teamInsights = [
+    ticketLeaders[0]
+      ? `${ticketLeaders[0].name} leads the team in average ticket this month.`
+      : null,
+    callbackLeaders[0] && callbackLeaders[0].card.callbacks >= 2
+      ? `${callbackLeaders[0].name} has ${callbackLeaders[0].card.callbacks} callbacks this month.`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const nameOf = (customer: { firstName: string; lastName: string; businessName: string | null }) =>
+    `${customer.firstName} ${customer.lastName}`.trim() || customer.businessName || "Customer";
 
   return {
     today: {
       jobsToday,
       completedJobs: jobsCompletedToday,
+      inProgressJobs: jobsInProgress,
+      upcomingJobs,
       openJobs,
       unassignedJobs,
+      runningBehind,
       technicianCount: technicians,
     },
     sales: {
       openEstimates: openEstimates.length,
       estimateValue: openEstimateValue,
+      awaitingDecision,
+      closeRate: reports.estimateConversionPercent,
       wonEstimateValue,
       membershipsSoldThisMonth,
+      opportunities: openEstimateRows.map((estimate) => ({
+        id: estimate.id,
+        href: `/estimates/${estimate.id}`,
+        customerName: nameOf(estimate.customer),
+        amountCents: estimate.totalCents,
+        status: estimate.status,
+        updatedAt: estimate.updatedAt,
+      })),
     },
     marketing: {
-      leadsThisMonth,
+      leadsThisMonth: leadsThisMonthRows.length,
+      bookedLeads,
+      revenueCents: marketingRevenue,
       missedCallsOpen,
+      bestSource: bestSource && (bestSource.revenue > 0 || bestSource.booked > 0 || bestSource.leads > 0) ? bestSource : null,
     },
     money: {
       revenueThisMonth,
+      lastMonthRevenue,
+      revenueChangePercent,
       unpaidInvoices: unpaidInvoices.length,
       outstandingBalance,
+      overdueInvoices,
+      overdueBalance,
       expensesThisMonth: expensesCents,
       contributionThisMonth: revenueThisMonth - expensesCents,
+      grossMarginPercent,
+      issues: overdueInvoiceRows.map((invoice) => ({
+        id: invoice.id,
+        href: `/invoices/${invoice.id}`,
+        customerName: nameOf(invoice.customer),
+        amountCents: invoice.balanceCents,
+        dueDate: invoice.dueDate,
+      })),
+    },
+    memberships: {
+      active: activeMemberships,
+      renewalsDue,
+      revenueCents: membershipRevenue._sum.priceCents ?? 0,
+      soldThisMonth: membershipsSoldThisMonth,
     },
     followUp: {
       estimatesNeedingFollowUp,
@@ -171,9 +354,18 @@ export async function getCommandCenterData(companyId: string) {
     operations: {
       jobsNeedingAttention,
       technicianCount: technicians,
+      completedThisMonth: jobsCompletedThisMonth,
+      callbacks: callbackJobs,
+      unassignedJobs,
     },
-    attention,
-    scheduledJobsToday,
+    team: {
+      workingToday: technicians,
+      averageTicketCents: ticketLeaders[0]?.card.averageTicketCents ?? null,
+      insights: teamInsights.slice(0, 2),
+    },
+    attention: rankedAttention,
+    homeAttention: homeAttentionItems(rankedAttention),
+    scheduledJobsToday: nextJobs,
   };
 }
 

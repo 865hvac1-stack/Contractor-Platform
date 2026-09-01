@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { askContractorYouAction, type AskState } from "@/server/actions/intelligence";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +17,7 @@ export function AskContractorYou({
   const [question, setQuestion] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [state, formAction, pending] = useActionState(askContractorYouAction, null as AskState | null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (state?.ok && state.conversationId) setConversationId(state.conversationId);
@@ -34,7 +36,7 @@ export function AskContractorYou({
         </div>
       </div>
 
-      <form action={formAction} className="mt-4 space-y-3">
+      <form ref={formRef} action={formAction} className="mt-4 space-y-3">
         {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
         {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
         <label htmlFor={jobId ? `ask-cy-${jobId}` : "ask-cy"} className="sr-only">
@@ -76,11 +78,14 @@ export function AskContractorYou({
 
       {!compact ? (
         <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-          {suggestions.slice(0, 6).map((item) => (
+          {suggestions.slice(0, 8).map((item) => (
             <li key={item}>
               <button
                 type="button"
-                onClick={() => setQuestion(item)}
+                onClick={() => {
+                  flushSync(() => setQuestion(item));
+                  formRef.current?.requestSubmit();
+                }}
                 className="w-full rounded-lg bg-white/6 px-3 py-2 text-left text-xs text-white/70 hover:bg-white/10"
               >
                 {item}

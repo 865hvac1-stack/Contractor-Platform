@@ -191,6 +191,7 @@ function NavList({
 
 export function AppShell({
   companyName,
+  companyLogoUrl,
   userName,
   userEmail,
   role,
@@ -198,6 +199,7 @@ export function AppShell({
   children,
 }: {
   companyName: string;
+  companyLogoUrl?: string | null;
   userName: string;
   userEmail: string;
   role: CompanyRole;
@@ -215,7 +217,13 @@ export function AppShell({
       <aside className="hidden w-[260px] shrink-0 flex-col bg-[var(--cy-navy)] md:flex">
         <div className="border-b border-white/8 px-4 py-5">
           <BrandMark variant="full" tone="light" />
-          <p className="mt-3 truncate text-sm font-medium text-white/70">{companyName}</p>
+          <div className="mt-3 flex items-center gap-2">
+            {companyLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={companyLogoUrl} alt="" className="h-7 w-7 rounded-md bg-white object-contain p-0.5" />
+            ) : null}
+            <p className="truncate text-sm font-medium text-white/70">{companyName}</p>
+          </div>
           {isDemo ? (
             <div className="mt-2">
               <DemoModeBadge tone="on-dark" />

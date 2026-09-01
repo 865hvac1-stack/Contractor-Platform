@@ -119,10 +119,12 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
   }
   return [
     "What needs my attention today?",
-    "Who sold the most memberships?",
-    "How much incentive compensation do we owe this week?",
-    "Which Pricebook items make us the most money?",
-    "Who has the highest close rate?",
     "How are we doing this month?",
+    "Which estimates should we follow up on?",
+    "Who owes us money?",
+    "Which jobs are losing money?",
+    "Where are our best leads coming from?",
+    "How is my team performing?",
+    "What revenue are we missing?",
   ];
 }

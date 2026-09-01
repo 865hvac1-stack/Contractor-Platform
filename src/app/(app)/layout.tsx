@@ -38,6 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppShell
       companyName={tenant.company.businessName}
+      companyLogoUrl={tenant.company.logoUrl}
       userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
       userEmail={tenant.user.email}
       role={tenant.role}

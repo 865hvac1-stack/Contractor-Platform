@@ -7,6 +7,7 @@ import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine"
  */
 
 export type AttentionSeverity = "critical" | "warning" | "info";
+export type AttentionCategory = "sales" | "money" | "customers" | "operations" | "team";
 
 export type AttentionItem = {
   id: string;
@@ -18,6 +19,10 @@ export type AttentionItem = {
   entityType: string;
   entityId: string;
   createdAt: Date;
+  amountCents?: number | null;
+  customerName?: string | null;
+  recommendedAction?: string | null;
+  category?: AttentionCategory;
 };
 
 export type AttentionDetector = (companyId: string) => Promise<AttentionItem[]>;
@@ -59,17 +64,22 @@ registerAttentionDetector(async (companyId) => {
     },
     take: 25,
     orderBy: { issueDate: "asc" },
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
   return estimates.map((e) => ({
     id: `est-followup-${e.id}`,
     type: "estimate_not_followed_up",
-    title: "Estimate needs follow-up",
+    title: "Estimate follow-up",
     description: `${e.estimateNumber} · ${formatCents(e.totalCents)}`,
     severity: "warning" as const,
     href: `/estimates/${e.id}`,
     entityType: "Estimate",
     entityId: e.id,
     createdAt: e.issueDate,
+    amountCents: e.totalCents,
+    customerName: customerLabel(e.customer),
+    recommendedAction: "Follow up on this estimate.",
+    category: "sales" as const,
   }));
 });
 
@@ -155,6 +165,7 @@ registerAttentionDetector(async (companyId) => {
       dueDate: { lt: now },
     },
     take: 25,
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
   return invoices.map((inv) => ({
     id: `inv-overdue-${inv.id}`,
@@ -166,6 +177,10 @@ registerAttentionDetector(async (companyId) => {
     entityType: "Invoice",
     entityId: inv.id,
     createdAt: inv.dueDate ?? inv.issueDate,
+    amountCents: inv.balanceCents,
+    customerName: customerLabel(inv.customer),
+    recommendedAction: "Contact the customer about payment.",
+    category: "money" as const,
   }));
 });
 
@@ -280,6 +295,10 @@ registerAttentionDetector(async (companyId) => {
     entityType: "Lead",
     entityId: lead.id,
     createdAt: lead.receivedAt,
+    amountCents: lead.estimatedOpportunityCents,
+    customerName: `${lead.firstName} ${lead.lastName}`.trim(),
+    recommendedAction: "Contact this lead today.",
+    category: "sales" as const,
   }));
 });
 
@@ -339,10 +358,12 @@ registerAttentionDetector(async (companyId) => {
     title: "Scheduled job has no technician",
     description: job.jobNumber,
     severity: "warning" as const,
-    href: `/jobs/${job.id}`,
+    href: `/dispatch`,
     entityType: "Job",
     entityId: job.id,
     createdAt: job.scheduledStart ?? job.updatedAt,
+    recommendedAction: "Assign a technician.",
+    category: "operations" as const,
   }));
 });
 
@@ -453,6 +474,50 @@ registerAttentionDetector(async (companyId) => {
     },
   ];
 });
+
+registerAttentionDetector(async (companyId) => {
+  const now = new Date();
+  const jobs = await prisma.job.findMany({
+    where: {
+      companyId,
+      status: { in: ["DISPATCHED", "IN_PROGRESS"] },
+      scheduledEnd: { lt: now },
+    },
+    include: {
+      customer: { select: { firstName: true, lastName: true, businessName: true } },
+      assignments: { include: { user: { select: { firstName: true, lastName: true } } } },
+    },
+    take: 15,
+  });
+  return jobs.map((job) => {
+    const tech = job.assignments[0]?.user;
+    const minutes = job.scheduledEnd
+      ? Math.max(1, Math.round((now.getTime() - job.scheduledEnd.getTime()) / 60_000))
+      : 0;
+    return {
+      id: `job-behind-${job.id}`,
+      type: "job_running_behind",
+      title: "Technician running behind",
+      description: tech
+        ? `${tech.firstName} ${tech.lastName} · ${minutes} min past expected finish`
+        : `${job.jobNumber} · ${minutes} min past expected finish`,
+      severity: "warning" as const,
+      href: "/dispatch",
+      entityType: "Job",
+      entityId: job.id,
+      createdAt: job.scheduledEnd ?? job.updatedAt,
+      customerName: customerLabel(job.customer),
+      recommendedAction: "Check dispatch and the next appointment.",
+      category: "operations" as const,
+    };
+  });
+});
+
+function customerLabel(customer?: { firstName: string; lastName: string; businessName: string | null } | null) {
+  if (!customer) return null;
+  const person = `${customer.firstName} ${customer.lastName}`.trim();
+  return person || customer.businessName;
+}
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat("en-US", {
