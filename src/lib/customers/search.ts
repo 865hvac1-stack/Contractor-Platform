@@ -6,7 +6,8 @@ export function customerSearchWhere(companyId: string, raw: string) {
   const query = raw.trim();
   if (!query) return { companyId };
   const digits = query.replace(/\D/g, "");
-  const tokens = query.split(/\s+/).filter(Boolean);
+  const commaParts = query.split(",").map((part) => part.trim()).filter(Boolean);
+  const tokens = query.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   const or: Record<string, unknown>[] = [
     { firstName: { contains: query, mode: "insensitive" } },
     { lastName: { contains: query, mode: "insensitive" } },
@@ -31,6 +32,20 @@ export function customerSearchWhere(companyId: string, raw: string) {
       AND: [
         { firstName: { contains: tokens[0], mode: "insensitive" } },
         { lastName: { contains: tokens.slice(1).join(" "), mode: "insensitive" } },
+      ],
+    });
+    or.push({
+      AND: [
+        { lastName: { contains: tokens[0], mode: "insensitive" } },
+        { firstName: { contains: tokens.slice(1).join(" "), mode: "insensitive" } },
+      ],
+    });
+  }
+  if (commaParts.length >= 2) {
+    or.push({
+      AND: [
+        { lastName: { contains: commaParts[0], mode: "insensitive" } },
+        { firstName: { contains: commaParts.slice(1).join(" "), mode: "insensitive" } },
       ],
     });
   }
@@ -64,9 +79,9 @@ export async function searchCustomers(input: {
       phone: true,
       email: true,
       properties: {
-        take: 1,
-        orderBy: { isPrimary: "desc" },
-        select: { address: true, city: true, state: true, zip: true },
+        take: 8,
+        orderBy: [{ isPrimary: "desc" }, { address: "asc" }],
+        select: { id: true, name: true, address: true, city: true, state: true, zip: true },
       },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],

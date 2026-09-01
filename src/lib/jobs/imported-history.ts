@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { SOURCE_LABELS, TARGET_FIELD_LABELS, type ImportSourceTypeId } from "@/lib/imports/types";
 import { parseCurrencyToCents, parseDate } from "@/lib/imports/normalize";
 import { isHistoricalImport } from "@/lib/imports/safety";
+import { isWorkFieldKey } from "@/lib/jobs/work-summary";
 
 const HIDDEN_KEYS = new Set([
   "companyid",
@@ -49,6 +50,7 @@ export type JobImportSupplement = {
   notes: string | null;
   technicianName: string | null;
   fields: ImportedField[];
+  workFields: ImportedField[];
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -93,20 +95,56 @@ export function buildImportedJobSnapshot(values: Record<string, string>): Record
   return snapshot;
 }
 
+function pushField(fields: ImportedField[], seen: Set<string>, key: string, value: unknown) {
+  if (isHiddenKey(key)) return;
+  const text = textOf(value);
+  if (!text) return;
+  const label = labelFor(key);
+  const dedupe = `${label.toLowerCase()}:${text}`;
+  if (seen.has(dedupe)) return;
+  seen.add(dedupe);
+  fields.push({ key, label, value: text.slice(0, 2000) });
+}
+
 export function publicImportedFields(values: Record<string, unknown>): ImportedField[] {
   const fields: ImportedField[] = [];
   const seen = new Set<string>();
   for (const [key, value] of Object.entries(values)) {
-    if (isHiddenKey(key) || ALREADY_NORMALIZED.has(key.replace(/[^a-z]/gi, "").toLowerCase())) continue;
-    const text = textOf(value);
-    if (!text) continue;
-    const label = labelFor(key);
-    const dedupe = `${label.toLowerCase()}:${text}`;
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
-    fields.push({ key, label, value: text.slice(0, 2000) });
+    if (ALREADY_NORMALIZED.has(key.replace(/[^a-z]/gi, "").toLowerCase())) continue;
+    pushField(fields, seen, key, value);
   }
   return fields.slice(0, 40);
+}
+
+/** Work-like leftover columns, including notes/description that the job page shows up front. */
+export function importedWorkFields(values: Record<string, unknown>): ImportedField[] {
+  const fields: ImportedField[] = [];
+  const seen = new Set<string>();
+  for (const [key, value] of Object.entries(values)) {
+    if (!isWorkFieldKey(key)) continue;
+    pushField(fields, seen, key, value);
+  }
+  return fields.slice(0, 40);
+}
+
+function collectImportedNotes(merged: Record<string, unknown>) {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  const preferred = ["notes", "invoice notes", "job notes", "work performed", "comments"];
+  const entries = Object.entries(merged);
+  const ordered = [
+    ...preferred.flatMap((want) => entries.filter(([key]) => key.replace(/[_-]+/g, " ").toLowerCase() === want)),
+    ...entries.filter(([key]) => isWorkFieldKey(key)),
+  ];
+  for (const [key, value] of ordered) {
+    if (!isWorkFieldKey(key)) continue;
+    const text = textOf(value);
+    const fingerprint = text.replace(/\s+/g, " ").toLowerCase();
+    if (!text || seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    parts.push(text);
+  }
+  return parts.join("\n\n") || null;
 }
 
 function valuesFromMapped(mapped: unknown): Record<string, unknown> {
@@ -173,8 +211,9 @@ export async function loadJobImportSupplement(
     occurredAt,
     totalCents: totalCents && totalCents > 0 ? totalCents : null,
     description: input.description || textOf(merged.description) || null,
-    notes: textOf(merged.notes) || null,
+    notes: collectImportedNotes(merged) || textOf(merged.notes) || null,
     technicianName: input.importedTechnicianName || textOf(merged.technicianName) || null,
     fields: publicImportedFields(merged),
+    workFields: importedWorkFields(merged),
   };
 }

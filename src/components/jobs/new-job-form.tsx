@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,20 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { industries } from "@/lib/brand";
 import { createJobFormAction } from "@/server/actions/job-form";
 import { ServiceTypePicker, type ServiceTypeOption } from "@/components/service-type-picker";
+import { CustomerJobPicker, type JobPickerCustomer } from "@/components/jobs/customer-job-picker";
 
 const selectClassName =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-
-type CustomerOption = {
-  id: string;
-  label: string;
-};
-
-type PropertyOption = {
-  id: string;
-  customerId: string;
-  label: string;
-};
 
 type MemberOption = {
   id: string;
@@ -35,76 +24,26 @@ type PlaybookOption = {
 };
 
 export function NewJobForm({
-  customers,
-  properties,
   members,
   playbooks,
   serviceTypes,
-  defaultCustomerId,
+  defaultCustomer,
   returnTo,
   canAssign = true,
   submitLabel = "Create job",
 }: {
-  customers: CustomerOption[];
-  properties: PropertyOption[];
   members: MemberOption[];
   playbooks: PlaybookOption[];
   serviceTypes: ServiceTypeOption[];
-  defaultCustomerId?: string;
+  defaultCustomer?: JobPickerCustomer | null;
   returnTo?: string;
   canAssign?: boolean;
   submitLabel?: string;
 }) {
-  const [customerId, setCustomerId] = useState(defaultCustomerId ?? "");
-
-  const filteredProperties = useMemo(
-    () => properties.filter((p) => p.customerId === customerId),
-    [properties, customerId]
-  );
-
   return (
     <ActionForm action={createJobFormAction} className="space-y-4">
       {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
-      <div className="space-y-2">
-        <Label htmlFor="customerId">Customer</Label>
-        <select
-          id="customerId"
-          name="customerId"
-          required
-          className={selectClassName}
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-        >
-          <option value="">Select customer…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="propertyId">Property</Label>
-        <select
-          id="propertyId"
-          name="propertyId"
-          required
-          className={selectClassName}
-          disabled={!customerId}
-          defaultValue=""
-          key={customerId}
-        >
-          <option value="">
-            {customerId ? "Select property…" : "Select a customer first"}
-          </option>
-          {filteredProperties.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <CustomerJobPicker defaultCustomer={defaultCustomer} />
 
       <ServiceTypePicker
         types={serviceTypes}

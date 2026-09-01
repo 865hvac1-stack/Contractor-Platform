@@ -3,6 +3,7 @@ import { formatMoney } from "@/lib/money";
 import { loadJobFinancials, type JobFinancials } from "@/lib/costing/job";
 import { can } from "@/lib/permissions";
 import { loadJobImportSupplement, type JobImportSupplement } from "@/lib/jobs/imported-history";
+import { buildWorkSummary, type WorkSummary } from "@/lib/jobs/work-summary";
 import { buildJobTimeline, type JobTimelineItem } from "@/lib/jobs/timeline";
 import { isHistoricalImport } from "@/lib/imports/safety";
 
@@ -61,6 +62,7 @@ export type Job360 = {
     importedName: string | null;
   };
   import: JobImportSupplement;
+  work: WorkSummary;
   financials: {
     estimateCents: number | null;
     invoiceCents: number;
@@ -262,6 +264,16 @@ export async function loadJob360(
       importedName: job.importedTechnicianName,
     },
     import: supplement,
+    work: buildWorkSummary({
+      jobType: job.jobType,
+      serviceTypeName: job.serviceType?.name ?? null,
+      description: job.description,
+      customerNotes: job.customerNotes,
+      internalNotes: job.internalNotes,
+      importDescription: supplement.description,
+      importNotes: supplement.notes,
+      importFields: [...supplement.workFields, ...supplement.fields],
+    }),
     financials: {
       estimateCents,
       invoiceCents,

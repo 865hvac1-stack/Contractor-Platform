@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
 import { ensureCompanyServiceTypes, listActiveServiceTypes } from "@/lib/trades/service-types";
 import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
+import { customerLabel } from "@/lib/tech/today";
 
 export default async function OfficeNewJobPage({
   searchParams,
@@ -19,16 +20,18 @@ export default async function OfficeNewJobPage({
   const { customerId } = await searchParams;
 
   await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
-  const [customers, properties, memberships, playbooks, serviceTypes] = await Promise.all([
-    prisma.customer.findMany({
+  const [customerCount, selectedCustomer, memberships, playbooks, serviceTypes] = await Promise.all([
+    prisma.customer.count({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      take: 400,
     }),
-    prisma.property.findMany({
-      where: { companyId: ctx.company.id },
-      orderBy: { address: "asc" },
-    }),
+    customerId
+      ? prisma.customer.findFirst({
+          where: { id: customerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
+          include: {
+            properties: { orderBy: [{ isPrimary: "desc" }, { address: "asc" }] },
+          },
+        })
+      : Promise.resolve(null),
     prisma.membership.findMany({
       where: {
         companyId: ctx.company.id,
@@ -44,9 +47,6 @@ export default async function OfficeNewJobPage({
     listActiveServiceTypes(prisma, ctx.company.id),
   ]);
 
-  const defaultCustomerId =
-    customerId && customers.some((customer) => customer.id === customerId) ? customerId : undefined;
-
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
@@ -57,31 +57,34 @@ export default async function OfficeNewJobPage({
           New job
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Leave the technician blank to send it to Dispatch. One job record — no duplicate lead.
+          Type a first or last name to find the customer. Leave the technician blank to send it to Dispatch.
         </p>
       </div>
-      {customers.length === 0 ? (
+      {customerCount === 0 ? (
         <p className="text-sm text-[var(--muted-foreground)]">
           Add a <Link href="/office/customers/new" className="underline">customer</Link> first.
         </p>
       ) : (
         <div className="rounded-2xl border bg-white p-5">
           <NewJobForm
-            defaultCustomerId={defaultCustomerId}
+            defaultCustomer={
+              selectedCustomer
+                ? {
+                    id: selectedCustomer.id,
+                    name: customerLabel(selectedCustomer),
+                    phone: selectedCustomer.phone,
+                    properties: selectedCustomer.properties.map((property) => ({
+                      id: property.id,
+                      label: `${property.address}, ${property.city}${property.name ? ` (${property.name})` : ""}`,
+                    })),
+                  }
+                : null
+            }
             returnTo="office"
             canAssign={can(ctx.role, "schedule:manage")}
             submitLabel={
               can(ctx.role, "schedule:manage") ? "Create job" : "Create and send to Dispatch"
             }
-            customers={customers.map((customer) => ({
-              id: customer.id,
-              label: customer.businessName?.trim() || `${customer.firstName} ${customer.lastName}`.trim(),
-            }))}
-            properties={properties.map((property) => ({
-              id: property.id,
-              customerId: property.customerId,
-              label: `${property.address}, ${property.city}`,
-            }))}
             members={memberships.map((member) => ({
               id: member.user.id,
               label: `${member.user.firstName} ${member.user.lastName}`,

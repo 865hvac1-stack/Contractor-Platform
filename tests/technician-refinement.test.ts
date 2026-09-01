@@ -384,6 +384,30 @@ describe("customer search and photo authorization", () => {
     expect(byName.some((row) => row.id === ids.customerAssigned)).toBe(true);
     expect(byName.length).toBeLessThanOrEqual(12);
 
+    const byLastName = await searchCustomers({
+      companyId: ids.companyA,
+      role: "COMPANY_OWNER",
+      userId: ids.ownerA,
+      query: "Bailey",
+    });
+    expect(byLastName.some((row) => row.id === ids.customerAssigned)).toBe(true);
+
+    const byFirstName = await searchCustomers({
+      companyId: ids.companyA,
+      role: "COMPANY_OWNER",
+      userId: ids.ownerA,
+      query: "Tony",
+    });
+    expect(byFirstName.some((row) => row.id === ids.customerAssigned)).toBe(true);
+
+    const byLastFirst = await searchCustomers({
+      companyId: ids.companyA,
+      role: "COMPANY_OWNER",
+      userId: ids.ownerA,
+      query: "Bailey, Tony",
+    });
+    expect(byLastFirst.some((row) => row.id === ids.customerAssigned)).toBe(true);
+
     const byPhone = await searchCustomers({
       companyId: ids.companyA,
       role: "COMPANY_OWNER",

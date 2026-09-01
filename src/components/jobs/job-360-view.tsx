@@ -149,62 +149,51 @@ export function Job360View({
         ) : null}
       </div>
 
-      <Section title="What happened">
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            {view.import.description || view.job.description ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Imported job description
-                </p>
-                <div className="mt-2">
-                  <ShowMoreText text={view.import.description || view.job.description || ""} />
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--muted-foreground)]">
-                No description was saved on this job.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </Section>
-
-      <Section title="Notes & service history">
+      <Section title="What was done">
         <Card>
           <CardContent className="space-y-5 pt-6">
-            {view.job.customerNotes ? (
+            {view.work.jobType ? (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Customer notes
+                  Job type
                 </p>
-                <div className="mt-2">
-                  <ShowMoreText text={view.job.customerNotes} />
-                </div>
+                <p className="mt-1 text-base font-medium">{view.work.jobType}</p>
               </div>
             ) : null}
-            {view.job.internalNotes ? (
+            {canViewMoney && view.financials.importedTotalCents != null && view.financials.invoiceCents === 0 ? (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Imported amount {formatMoney(view.financials.importedTotalCents)} — informational only.
+              </p>
+            ) : null}
+            {view.work.blocks.map((block) => (
+              <div key={`${block.key}-${block.label}`}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                  {block.label}
+                </p>
+                <div className="mt-2">
+                  <ShowMoreText text={block.text} />
+                </div>
+              </div>
+            ))}
+            {view.lines.length ? (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Office / imported notes
+                  Services on file
                 </p>
-                <div className="mt-2">
-                  <ShowMoreText text={view.job.internalNotes} />
-                </div>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {view.lines.map((line) => (
+                    <li key={line.id}>
+                      <span className="font-medium">{line.name}</span>
+                      {line.description ? (
+                        <span className="text-[var(--muted-foreground)]"> — {line.description}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
-            {view.import.notes && view.import.notes !== view.job.internalNotes ? (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-                  Imported notes
-                </p>
-                <div className="mt-2">
-                  <ShowMoreText text={view.import.notes} />
-                </div>
-              </div>
-            ) : null}
-            {!view.job.customerNotes && !view.job.internalNotes && !view.import.notes ? (
-              <p className="text-sm text-[var(--muted-foreground)]">No notes were included with this job.</p>
+            {view.work.emptyMessage ? (
+              <p className="text-sm text-[var(--muted-foreground)]">{view.work.emptyMessage}</p>
             ) : null}
           </CardContent>
         </Card>
@@ -402,7 +391,9 @@ export function Job360View({
                 <dd>{formatDate(view.import.importedAt)}</dd>
               </div>
             ) : null}
-            {view.import.fields.map((field) => (
+            {view.import.fields
+              .filter((field) => !view.work.blocks.some((block) => block.text === field.value))
+              .map((field) => (
               <div key={field.key}>
                 <dt className="text-[var(--muted-foreground)]">{field.label}</dt>
                 <dd className="whitespace-pre-wrap break-words">{field.value}</dd>

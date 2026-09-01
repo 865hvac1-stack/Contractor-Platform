@@ -4,7 +4,9 @@ import bcrypt from "bcryptjs";
 import { can } from "@/lib/permissions";
 import { getStarterTemplate } from "@/lib/playbooks/templates";
 import { loadJob360 } from "@/lib/jobs/job-360";
-import { publicImportedFields, buildImportedJobSnapshot, loadJobImportSupplement } from "@/lib/jobs/imported-history";
+import { publicImportedFields, buildImportedJobSnapshot, importedWorkFields, loadJobImportSupplement } from "@/lib/jobs/imported-history";
+import { buildWorkSummary, isGenericJobTypeLabel, stripImportBoilerplate } from "@/lib/jobs/work-summary";
+import { customerSearchWhere } from "@/lib/customers/search";
 import { buildJobTimeline } from "@/lib/jobs/timeline";
 import { JOBS_PAGE_SIZE, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
 import { assignPlaybookToJob } from "@/lib/playbooks/assign";
@@ -25,6 +27,43 @@ describe("imported field safety", () => {
     expect(fields.some((field) => /token|company/i.test(field.key))).toBe(false);
     expect(buildImportedJobSnapshot({ total: "$389.00", password: "nope" }).password).toBeUndefined();
     expect(buildImportedJobSnapshot({ total: "$389.00" }).total).toBe("$389.00");
+  });
+
+  it("puts imported work notes in front and does not invent diagnosis", () => {
+    const work = buildWorkSummary({
+      jobType: "Service Call",
+      description: "Service Call",
+      internalNotes:
+        "Imported historical record from unknown. ContractorYou did not send messages, start billing, or take a payment.\n\nReplaced dual run capacitor.\n\nHistorical technician: John Smith",
+      importNotes: "Replaced dual run capacitor.",
+      importFields: [{ key: "Invoice notes", label: "Invoice notes", value: "1x capacitor" }],
+    });
+    expect(isGenericJobTypeLabel("Service Call")).toBe(true);
+    expect(work.jobType).toBe("Service Call");
+    expect(work.hasWorkDetail).toBe(true);
+    expect(work.blocks.some((block) => /capacitor/i.test(block.text))).toBe(true);
+    expect(work.blocks.every((block) => !/Imported historical record/i.test(block.text))).toBe(true);
+    expect(work.blocks.some((block) => /diagnosis/i.test(block.label))).toBe(false);
+    expect(stripImportBoilerplate("Imported historical record from unknown. ContractorYou did not send messages, start billing, or take a payment.")).toBe("");
+    const empty = buildWorkSummary({ jobType: "Service Call", description: "Service Call" });
+    expect(empty.hasWorkDetail).toBe(false);
+    expect(empty.emptyMessage).toMatch(/did not include notes/i);
+    expect(importedWorkFields({ Notes: "Replaced capacitor", token: "nope" }).some((field) => /capacitor/i.test(field.value))).toBe(true);
+  });
+
+  it("matches customers by first name, last name, or last-name-first", () => {
+    const last = customerSearchWhere("co_1", "Abner") as { OR: Record<string, unknown>[] };
+    expect(last.OR.some((clause) => (clause.lastName as { contains?: string })?.contains === "Abner")).toBe(true);
+    const first = customerSearchWhere("co_1", "George") as { OR: Record<string, unknown>[] };
+    expect(first.OR.some((clause) => (clause.firstName as { contains?: string })?.contains === "George")).toBe(true);
+    const reversed = customerSearchWhere("co_1", "Abner, George") as { OR: Record<string, unknown>[] };
+    expect(
+      reversed.OR.some(
+        (clause) =>
+          Array.isArray(clause.AND) &&
+          (clause.AND[0] as { lastName?: { contains?: string } }).lastName?.contains === "Abner"
+      )
+    ).toBe(true);
   });
 
   it("does not invent timeline events", () => {
@@ -135,7 +174,8 @@ describe("Job 360 records", () => {
         jobNumber: `JOB-IMP-${stamp}`,
         status: "COMPLETED",
         description: "Service Call — upstairs not cooling",
-        internalNotes: "Imported historical record from unknown. Historical technician: John Smith",
+        internalNotes:
+          "Imported historical record from unknown. ContractorYou did not send messages, start billing, or take a payment.\n\nReplaced dual run capacitor. System cooling again.\n\nHistorical technician: John Smith",
         importMode: "HISTORICAL",
         sourceSystem: "UNKNOWN",
         externalId: "34645915",
@@ -172,8 +212,21 @@ describe("Job 360 records", () => {
         rowNumber: 1,
         status: "IMPORTED",
         targetRecordId: imported.id,
-        rawData: { "Job amount": "$389.00", "Job created date": "2025-05-14" },
-        mappedData: { values: { description: "Service Call — upstairs not cooling", total: "$389.00", createdDate: "2025-05-14" } },
+        rawData: {
+          "Job amount": "$389.00",
+          "Job created date": "2025-05-14",
+          "Job Type": "Service Call",
+          Notes: "Replaced dual run capacitor. System cooling again.",
+          "Invoice notes": "1x dual run capacitor",
+        },
+        mappedData: {
+          values: {
+            description: "Service Call — upstairs not cooling",
+            notes: "Replaced dual run capacitor. System cooling again.",
+            total: "$389.00",
+            createdDate: "2025-05-14",
+          },
+        },
       },
     });
     const native = await prisma.job.create({
@@ -287,6 +340,8 @@ describe("Job 360 records", () => {
     expect(view?.technicians.importedName).toBe("John Smith");
     expect(view?.import.totalCents).toBe(38900);
     expect(view?.import.fields.some((field) => field.value.includes("389"))).toBe(true);
+    expect(view?.work.blocks.some((block) => /capacitor/i.test(block.text))).toBe(true);
+    expect(view?.work.blocks.every((block) => !/Imported historical record/i.test(block.text))).toBe(true);
   });
 
   it("opens a native job without treating it as historical", async () => {
@@ -335,6 +390,7 @@ describe("Job 360 records", () => {
     });
     expect(supplement.description).toBeNull();
     expect(supplement.fields).toEqual([]);
+    expect(supplement.workFields).toEqual([]);
   });
 
   it("does not assign a playbook to an imported historical job", async () => {

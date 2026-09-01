@@ -27,6 +27,10 @@ export async function GET(request: Request) {
         address: customer.properties[0]
           ? `${customer.properties[0].address}, ${customer.properties[0].city}, ${customer.properties[0].state} ${customer.properties[0].zip}`
           : null,
+        properties: customer.properties.map((property) => ({
+          id: property.id,
+          label: `${property.address}, ${property.city}${property.name ? ` (${property.name})` : ""}`,
+        })),
       })),
     });
   } catch (error) {
