@@ -17,6 +17,9 @@ function appUrl() {
 export async function startInvoiceCheckoutAction(invoiceId: string): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("invoices:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     if (!stripeConfigured()) {
       return { ok: false, error: "Card payments are not configured." };
     }
@@ -57,6 +60,9 @@ export async function startPublicInvoiceCheckoutAction(token: string): Promise<A
   }
   const invoice = await prisma.invoice.findFirst({ where: { publicToken: token } });
   if (!invoice) return { ok: false, error: "Invoice not found." };
+  const { refuseDemoExternal } = await import("@/lib/demo/guard");
+  const demo = await refuseDemoExternal(invoice.companyId);
+  if (demo) return demo;
   if (invoice.balanceCents <= 0) return { ok: false, error: "This invoice has no balance due." };
   const origin = appUrl();
   const session = await createStripeCheckoutSession(prisma, {

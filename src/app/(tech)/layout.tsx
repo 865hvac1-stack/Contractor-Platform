@@ -15,6 +15,7 @@ export default async function TechLayout({ children }: { children: React.ReactNo
     <TechShell
       companyName={tenant.company.businessName}
       userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
+      isDemo={tenant.company.isDemo}
     >
       {children}
     </TechShell>

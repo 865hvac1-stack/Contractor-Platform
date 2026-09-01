@@ -3,6 +3,7 @@ import { HighLevelApiError, listHighLevelSocialAccounts, createHighLevelSocialPo
 import { highlevelPlatformToChannel } from "@/lib/highlevel/channels";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { demoOutboundBlock } from "@/lib/demo/guard";
 
 export type DiscoveredSocialAccount = {
   id: string;
@@ -110,6 +111,8 @@ export async function publishThroughHighLevel(
     channels: string[];
   }
 ) {
+  const blocked = await demoOutboundBlock(input.companyId, prisma);
+  if (blocked.blocked) return { ok: false as const, error: blocked.message };
   const access = await loadHighLevelAccess(prisma, input.companyId);
   if (!access) return { ok: false as const, error: "HighLevel is not connected." };
   if (input.status !== "draft") {

@@ -15,6 +15,9 @@ import type { ActionResult } from "@/server/actions/auth";
 export async function startPaymentsOnboardingAction(): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("payments:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     if (!stripeConfigured()) {
       return {
         ok: false,

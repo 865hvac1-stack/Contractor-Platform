@@ -14,6 +14,9 @@ export async function refundPaymentAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("payments:refund");
+    const { demoOutboundBlock } = await import("@/lib/demo/guard");
+    const blocked = await demoOutboundBlock(ctx.company.id);
+    if (blocked.blocked) return { ok: false, error: blocked.message };
     const paymentId = String(formData.get("paymentId") || "");
     const amountDollars = Number(formData.get("amount") || "0");
     const confirm = String(formData.get("confirm") || "") === "yes";

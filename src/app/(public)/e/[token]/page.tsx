@@ -5,6 +5,8 @@ import { optionTotals, membershipSavingsCents } from "@/lib/estimates/totals";
 import { publicApproveEstimateAction } from "@/server/actions/public-billing";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
+import { TenantDocumentBrand } from "@/components/tenant-document-brand";
+import { DemoModeBadge } from "@/components/demo-mode-badge";
 
 export default async function PublicEstimatePage({
   params,
@@ -55,9 +57,14 @@ export default async function PublicEstimatePage({
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-          {estimate.company.businessName}
-        </p>
+        <TenantDocumentBrand
+          businessName={estimate.company.businessName}
+          tagline={estimate.company.tagline}
+          logoUrl={estimate.company.logoUrl}
+          primaryColor={estimate.company.primaryColor}
+          accentColor={estimate.company.accentColor}
+        />
+        {estimate.company.isDemo ? <div className="mt-2"><DemoModeBadge /></div> : null}
         <h1 className="mt-2 font-display text-3xl tracking-tight">Estimate {estimate.estimateNumber}</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {estimate.customer.firstName} {estimate.customer.lastName}

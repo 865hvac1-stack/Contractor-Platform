@@ -34,6 +34,9 @@ export async function createStripeCheckoutSession(
     cancelUrl: string;
   }
 ) {
+  const { demoOutboundBlock } = await import("@/lib/demo/guard");
+  const blocked = await demoOutboundBlock(input.companyId, prisma);
+  if (blocked.blocked) return { ok: false as const, error: blocked.message };
   if (!stripeConfigured()) {
     return { ok: false as const, error: "Card payments are not configured." };
   }

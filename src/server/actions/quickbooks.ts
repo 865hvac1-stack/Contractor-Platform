@@ -21,6 +21,9 @@ export async function saveQuickBooksSettingsAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("accounting:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const trigger = String(formData.get("invoiceSyncTrigger") || "MANUAL_ONLY") as QuickBooksInvoiceTrigger;
     const allowed: QuickBooksInvoiceTrigger[] = [
       "MANUAL_ONLY",
@@ -56,6 +59,9 @@ export async function saveQuickBooksAppAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("accounting:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const clientId = String(formData.get("clientId") || "");
     const clientSecret = String(formData.get("clientSecret") || "");
     const environment = parseQuickBooksEnvironment(String(formData.get("environment") || "sandbox"));

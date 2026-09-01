@@ -75,6 +75,7 @@ export async function inviteTeamMemberAction(
       companyName: ctx.company.businessName,
       role: persisted.invite.role,
       token: persisted.token,
+      companyId: ctx.company.id,
     });
     await markInviteEmail(persisted.invite.id, delivered.result);
     await writeAudit({
@@ -116,6 +117,7 @@ export async function resendTeamInviteAction(inviteId: string): Promise<ActionRe
       companyName: ctx.company.businessName,
       role: rotated.invite.role,
       token: rotated.token,
+      companyId: ctx.company.id,
     });
     await markInviteEmail(rotated.invite.id, delivered.result);
     await writeAudit({

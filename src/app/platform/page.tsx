@@ -3,6 +3,12 @@ import { requirePlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { StatusBadge } from "@/components/status-badge";
 import { EmptyState } from "@/components/empty-state";
+import { ActionForm } from "@/components/action-form";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { resetSummitDemoAction } from "@/server/actions/demo";
+import { DemoModeBadge } from "@/components/demo-mode-badge";
 import {
   Table,
   TableBody,
@@ -30,6 +36,20 @@ export default async function PlatformPage() {
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           Platform overview. Suspend or reactivate tenants — no impersonation.
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <h2 className="font-medium">Summit Home Services demo</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Create or reset the fictional sales tenant. This cannot target 865 HVAC.
+        </p>
+        <ActionForm action={resetSummitDemoAction} className="mt-3 max-w-md space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-demo">Type RESET SUMMIT DEMO</Label>
+            <Input id="confirm-demo" name="confirm" autoComplete="off" />
+          </div>
+          <Button type="submit">Create or reset Summit demo</Button>
+        </ActionForm>
       </div>
 
       {companies.length === 0 ? (
@@ -61,6 +81,7 @@ export default async function PlatformPage() {
                       >
                         {c.businessName}
                       </Link>
+                      {c.isDemo ? <span className="ml-2 inline-block align-middle"><DemoModeBadge compact /></span> : null}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={c.status} />

@@ -11,6 +11,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { ActionForm } from "@/components/action-form";
+import { resetSummitDemoAction } from "@/server/actions/demo";
+import { DEMO_EMAIL_DOMAIN, DEMO_PASSWORD, SUMMIT_COMPANY_NAME } from "@/lib/demo/constants";
+import { DemoModeBadge } from "@/components/demo-mode-badge";
 
 export default async function PlatformCompanyPage({
   params,
@@ -58,6 +62,7 @@ export default async function PlatformCompanyPage({
           <h1 className="mt-2 font-display text-3xl tracking-tight">
             {company.businessName}
           </h1>
+          {company.isDemo ? <div className="mt-2"><DemoModeBadge /></div> : null}
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             Created {company.createdAt.toLocaleString()} ·{" "}
             {company.industry.replaceAll("_", " ")}
@@ -103,6 +108,29 @@ export default async function PlatformCompanyPage({
           ))}
         </ul>
       </div>
+
+      {company.isDemo && company.businessName === SUMMIT_COMPANY_NAME ? (
+        <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+          <h2 className="font-medium">Reset Summit demo</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Rebuilds fictional Summit records with dates relative to today. Never touches 865 HVAC
+            or other tenants. Login: jake.bennett@{DEMO_EMAIL_DOMAIN}
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Shared demo password is configured server-side as SUMMIT_DEMO_PASSWORD
+            {process.env.NODE_ENV !== "production" ? ` (local default ${DEMO_PASSWORD})` : ""}.
+          </p>
+          <ActionForm action={resetSummitDemoAction} className="mt-3 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm">Type RESET SUMMIT DEMO</Label>
+              <Input id="confirm" name="confirm" autoComplete="off" />
+            </div>
+            <Button type="submit" variant="outline">
+              Reset demo company
+            </Button>
+          </ActionForm>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-[var(--border)] bg-white p-4">
         <h2 className="font-medium">Company status</h2>

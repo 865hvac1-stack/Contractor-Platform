@@ -109,6 +109,7 @@ Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 | `npm run db:migrate` | Dev migrations |
 | `npm run db:migrate:deploy` | Production migrations |
 | `npm run db:seed` | Dev seed (requires `ALLOW_SEED=true`) |
+| `npm run demo:seed` | Create/reset Summit Home Services demo tenant (`ALLOW_SUMMIT_DEMO_SEED=true`). Never runs on boot. |
 
 ## First user journey
 
@@ -352,6 +353,15 @@ Later Account Session components (account management, payouts, balances, payment
 **Receipts:** ContractorYou sends a receipt through Resend when email is configured. Stripe `receipt_email` is not set, so Stripe and ContractorYou do not both email a receipt.
 
 **Safe testing:** Use Stripe test cards (`4242…`) and test bank accounts. Do not charge production customers to verify a deploy. Historical/imported invoices never create Stripe charges.
+
+## Summit Home Services sales demo
+
+Summit is a fictional `isDemo` tenant for sales walkthroughs. It is not 865 HVAC and never receives real customer, HighLevel, Stripe, or QuickBooks credentials.
+
+- Login: `jake.bennett@summithomeservices.demo`
+- Password: `SUMMIT_DEMO_PASSWORD` (local default `SummitDemo-2026!`)
+- Create/reset: Platform Admin → Companies → **Create or reset Summit demo**, or `ALLOW_SUMMIT_DEMO_SEED=true npm run demo:seed`
+- Demo outbound SMS, email, Stripe, refunds, HighLevel, social publish, and QuickBooks writes are blocked server-side.
 
 ## License
 

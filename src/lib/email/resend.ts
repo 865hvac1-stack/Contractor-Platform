@@ -19,7 +19,13 @@ export async function sendTransactionalEmail(input: {
   subject: string;
   html: string;
   text: string;
+  companyId?: string | null;
 }): Promise<EmailSendResult> {
+  if (input.companyId) {
+    const { demoOutboundBlock } = await import("@/lib/demo/guard");
+    const blocked = await demoOutboundBlock(input.companyId);
+    if (blocked.blocked) return { ok: false, error: blocked.message, configured: true };
+  }
   const key = process.env.RESEND_API_KEY?.trim();
   if (!key) {
     return { ok: false, configured: false, error: "Email is not configured. Set RESEND_API_KEY (and EMAIL_FROM) on the server." };

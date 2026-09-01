@@ -445,6 +445,11 @@ model Company {
   timezone      String        @default("America/New_York")
   logoUrl       String?
   primaryColor  String?       @default("#0F766E")
+  accentColor   String?
+  tagline       String?
+  description   String?
+  hoursNote     String?
+  isDemo        Boolean       @default(false)
   status        CompanyStatus @default(ONBOARDING)
   companySize   String?
   serviceArea   String?
@@ -534,6 +539,7 @@ model Company {
   @@index([status])
   @@index([industry])
   @@index([createdAt])
+  @@index([isDemo])
 }
 
 model Membership {

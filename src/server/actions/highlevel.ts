@@ -14,6 +14,7 @@ import { formatCommunicationsSyncMessage, syncHighLevelCommunications } from "@/
 import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
+import { refuseDemoExternal } from "@/lib/demo/guard";
 
 export async function connectHighLevelPrivateTokenAction(
   _prev: ActionResult | null,
@@ -21,6 +22,8 @@ export async function connectHighLevelPrivateTokenAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const submittedLocationId = String(formData.get("highlevelLocationId") || formData.get("locationId") || "").trim();
     const submittedToken = String(formData.get("highlevelPrivateToken") || formData.get("privateToken") || "").trim();
     const locationName = String(formData.get("locationName") || "").trim();
@@ -134,6 +137,8 @@ export async function refreshHighLevelConnectionAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const connection = await prisma.integrationConnection.findFirst({
       where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
       include: { credentials: true },
@@ -174,6 +179,8 @@ export async function previewHighLevelSyncAction(
 ): Promise<ActionResult & { summary?: string }> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const preview = await previewHighLevelContactSync(prisma, ctx.company.id);
     await writeAudit({
       companyId: ctx.company.id,
@@ -205,6 +212,8 @@ export async function applyHighLevelSyncAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const result = await applyHighLevelContactSync(prisma, ctx.company.id, ctx.user.id);
     await writeAudit({
       companyId: ctx.company.id,
@@ -232,6 +241,8 @@ export async function syncHighLevelCommunicationsAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const result = await syncHighLevelCommunications(prisma, ctx.company.id);
     await writeAudit({
       companyId: ctx.company.id,
@@ -259,6 +270,8 @@ export async function refreshHighLevelSocialAccountsAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const result = await discoverHighLevelSocialAccounts(prisma, ctx.company.id);
     await writeAudit({
       companyId: ctx.company.id,
@@ -289,6 +302,8 @@ export async function createHighLevelSocialPostAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const intent = String(formData.get("intent") || "draft");
     const body = String(formData.get("body") || "").trim();
     const mediaUrl = String(formData.get("mediaUrl") || "").trim() || null;

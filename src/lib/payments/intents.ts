@@ -3,12 +3,15 @@ import { isHistoricalImport } from "@/lib/imports/safety";
 import { platformFeeBps, stripePublishableKey } from "@/lib/payments/config";
 import { getConnectAccount } from "@/lib/payments/connect";
 import { requireStripe } from "@/lib/payments/stripe-client";
+import { demoOutboundBlock } from "@/lib/demo/guard";
 
 /** Server-side destination only. Browser never chooses company, amount, or Stripe account. */
 export async function resolveInvoicePaymentDestination(
   prisma: PrismaClient,
   input: { companyId: string; invoiceId: string }
 ) {
+  const blocked = await demoOutboundBlock(input.companyId, prisma);
+  if (blocked.blocked) return { ok: false as const, error: blocked.message };
   const invoice = await prisma.invoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
   });

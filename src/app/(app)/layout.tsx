@@ -41,6 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
       userEmail={tenant.user.email}
       role={tenant.role}
+      isDemo={tenant.company.isDemo}
     >
       {children}
     </AppShell>

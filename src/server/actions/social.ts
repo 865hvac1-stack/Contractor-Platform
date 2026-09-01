@@ -23,6 +23,9 @@ export async function publishSocialPostAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const postId = String(formData.get("postId") || "");
     const post = await prisma.socialPost.findFirst({
       where: { id: postId, companyId: ctx.company.id },

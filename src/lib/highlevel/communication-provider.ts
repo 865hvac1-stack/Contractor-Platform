@@ -11,6 +11,11 @@ export async function sendViaHighLevel(input: {
   customerId?: string | null;
   leadId?: string | null;
 }): Promise<SmsSendResult> {
+  const { demoOutboundBlock } = await import("@/lib/demo/guard");
+  const blocked = await demoOutboundBlock(input.companyId);
+  if (blocked.blocked) {
+    return { ok: false, configured: true, error: blocked.message };
+  }
   const access = await loadHighLevelAccess(prisma, input.companyId);
   if (!access) {
     return { ok: false, configured: false, error: "HighLevel is not connected for this company." };

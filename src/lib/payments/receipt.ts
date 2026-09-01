@@ -10,6 +10,7 @@ export async function sendPaymentReceiptEmail(input: {
   methodLabel: string;
   reference: string;
   paidAt: Date;
+  companyId?: string | null;
 }) {
   if (!input.to || !emailConfigured()) {
     return { sent: false as const, reason: emailConfigured() ? "no_customer_email" : "email_not_configured" };
@@ -37,6 +38,7 @@ export async function sendPaymentReceiptEmail(input: {
     subject: `Receipt from ${input.contractorName} · Invoice ${input.invoiceNumber}`,
     html,
     text,
+    companyId: input.companyId,
   });
   return result.ok
     ? { sent: true as const }

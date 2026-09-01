@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Briefcase, BarChart3, Inbox, Menu } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { DemoModeBadge } from "@/components/demo-mode-badge";
 import { TECH_CONTENT_BOTTOM_PADDING, TECH_NAV_SAFE_AREA } from "@/lib/tech/nav";
 import { cn } from "@/lib/utils";
 
@@ -18,10 +19,12 @@ const tabs = [
 export function TechShell({
   companyName,
   userName,
+  isDemo,
   children,
 }: {
   companyName: string;
   userName: string;
+  isDemo?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -37,6 +40,7 @@ export function TechShell({
           <div className="min-w-0 text-right">
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="truncate text-[11px] text-white/55">{companyName}</p>
+            {isDemo ? <div className="mt-1 flex justify-end"><DemoModeBadge compact /></div> : null}
           </div>
         </div>
       </header>

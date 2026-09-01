@@ -103,6 +103,7 @@ export async function deliverInviteEmail(input: {
   companyName: string;
   role: CompanyRole;
   token: string;
+  companyId?: string | null;
 }): Promise<{ result: EmailSendResult; setupUrl: string }> {
   const setupUrl = inviteSetupUrl(appBaseUrl(), input.token);
   const copy = inviteEmailCopy({
@@ -115,6 +116,7 @@ export async function deliverInviteEmail(input: {
     subject: copy.subject,
     html: copy.html,
     text: copy.text,
+    companyId: input.companyId,
   });
   return { result, setupUrl };
 }

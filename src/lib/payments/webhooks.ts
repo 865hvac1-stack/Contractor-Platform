@@ -232,6 +232,7 @@ async function confirmIntent(
       methodLabel: method === "ACH" ? "Bank payment" : "Card",
       reference: intent.id,
       paidAt: new Date(),
+      companyId,
     });
   }
   await writeAudit({

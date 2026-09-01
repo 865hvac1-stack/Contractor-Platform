@@ -136,6 +136,9 @@ export async function syncInvoiceToQuickBooks(
   transport: QboTransport,
   input: { companyId: string; invoiceId: string; actorId: string }
 ): Promise<{ ok: boolean; quickbooksId?: string; error?: string }> {
+  const { demoOutboundBlock } = await import("@/lib/demo/guard");
+  const blocked = await demoOutboundBlock(input.companyId, prisma);
+  if (blocked.blocked) return { ok: false, error: blocked.message };
   const invoice = await prisma.invoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
     include: { customer: true, job: true, lineItems: true },
@@ -201,6 +204,9 @@ export async function syncPaymentToQuickBooks(
   transport: QboTransport,
   input: { companyId: string; paymentId: string }
 ): Promise<{ ok: boolean; quickbooksId?: string; error?: string; review?: boolean }> {
+  const { demoOutboundBlock } = await import("@/lib/demo/guard");
+  const blocked = await demoOutboundBlock(input.companyId, prisma);
+  if (blocked.blocked) return { ok: false, error: blocked.message };
   const payment = await prisma.payment.findFirst({
     where: { id: input.paymentId, companyId: input.companyId },
     include: { invoice: { include: { customer: true } } },

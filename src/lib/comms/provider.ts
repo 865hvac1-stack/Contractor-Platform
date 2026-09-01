@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { demoOutboundBlock } from "@/lib/demo/guard";
 import { isHighLevelConnected } from "@/lib/highlevel/connection";
 import { sendViaHighLevel } from "@/lib/highlevel/communication-provider";
 import { sendCompanySms, smsProviderConfigured, type SmsSendResult } from "@/lib/communications/sms";
@@ -18,7 +19,11 @@ export async function sendCompanyCommunication(input: {
   body: string;
   customerId?: string | null;
   leadId?: string | null;
-}): Promise<SmsSendResult & { provider: "highlevel" | "twilio" | "none" }> {
+}): Promise<SmsSendResult & { provider: "highlevel" | "twilio" | "none" | "demo" }> {
+  const blocked = await demoOutboundBlock(input.companyId);
+  if (blocked.blocked) {
+    return { ok: false, configured: true, provider: "demo", error: blocked.message };
+  }
   const provider = await resolveCommunicationProvider(input.companyId);
   if (provider === "highlevel") {
     const result = await sendViaHighLevel(input);

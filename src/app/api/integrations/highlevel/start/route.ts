@@ -10,6 +10,13 @@ import { upsertConnection } from "@/lib/integrations/store";
 export async function GET() {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) {
+      return NextResponse.redirect(
+        new URL("/settings/highlevel?error=demo_blocked", process.env.APP_URL || "http://127.0.0.1:43123")
+      );
+    }
     if (!highlevelOAuthConfigured()) {
       return NextResponse.redirect(new URL("/settings/highlevel?error=oauth_not_configured", process.env.APP_URL || "http://127.0.0.1:43123"));
     }

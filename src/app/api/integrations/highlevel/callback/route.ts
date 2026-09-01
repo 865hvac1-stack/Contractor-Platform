@@ -20,6 +20,11 @@ export async function GET(request: Request) {
   if (!stored || stored.providerKey !== HIGHLEVEL_PROVIDER_KEY) {
     return NextResponse.redirect(new URL("/settings/highlevel?error=Authorization+expired.+Start+again.", origin));
   }
+  const { refuseDemoExternal } = await import("@/lib/demo/guard");
+  const demo = await refuseDemoExternal(stored.companyId);
+  if (demo) {
+    return NextResponse.redirect(new URL("/settings/highlevel?error=demo_blocked", origin));
+  }
   try {
     const exchanged = await exchangeHighLevelCode(code);
     const locationId = exchanged.locationId || url.searchParams.get("locationId");

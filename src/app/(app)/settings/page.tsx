@@ -43,6 +43,9 @@ export default async function SettingsPage() {
     { label: "Service area", value: company.serviceArea || "—" },
     { label: "Phone", value: company.phone || "—" },
     { label: "Email", value: company.email || "—" },
+    { label: "Website", value: company.website || "—" },
+    { label: "Tagline", value: company.tagline || "—" },
+    { label: "Hours", value: company.hoursNote || "—" },
     {
       label: "Address",
       value:

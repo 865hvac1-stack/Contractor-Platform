@@ -8,6 +8,8 @@ import { InvoiceStatusRefresh } from "@/components/payments/invoice-status-refre
 import { StatusBadge } from "@/components/status-badge";
 import { appUrl } from "@/lib/payments/config";
 import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
+import { TenantDocumentBrand } from "@/components/tenant-document-brand";
+import { DemoModeBadge } from "@/components/demo-mode-badge";
 
 export default async function PublicInvoicePage({
   params,
@@ -64,9 +66,14 @@ export default async function PublicInvoicePage({
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-8">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-          {invoice.company.businessName}
-        </p>
+        <TenantDocumentBrand
+          businessName={invoice.company.businessName}
+          tagline={invoice.company.tagline}
+          logoUrl={invoice.company.logoUrl}
+          primaryColor={invoice.company.primaryColor}
+          accentColor={invoice.company.accentColor}
+        />
+        {invoice.company.isDemo ? <div className="mt-2"><DemoModeBadge /></div> : null}
         <h1 className="mt-2 font-display text-3xl tracking-tight">Invoice {invoice.invoiceNumber}</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {invoice.customer.firstName} {invoice.customer.lastName}

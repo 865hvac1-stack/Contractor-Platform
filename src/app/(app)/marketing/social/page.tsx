@@ -26,7 +26,8 @@ const CHANNELS = [
 export default async function SocialPage() {
   const ctx = await requirePermission("marketing:view");
   const canManage = can(ctx.role, "marketing:manage");
-  const highlevel = await isHighLevelConnected(prisma, ctx.company.id);
+  const demo = ctx.company.isDemo;
+  const highlevel = demo ? false : await isHighLevelConnected(prisma, ctx.company.id);
   const discovery = highlevel
     ? await discoverHighLevelSocialAccounts(prisma, ctx.company.id)
     : { authorized: false, connected: false, accounts: [], error: null };
@@ -42,15 +43,32 @@ export default async function SocialPage() {
       <header>
         <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)]">Social</h1>
         <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
-          {highlevel
-            ? "HighLevel Social Planner is the preferred provider for this company. Direct Facebook/Google OAuth is not required."
-            : "Connect HighLevel to use Social Planner, or keep a future direct-provider connection."}
+          {demo
+            ? "Demo social accounts are synthetic. Nothing publishes outside ContractorYou."
+            : highlevel
+              ? "HighLevel Social Planner is the preferred provider for this company. Direct Facebook/Google OAuth is not required."
+              : "Connect HighLevel to use Social Planner, or keep a future direct-provider connection."}
         </p>
       </header>
 
       <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {CHANNELS.map((channel) => {
-          const card = socialAccountStatus(discovery.accounts, channel, highlevel, discovery.authorized);
+          const card = demo
+            ? {
+                status:
+                  channel === "FACEBOOK" || channel === "INSTAGRAM" || channel === "GOOGLE_BUSINESS_PROFILE"
+                    ? "DEMO_CONNECTED"
+                    : "NOT_CONNECTED",
+                detail:
+                  channel === "FACEBOOK"
+                    ? "Summit Home Services — demo Facebook page"
+                    : channel === "INSTAGRAM"
+                      ? "@summithomeservices — demo Instagram"
+                      : channel === "GOOGLE_BUSINESS_PROFILE"
+                        ? "Summit Home Services — demo Google Business Profile"
+                        : "Not connected in this demo.",
+              }
+            : socialAccountStatus(discovery.accounts, channel, highlevel, discovery.authorized);
           return (
             <article key={channel} className="rounded-2xl border bg-white p-4">
               <div className="flex items-center justify-between gap-2">

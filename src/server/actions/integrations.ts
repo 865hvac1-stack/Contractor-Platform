@@ -141,6 +141,9 @@ export async function syncIntegrationAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const providerKey = String(formData.get("providerKey") || "");
     const result = await runConnectionSync({ companyId: ctx.company.id, providerKey, kind: "manual" });
     await writeAudit({
@@ -262,6 +265,9 @@ export async function replyToReviewAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
+    const { refuseDemoExternal } = await import("@/lib/demo/guard");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
     const reviewId = String(formData.get("reviewId") || "");
     const comment = String(formData.get("comment") || "").trim();
     if (!comment) return { ok: false, error: "Write a reply before sending. Nothing is posted automatically." };
