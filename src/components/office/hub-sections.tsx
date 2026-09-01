@@ -3,12 +3,14 @@ import { format } from "date-fns";
 import { KpiCard } from "@/components/kpi-card";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AttentionCardActions } from "@/components/attention-card-actions";
 import type {
   OfficeCommunicationItem,
   OfficeRecentCustomer,
   OfficeScorecard,
   OfficeUpcomingJob,
 } from "@/lib/office/hub";
+import type { RankedAttention } from "@/lib/attention-priority";
 import type { OfficeAttentionCategory } from "@/lib/office/attention-categories";
 import type { OfficeIntelligenceItem } from "@/lib/office/intelligence";
 import type { OfficePipelineStage } from "@/lib/office/pipeline";
@@ -78,7 +80,13 @@ export function OfficeQuickActions({
   );
 }
 
-export function OfficeAttentionSection({ categories }: { categories: OfficeAttentionCategory[] }) {
+export function OfficeAttentionSection({
+  categories,
+  items = [],
+}: {
+  categories: OfficeAttentionCategory[];
+  items?: RankedAttention[];
+}) {
   if (categories.length === 0) {
     return (
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
@@ -119,6 +127,21 @@ export function OfficeAttentionSection({ categories }: { categories: OfficeAtten
           </Link>
         ))}
       </div>
+      {items.length > 0 ? (
+        <ul className="mt-4 space-y-2">
+          {items.map((item) => (
+            <li key={item.id} className="rounded-xl bg-[var(--cy-gray)]/70 px-4 py-3">
+              <Link href={item.href} className="block">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-orange)]">
+                  {item.title}
+                </p>
+                <p className="mt-1 text-sm text-[var(--cy-navy)]">{item.description}</p>
+              </Link>
+              <AttentionCardActions type={item.type} entityId={item.entityId} href={item.href} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
@@ -187,14 +210,32 @@ export function OfficeRecentCustomersSection({ customers }: { customers: OfficeR
                     </Link>
                   ) : null}
                 </div>
-                {customer.membership ? (
-                  <Link
-                    href={`/office/customers/${customer.id}`}
-                    className="shrink-0 rounded-full bg-[var(--cy-orange-muted)] px-3 py-1 text-xs font-medium text-[#9A3412]"
-                  >
-                    {customer.membership.planName}
-                  </Link>
-                ) : null}
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {customer.phone ? (
+                    <a
+                      href={`tel:${customer.phone.replace(/[^\d+]/g, "")}`}
+                      className="rounded-full bg-[var(--cy-navy)] px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      Call
+                    </a>
+                  ) : null}
+                  {customer.phone ? (
+                    <a
+                      href={`sms:${customer.phone.replace(/[^\d+]/g, "")}`}
+                      className="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium"
+                    >
+                      Text
+                    </a>
+                  ) : null}
+                  {customer.membership ? (
+                    <Link
+                      href={customer.membership.href}
+                      className="rounded-full bg-[var(--cy-orange-muted)] px-3 py-1 text-xs font-medium text-[#9A3412]"
+                    >
+                      {customer.membership.planName}
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             </li>
           ))}
@@ -250,13 +291,13 @@ export function OfficeUpcomingSection({ jobs }: { jobs: OfficeUpcomingJob[] }) {
                         {job.technician.name}
                       </Link>
                     ) : (
-                      <Link href="/dispatch" className="block text-sm text-[var(--cy-orange)] hover:underline">
+                      <Link href={job.dispatchHref} className="block text-sm text-[var(--cy-orange)] hover:underline">
                         Unassigned · Dispatch
                       </Link>
                     )}
                   </div>
                   <Link
-                    href="/dispatch"
+                    href={job.dispatchHref}
                     className="shrink-0 text-xs font-medium text-[var(--cy-orange)] hover:underline"
                   >
                     Open dispatch
@@ -386,7 +427,7 @@ export function OfficeIncomingCallSection({
           </p>
         </div>
         {missedCallsOpen > 0 ? (
-          <Link href="/attention?filter=customers" className="text-sm font-medium text-[var(--cy-orange)] hover:underline">
+          <Link href="/marketing/communications?filter=missed" className="text-sm font-medium text-[var(--cy-orange)] hover:underline">
             {missedCallsOpen} missed call{missedCallsOpen === 1 ? "" : "s"} →
           </Link>
         ) : null}

@@ -22,7 +22,7 @@ export type OfficeRecentCustomer = {
   name: string;
   phone: string | null;
   property: { id: string; label: string } | null;
-  membership: { id: string; planName: string } | null;
+  membership: { id: string; planName: string; href: string } | null;
   context: { text: string; href: string; kind: "job" | "estimate" | "invoice" | "activity" } | null;
 };
 
@@ -36,6 +36,7 @@ export type OfficeUpcomingJob = {
   customer: { id: string; name: string };
   property: { id: string; label: string } | null;
   technician: { id: string; name: string } | null;
+  dispatchHref: string;
 };
 
 export type OfficeCommunicationItem = {
@@ -217,85 +218,68 @@ export async function getOfficeHubData(companyId: string) {
   const openEstimateCount = openEstimatesAgg._count ?? 0;
   const openEstimateValueCents = openEstimatesAgg._sum?.totalCents ?? 0;
 
+  const todayDate = dayStart.toISOString().slice(0, 10);
   const scorecards: OfficeScorecard[] = [
-    callsToday > 0
-      ? {
-          label: "Calls today",
-          value: String(callsToday),
-          context: missedCallThreads > 0 ? `${missedCallThreads} missed today` : "Recorded call activity",
-          href: "/marketing/communications",
-        }
-      : null,
-    newLeadsToday > 0
-      ? {
-          label: "New leads",
-          value: String(newLeadsToday),
-          context: "Received today",
-          href: "/marketing/leads?status=NEW",
-        }
-      : null,
-    jobsBookedToday > 0
-      ? {
-          label: "Jobs booked",
-          value: String(jobsBookedToday),
-          context: "Created today",
-          href: `/dispatch?date=${dayStart.toISOString().slice(0, 10)}`,
-        }
-      : null,
-    followUpCount > 0
-      ? {
-          label: "Follow-ups due",
-          value: String(followUpCount),
-          context: followUpValueCents > 0 ? `${formatMoney(followUpValueCents)} opportunity` : "Estimates awaiting follow-up",
-          href: "/attention?filter=sales",
-        }
-      : null,
-    openEstimateCount > 0
-      ? {
-          label: "Open estimates",
-          value: String(openEstimateCount),
-          context: openEstimateValueCents > 0 ? formatMoney(openEstimateValueCents) : "Awaiting decision",
-          href: "/estimates?status=open",
-        }
-      : null,
-    approvedNotScheduled > 0
-      ? {
-          label: "Approved — not scheduled",
-          value: String(approvedNotScheduled),
-          context: approvedValueCents > 0 ? formatMoney(approvedValueCents) : "Needs scheduling",
-          href: "/estimates?status=approved",
-        }
-      : null,
-    overdueCount > 0
-      ? {
-          label: "Overdue A/R",
-          value: formatMoney(overdueBalanceCents),
-          context: `${overdueCount} invoice${overdueCount === 1 ? "" : "s"}`,
-          href: "/invoices?status=overdue",
-        }
-      : null,
-    missedCallsOpen > 0 || unansweredLeads > 0
-      ? {
-          label: "Missed / unanswered",
-          value: String(missedCallsOpen + unansweredLeads),
-          context: [
-            missedCallsOpen > 0 ? `${missedCallsOpen} missed call${missedCallsOpen === 1 ? "" : "s"}` : null,
-            unansweredLeads > 0 ? `${unansweredLeads} unanswered lead${unansweredLeads === 1 ? "" : "s"}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          href: missedCallsOpen > 0 ? "/attention?filter=customers" : "/marketing/leads?status=NEW",
-        }
-      : null,
-    upcomingJobs.length > 0
-      ? {
-          label: "Upcoming jobs",
-          value: String(upcomingJobs.length),
-          context: "Scheduled today",
-          href: `/dispatch?date=${dayStart.toISOString().slice(0, 10)}`,
-        }
-      : null,
-  ].filter(Boolean) as OfficeScorecard[];
+    {
+      label: "Calls today",
+      value: String(callsToday),
+      context: missedCallThreads > 0 ? `${missedCallThreads} missed today` : "Recorded call activity",
+      href: "/marketing/communications?filter=today",
+    },
+    {
+      label: "New leads",
+      value: String(newLeadsToday),
+      context: "Received today",
+      href: "/marketing/leads?status=NEW",
+    },
+    {
+      label: "Jobs booked",
+      value: String(jobsBookedToday),
+      context: "Created today",
+      href: "/jobs?when=today",
+    },
+    {
+      label: "Follow-ups due",
+      value: String(followUpCount),
+      context: followUpValueCents > 0 ? `${formatMoney(followUpValueCents)} opportunity` : "Estimates awaiting follow-up",
+      href: "/attention?filter=follow_ups",
+    },
+    {
+      label: "Open estimates",
+      value: String(openEstimateCount),
+      context: openEstimateValueCents > 0 ? formatMoney(openEstimateValueCents) : "Awaiting decision",
+      href: "/estimates?status=open",
+    },
+    {
+      label: "Approved — not scheduled",
+      value: String(approvedNotScheduled),
+      context: approvedValueCents > 0 ? formatMoney(approvedValueCents) : "Needs scheduling",
+      href: "/estimates?status=approved",
+    },
+    {
+      label: "Overdue A/R",
+      value: overdueCount > 0 ? formatMoney(overdueBalanceCents) : "$0",
+      context: `${overdueCount} invoice${overdueCount === 1 ? "" : "s"}`,
+      href: "/invoices?status=overdue",
+    },
+    {
+      label: "Missed / unanswered",
+      value: String(missedCallsOpen + unansweredLeads),
+      context: [
+        missedCallsOpen > 0 ? `${missedCallsOpen} missed call${missedCallsOpen === 1 ? "" : "s"}` : null,
+        unansweredLeads > 0 ? `${unansweredLeads} unanswered lead${unansweredLeads === 1 ? "" : "s"}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "No missed calls or unanswered leads",
+      href: missedCallsOpen > 0 ? "/marketing/communications?filter=missed" : "/marketing/leads?status=NEW",
+    },
+    {
+      label: "Upcoming jobs",
+      value: String(upcomingJobs.length),
+      context: "Scheduled today",
+      href: `/dispatch?date=${todayDate}`,
+    },
+  ];
 
   const pipeline = buildOfficePipeline({
     newLeads: pipelineNewLeads,
@@ -363,7 +347,7 @@ export async function getOfficeHubData(companyId: string) {
           }
         : null,
       membership: membership
-        ? { id: membership.id, planName: membership.plan.name }
+        ? { id: membership.id, planName: membership.plan.name, href: `/memberships?customerId=${customer.id}` }
         : null,
       context,
     };
@@ -391,6 +375,7 @@ export async function getOfficeHubData(companyId: string) {
       technician: tech
         ? { id: tech.id, name: `${tech.firstName} ${tech.lastName}`.trim() }
         : null,
+      dispatchHref: `/dispatch?date=${job.scheduledStart ? job.scheduledStart.toISOString().slice(0, 10) : todayDate}`,
     };
   });
 
@@ -415,6 +400,7 @@ export async function getOfficeHubData(companyId: string) {
     generatedAt: now,
     scorecards,
     attentionCategories,
+    attentionItems: officeAttention.slice(0, 8),
     pipeline,
     recentCustomers,
     todayUpcoming,

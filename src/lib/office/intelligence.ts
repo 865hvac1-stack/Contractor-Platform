@@ -25,8 +25,8 @@ export function buildOfficeIntelligence(input: {
       id: "sales_opportunity",
       label: "Sales opportunity",
       summary: `${input.followUpCount} estimate${input.followUpCount === 1 ? "" : "s"} totaling ${formatMoney(input.followUpValueCents)} need follow-up.`,
-      href: "/attention?filter=sales",
-      actionLabel: "Review",
+      href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
+      actionLabel: "Prepare follow-ups",
       askQuestion: "Which estimates should we call?",
     });
   }
@@ -39,7 +39,7 @@ export function buildOfficeIntelligence(input: {
         input.approvedValueCents > 0
           ? `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} (${formatMoney(input.approvedValueCents)}) have not been scheduled.`
           : `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} have not been scheduled.`,
-      href: "/attention?filter=sales",
+      href: "/estimates?status=approved",
       actionLabel: "Schedule",
       askQuestion: "What approved work needs scheduling?",
     });

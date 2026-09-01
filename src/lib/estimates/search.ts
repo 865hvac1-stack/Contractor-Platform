@@ -22,10 +22,10 @@ export function estimatesWhere(companyId: string, status?: string): Prisma.Estim
   if (status === "open") {
     return { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] } };
   }
-  if (status === "follow_up") {
+  if (status === "follow_up" || status === "followup") {
     return { companyId, status: { in: ["SENT", "VIEWED"] } };
   }
-  if (status === "needs_scheduling") {
+  if (status === "needs_scheduling" || status === "approved") {
     return { companyId, status: "APPROVED", linkedJob: null, job: { is: null } };
   }
   if (ESTIMATE_STATUSES.has(status)) {

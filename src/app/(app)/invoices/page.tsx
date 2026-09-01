@@ -56,6 +56,25 @@ export default async function InvoicesPage({
         </Link>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: "", label: "All" },
+          { id: "overdue", label: "Overdue" },
+        ].map((item) => (
+          <Link
+            key={item.label}
+            href={item.id ? `/invoices?status=${item.id}` : "/invoices"}
+            className={`rounded-full px-3 py-1 text-sm ${
+              (status || "") === item.id
+                ? "bg-[var(--cy-navy)] text-white"
+                : "bg-white text-[var(--cy-navy)] ring-1 ring-[var(--border)]"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
       {invoices.length === 0 ? (
         <EmptyState
           title="No invoices yet"

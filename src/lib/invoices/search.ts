@@ -18,7 +18,7 @@ export function invoicesWhere(companyId: string, status?: string, now = new Date
   if (status === "OPEN") {
     return { companyId, status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] }, balanceCents: { gt: 0 } };
   }
-  if (status === "OVERDUE") {
+  if (status === "OVERDUE" || status === "overdue") {
     return {
       companyId,
       status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },

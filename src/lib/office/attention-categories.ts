@@ -31,7 +31,7 @@ const CATEGORY_DEFS: Record<
   estimate_follow_up: {
     id: "estimate_follow_up",
     label: "Estimate follow-up",
-    href: "/attention?filter=sales",
+    href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
     actionLabel: "Review",
     prepareType: "estimate_not_followed_up",
     askQuestion: "Which estimates should we call?",
@@ -39,7 +39,7 @@ const CATEGORY_DEFS: Record<
   approved_not_scheduled: {
     id: "approved_not_scheduled",
     label: "Approved — not scheduled",
-    href: "/attention?filter=sales",
+    href: "/estimates?status=approved",
     actionLabel: "Schedule work",
     prepareType: "approved_estimate_not_scheduled",
     askQuestion: "What approved work needs scheduling?",
@@ -47,7 +47,7 @@ const CATEGORY_DEFS: Record<
   overdue_invoices: {
     id: "overdue_invoices",
     label: "Overdue invoices",
-    href: "/attention?filter=money",
+    href: "/invoices?status=overdue",
     actionLabel: "Review",
     prepareType: "invoice_overdue",
     askQuestion: "Who owes us money?",
@@ -62,8 +62,8 @@ const CATEGORY_DEFS: Record<
   missed_calls: {
     id: "missed_calls",
     label: "Missed calls",
-    href: "/attention?filter=customers",
-    actionLabel: "Review",
+    href: "/marketing/communications?filter=missed",
+    actionLabel: "Respond",
     askQuestion: "Who needs a callback?",
   },
 };

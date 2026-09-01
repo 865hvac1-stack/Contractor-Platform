@@ -132,9 +132,10 @@ describe("Customer Hub V2", () => {
   it("keeps office hub data tenant-isolated", async () => {
     const [a, b] = await Promise.all([getOfficeHubData(ids.companyA), getOfficeHubData(ids.companyB)]);
     expect(a.scorecards.length).toBeGreaterThan(0);
-    expect(b.scorecards.length).toBe(0);
+    expect(b.scorecards.every((card) => card.value === "0" || card.value === "$0")).toBe(true);
     expect(a.attentionCategories.length).toBeGreaterThan(0);
     expect(b.attentionCategories.length).toBe(0);
+    expect(b.recentCustomers.some((row) => row.id === ids.customerA)).toBe(false);
   });
 
   it("links scorecards to filtered destinations", async () => {
@@ -142,7 +143,7 @@ describe("Customer Hub V2", () => {
     const overdue = data.scorecards.find((card) => card.label === "Overdue A/R");
     const followUp = data.scorecards.find((card) => card.label === "Follow-ups due");
     expect(overdue?.href).toBe("/invoices?status=overdue");
-    expect(followUp?.href).toBe("/attention?filter=sales");
+    expect(followUp?.href).toBe("/attention?filter=follow_ups");
     for (const card of data.scorecards) {
       expect(card.href.startsWith("/")).toBe(true);
     }
@@ -210,6 +211,15 @@ describe("Customer Hub V2", () => {
     expect(invoices).toMatch(/status === "overdue"/);
     expect(estimates).toMatch(/status === "open"/);
     expect(estimates).toMatch(/status === "approved"/);
+    const jobs = readFileSync(resolve("src/lib/jobs/search.ts"), "utf8");
+    expect(jobs).toMatch(/when === "today"/);
+    expect(jobs).toMatch(/customerId/);
+    const comms = readFileSync(resolve("src/app/(app)/marketing/communications/page.tsx"), "utf8");
+    expect(comms).toMatch(/filter === "missed"/);
+    const hub = readFileSync(resolve("src/lib/office/hub.ts"), "utf8");
+    expect(hub).toMatch(/\/marketing\/communications\?filter=today/);
+    expect(hub).toMatch(/\/attention\?filter=follow_ups/);
+    expect(hub).toMatch(/\/jobs\?when=today/);
   });
 
   it("exposes property-aware customer search results", () => {

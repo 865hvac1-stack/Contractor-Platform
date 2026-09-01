@@ -77,6 +77,27 @@ export default async function EstimatesPage({
         </Link>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: "", label: "All" },
+          { id: "open", label: "Open" },
+          { id: "followup", label: "Follow-up" },
+          { id: "approved", label: "Needs scheduling" },
+        ].map((item) => (
+          <Link
+            key={item.label}
+            href={item.id ? `/estimates?status=${item.id}` : "/estimates"}
+            className={`rounded-full px-3 py-1 text-sm ${
+              (status || "") === item.id
+                ? "bg-[var(--cy-navy)] text-white"
+                : "bg-white text-[var(--cy-navy)] ring-1 ring-[var(--border)]"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
       {estimates.length === 0 ? (
         <EmptyState
           title="No estimates yet"

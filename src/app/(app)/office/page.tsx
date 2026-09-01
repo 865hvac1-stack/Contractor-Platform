@@ -69,7 +69,7 @@ export default async function OfficeHubPage() {
 
       <OfficeScorecards scorecards={data.scorecards} />
 
-      <OfficeAttentionSection categories={data.attentionCategories} />
+      <OfficeAttentionSection categories={data.attentionCategories} items={data.attentionItems} />
 
       <OfficePipelineSection stages={data.pipeline} />
 

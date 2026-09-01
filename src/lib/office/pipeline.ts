@@ -44,7 +44,7 @@ export function buildOfficePipeline(input: {
       id: "estimate_follow_up",
       label: "Estimate follow-up",
       count: input.estimateFollowUp,
-      href: "/attention?filter=sales",
+      href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
     });
   }
   if (input.approvedNotScheduled > 0) {
