@@ -372,23 +372,25 @@ export function DispatchBoard({
         {filteredEmpty ? <p className="text-sm text-[var(--muted-foreground)]">No jobs match these filters.</p> : null}
       </div>
 
-      <Sheet open={issuesOpen} onOpenChange={setIssuesOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Dispatch issues</SheetTitle>
-            <SheetDescription>Real exceptions from today&apos;s board. Nothing invented.</SheetDescription>
-          </SheetHeader>
-          <DispatchIssuesPanel
-            issues={board.issues}
-            jobs={allJobs}
-            onSelectJob={(jobId) => {
-              const job = allJobs.find((row) => row.id === jobId) ?? null;
-              setSelected(job);
-              setIssuesOpen(false);
-            }}
-          />
-        </SheetContent>
-      </Sheet>
+      {issuesOpen ? (
+        <Sheet open onOpenChange={setIssuesOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Dispatch issues</SheetTitle>
+              <SheetDescription>Real exceptions from today&apos;s board. Nothing invented.</SheetDescription>
+            </SheetHeader>
+            <DispatchIssuesPanel
+              issues={board.issues}
+              jobs={allJobs}
+              onSelectJob={(jobId) => {
+                const job = allJobs.find((row) => row.id === jobId) ?? null;
+                setSelected(job);
+                setIssuesOpen(false);
+              }}
+            />
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <DispatchJobDrawer
         job={selected}

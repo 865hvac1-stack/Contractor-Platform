@@ -165,6 +165,10 @@ describe("dispatch V2 helpers", () => {
     expect(board).toContain("md:hidden");
     expect(board).toContain("hidden min-h-[28rem] flex-1 md:block");
     expect(board).toContain("w-[300px]");
+    const card = readFileSync(resolve("src/components/dispatch/job-card.tsx"), "utf8");
+    expect(card).toContain('role="button"');
+    expect(card).toContain("Open job");
+    expect(card).not.toMatch(/<button[\s\S]*draggable/);
   });
 });
 

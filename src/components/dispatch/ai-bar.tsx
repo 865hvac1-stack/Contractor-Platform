@@ -53,27 +53,29 @@ export function DispatchAskBar({ suggestions }: { suggestions: string[] }) {
         ))}
       </div>
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>ContractorYou</SheetTitle>
-            <SheetDescription>Reads the live board. Recommendations wait for your approval.</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 px-4 pb-4">
-            {state && !state.ok ? (
-              <p className="text-sm text-rose-700" role="alert">
-                {state.error}
-              </p>
-            ) : null}
-            {state?.ok ? (
-              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--cy-navy)]">{state.answer}</p>
-            ) : (
-              <p className="text-sm text-[var(--muted-foreground)]">Ask a dispatch question to see a recommendation here.</p>
-            )}
-            {state?.ok && state.actionRequest ? <ActionCard request={state.actionRequest} compact /> : null}
-          </div>
-        </SheetContent>
-      </Sheet>
+      {open ? (
+        <Sheet open onOpenChange={setOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetHeader>
+              <SheetTitle>ContractorYou</SheetTitle>
+              <SheetDescription>Reads the live board. Recommendations wait for your approval.</SheetDescription>
+            </SheetHeader>
+            <div className="space-y-4 px-4 pb-4">
+              {state && !state.ok ? (
+                <p className="text-sm text-rose-700" role="alert">
+                  {state.error}
+                </p>
+              ) : null}
+              {state?.ok ? (
+                <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--cy-navy)]">{state.answer}</p>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">Ask a dispatch question to see a recommendation here.</p>
+              )}
+              {state?.ok && state.actionRequest ? <ActionCard request={state.actionRequest} compact /> : null}
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </div>
   );
 }
