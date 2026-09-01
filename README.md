@@ -358,7 +358,8 @@ Later Account Session components (account management, payouts, balances, payment
 
 Summit is a fictional `isDemo` tenant for sales walkthroughs. It is not 865 HVAC and never receives real customer, HighLevel, Stripe, or QuickBooks credentials.
 
-- Login: `jake.bennett@summithomeservices.demo`
+- Login page: **Enter Summit demo** signs in as Jake Bennett. If Summit does not exist yet, the first click creates it. Later clicks only sign in.
+- Email: `jake.bennett@summithomeservices.demo`
 - Password: `SUMMIT_DEMO_PASSWORD` (local default `SummitDemo-2026!`)
 - Create/reset: Platform Admin → Companies → **Create or reset Summit demo**, or `ALLOW_SUMMIT_DEMO_SEED=true npm run demo:seed`
 - Demo outbound SMS, email, Stripe, refunds, HighLevel, social publish, and QuickBooks writes are blocked server-side.

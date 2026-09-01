@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 import { loginAction } from "@/server/actions/auth";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
 import { landingPath } from "@/lib/workspaces";
+import { SummitDemoLoginButton } from "@/components/summit-demo-login-button";
+
+export const maxDuration = 180;
 
 export default async function LoginPage({
   searchParams,
@@ -68,6 +71,18 @@ export default async function LoginPage({
           Sign in
         </Button>
       </ActionForm>
+
+      <div className="mt-6 space-y-3">
+        <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+          <span className="h-px flex-1 bg-[var(--border)]" />
+          Sales demo
+          <span className="h-px flex-1 bg-[var(--border)]" />
+        </div>
+        <SummitDemoLoginButton />
+        <p className="text-center text-xs text-[var(--muted-foreground)]">
+          Opens fictional Summit Home Services. No real customers, payments, or outbound messages.
+        </p>
+      </div>
 
       <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">
         No account?{" "}

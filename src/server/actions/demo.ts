@@ -1,11 +1,39 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePlatformAdmin } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { createSession, requirePlatformAdmin, setActiveCompany } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { writeAudit } from "@/lib/audit";
+import { isNextRedirect, publicActionError } from "@/lib/action-errors";
 import { SUMMIT_COMPANY_NAME } from "@/lib/demo/constants";
+import { provisionSummitDemoIfMissing } from "@/lib/demo/provision";
 import { resetSummitDemoCompany } from "@/lib/demo/seed-summit";
+import { landingPath } from "@/lib/workspaces";
 import type { ActionResult } from "@/server/actions/auth";
+
+export async function enterSummitDemoAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const owner = await provisionSummitDemoIfMissing(prisma);
+    await createSession(owner.userId);
+    await setActiveCompany(owner.companyId, owner.userId);
+    await writeAudit({
+      actorId: owner.userId,
+      companyId: owner.companyId,
+      action: "user.login",
+      entityType: "User",
+      entityId: owner.userId,
+      metadata: { demo: true, provisioned: owner.created },
+    });
+    redirect(landingPath("COMPANY_OWNER"));
+  } catch (error) {
+    if (isNextRedirect(error)) throw error;
+    return { ok: false, error: publicActionError(error) };
+  }
+}
 
 export async function resetSummitDemoAction(
   _prev: ActionResult | null,

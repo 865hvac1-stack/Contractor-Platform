@@ -148,6 +148,23 @@ describe("Summit Home Services demo tenant", () => {
     expect(normal).toBeNull();
   });
 
+  it("provisions Summit only when missing and does not reset an existing demo", async () => {
+    const { provisionSummitDemoIfMissing } = await import("@/lib/demo/provision");
+    const before = await prisma.customer.count({ where: { companyId: ids.demoCompany } });
+    const again = await provisionSummitDemoIfMissing(prisma);
+    expect(again.created).toBe(false);
+    expect(again.companyId).toBe(ids.demoCompany);
+    expect(await prisma.customer.count({ where: { companyId: ids.demoCompany } })).toBe(before);
+    if (hvacBefore) {
+      const after = await prisma.company.findFirst({
+        where: { id: hvacBefore.id },
+        select: { _count: { select: { customers: true, jobs: true } } },
+      });
+      expect(after?._count.customers).toBe(hvacBefore.customers);
+      expect(after?._count.jobs).toBe(hvacBefore.jobs);
+    }
+  });
+
   it("refuses reset against a normal company", async () => {
     expect(() =>
       assertResettableDemoCompany({ id: ids.normalCompany, isDemo: false, businessName: "Normal" })
