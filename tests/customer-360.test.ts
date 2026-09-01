@@ -439,7 +439,7 @@ describe("Customer 360 V2", () => {
     expect(ui).toMatch(/JobPhotoUpload/);
     expect(ui).toMatch(/flex-col/);
     expect(ui).toMatch(/key=\{row\.id\}/);
-    expect(ui).toMatch(/selfHref\?propertyId=/);
+    expect(ui).toMatch(/selfHref\}\?propertyId=/);
   });
 
   it("does not treat Summit demo facts as a live provider", async () => {
