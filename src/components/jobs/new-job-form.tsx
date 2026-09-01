@@ -28,6 +28,7 @@ export function NewJobForm({
   playbooks,
   serviceTypes,
   defaultCustomer,
+  defaultPropertyId,
   returnTo,
   canAssign = true,
   submitLabel = "Create job",
@@ -36,6 +37,7 @@ export function NewJobForm({
   playbooks: PlaybookOption[];
   serviceTypes: ServiceTypeOption[];
   defaultCustomer?: JobPickerCustomer | null;
+  defaultPropertyId?: string;
   returnTo?: string;
   canAssign?: boolean;
   submitLabel?: string;
@@ -43,7 +45,7 @@ export function NewJobForm({
   return (
     <ActionForm action={createJobFormAction} className="space-y-4">
       {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
-      <CustomerJobPicker defaultCustomer={defaultCustomer} />
+      <CustomerJobPicker defaultCustomer={defaultCustomer} defaultPropertyId={defaultPropertyId} />
 
       <ServiceTypePicker
         types={serviceTypes}

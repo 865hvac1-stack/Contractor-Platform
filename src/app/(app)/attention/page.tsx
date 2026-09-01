@@ -14,6 +14,7 @@ import { AttentionCard } from "@/components/command-center";
 
 const FILTERS: { id: AttentionFilter; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "follow_ups", label: "Follow-ups" },
   { id: "critical", label: "Critical" },
   { id: "sales", label: "Sales" },
   { id: "money", label: "Money" },
@@ -33,13 +34,17 @@ const SORTS: { id: AttentionSort; label: string }[] = [
 export default async function AttentionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; sort?: string }>;
+  searchParams: Promise<{ filter?: string; sort?: string; type?: string }>;
 }) {
   const ctx = await requirePermission("dashboard:view");
   const params = await searchParams;
   const filter = parseAttentionFilter(params.filter);
   const sort = parseAttentionSort(params.sort);
-  const ranked = sortAttention(filterAttention(prioritizeAttention(await getNeedsAttention(ctx.company.id)), filter), sort);
+  const type = params.type?.trim() || undefined;
+  const ranked = sortAttention(
+    filterAttention(prioritizeAttention(await getNeedsAttention(ctx.company.id)), filter, type),
+    sort
+  );
 
   return (
     <div className="space-y-6">

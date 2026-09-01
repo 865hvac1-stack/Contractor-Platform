@@ -27,14 +27,20 @@ type SearchHit = JobPickerCustomer & {
 
 export function CustomerJobPicker({
   defaultCustomer,
+  defaultPropertyId,
 }: {
   defaultCustomer?: JobPickerCustomer | null;
+  defaultPropertyId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<JobPickerCustomer | null>(defaultCustomer ?? null);
-  const [propertyId, setPropertyId] = useState(defaultCustomer?.properties[0]?.id ?? "");
+  const [propertyId, setPropertyId] = useState(
+    defaultPropertyId && defaultCustomer?.properties.some((property) => property.id === defaultPropertyId)
+      ? defaultPropertyId
+      : defaultCustomer?.properties[0]?.id ?? ""
+  );
 
   useEffect(() => {
     if (selected || query.trim().length < 2) {

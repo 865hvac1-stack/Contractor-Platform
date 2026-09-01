@@ -11,13 +11,13 @@ import { customerLabel } from "@/lib/tech/today";
 export default async function OfficeNewJobPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; propertyId?: string }>;
 }) {
   const ctx = await requirePermission("jobs:manage");
   if (!canAccessWorkspace(ctx.role, "office")) {
     redirect(landingPath(ctx.role));
   }
-  const { customerId } = await searchParams;
+  const { customerId, propertyId } = await searchParams;
 
   await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
   const [customerCount, selectedCustomer, memberships, playbooks, serviceTypes] = await Promise.all([
@@ -80,6 +80,7 @@ export default async function OfficeNewJobPage({
                   }
                 : null
             }
+            defaultPropertyId={propertyId}
             returnTo="office"
             canAssign={can(ctx.role, "schedule:manage")}
             submitLabel={

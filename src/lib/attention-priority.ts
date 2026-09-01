@@ -14,7 +14,19 @@ export type AttentionFilter =
   | "customers"
   | "memberships"
   | "team"
-  | "operations";
+  | "operations"
+  | "follow_ups";
+
+export const OFFICE_FOLLOW_UP_TYPES = new Set([
+  "estimate_not_followed_up",
+  "approved_estimate_not_scheduled",
+  "lead_unanswered",
+  "missed_call_no_follow_up",
+  "membership_needs_review",
+  "invoice_awaiting_payment",
+  "invoice_overdue",
+  "job_missing_technician",
+]);
 export type AttentionSort = "priority" | "dollars" | "age" | "newest";
 
 export type RankedAttention = AttentionItem & {
@@ -170,13 +182,21 @@ export function homeAttentionItems(items: RankedAttention[], limit = HOME_ATTENT
   return pool.slice(0, limit);
 }
 
-export function filterAttention(items: RankedAttention[], filter: AttentionFilter): RankedAttention[] {
-  if (filter === "all") return items;
-  if (filter === "critical") return items.filter((item) => item.priority === "CRITICAL");
-  if (filter === "dispatch" || filter === "operations") {
-    return items.filter((item) => item.category === "operations");
+export function filterAttention(
+  items: RankedAttention[],
+  filter: AttentionFilter,
+  type?: string
+): RankedAttention[] {
+  let next = items;
+  if (filter === "critical") next = next.filter((item) => item.priority === "CRITICAL");
+  else if (filter === "follow_ups") next = next.filter((item) => OFFICE_FOLLOW_UP_TYPES.has(item.type));
+  else if (filter === "dispatch" || filter === "operations") {
+    next = next.filter((item) => item.category === "operations");
+  } else if (filter !== "all") {
+    next = next.filter((item) => item.category === filter);
   }
-  return items.filter((item) => item.category === filter);
+  if (type) next = next.filter((item) => item.type === type);
+  return next;
 }
 
 export function attentionFilterCounts(items: RankedAttention[]) {
@@ -218,6 +238,7 @@ export function parseAttentionFilter(value: string | undefined): AttentionFilter
     "memberships",
     "team",
     "operations",
+    "follow_ups",
   ];
   return allowed.includes(value as AttentionFilter) ? (value as AttentionFilter) : "all";
 }

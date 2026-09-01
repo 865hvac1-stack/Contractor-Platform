@@ -1,18 +1,36 @@
 import Link from "next/link";
+import { endOfDay, startOfDay } from "date-fns";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/status-badge";
+import { customerLabel } from "@/lib/tech/today";
 
-export default async function CommunicationsPage() {
+const COMM_FILTERS = [
+  { id: "inbox", label: "Inbox" },
+  { id: "today", label: "Today's calls" },
+  { id: "missed", label: "Missed" },
+] as const;
+
+export default async function CommunicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const ctx = await requirePermission("marketing:view");
+  const filter = (await searchParams).filter?.trim() || "inbox";
+  const dayStart = startOfDay(new Date());
+  const dayEnd = endOfDay(new Date());
   const connection = await prisma.integrationConnection.findFirst({
     where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
   });
   const threads = await prisma.communicationThread.findMany({
-    where: { companyId: ctx.company.id },
+    where: {
+      companyId: ctx.company.id,
+      ...(filter === "today" ? { lastActivityAt: { gte: dayStart, lte: dayEnd } } : {}),
+    },
     orderBy: { lastActivityAt: "desc" },
     take: 80,
     include: {
@@ -21,6 +39,19 @@ export default async function CommunicationsPage() {
     },
   });
   const connected = connection?.status === "CONNECTED";
+  const calls =
+    filter === "today" || filter === "missed"
+      ? await prisma.callRecord.findMany({
+          where: {
+            companyId: ctx.company.id,
+            ...(filter === "today" ? { startedAt: { gte: dayStart, lte: dayEnd } } : {}),
+            ...(filter === "missed" ? { missed: true, booked: { not: true } } : {}),
+          },
+          include: { customer: { select: { id: true, firstName: true, lastName: true, businessName: true } } },
+          orderBy: { startedAt: "desc" },
+          take: 80,
+        })
+      : [];
 
   return (
     <div className="space-y-6">
@@ -37,9 +68,63 @@ export default async function CommunicationsPage() {
         </Link>
       </header>
 
+      <div className="flex flex-wrap gap-2">
+        {COMM_FILTERS.map((item) => (
+          <Link
+            key={item.id}
+            href={item.id === "inbox" ? "/marketing/communications" : `/marketing/communications?filter=${item.id}`}
+            className={`rounded-full px-3 py-1 text-sm ${
+              filter === item.id
+                ? "bg-[var(--cy-navy)] text-white"
+                : "bg-white text-[var(--cy-navy)] ring-1 ring-[var(--border)]"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
       {!connected ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
           HighLevel is not connected. Settings → HighLevel. Direct Twilio is not required.
+        </p>
+      ) : null}
+
+      {calls.length > 0 ? (
+        <section className="overflow-hidden rounded-2xl border bg-white">
+          <div className="border-b px-4 py-3">
+            <h2 className="font-medium">{filter === "missed" ? "Missed calls" : "Calls"}</h2>
+          </div>
+          <ul className="divide-y divide-[var(--border)]">
+            {calls.map((call) => (
+              <li key={call.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    {call.customer ? (
+                      <Link href={`/office/customers/${call.customer.id}`} className="font-medium hover:underline">
+                        {customerLabel(call.customer)}
+                      </Link>
+                    ) : (
+                      <p className="font-medium">{call.caller || "Unknown caller"}</p>
+                    )}
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      {call.missed ? "Missed" : call.answered ? "Answered" : call.direction} ·{" "}
+                      {call.startedAt.toLocaleString()}
+                    </p>
+                  </div>
+                  {call.customer ? (
+                    <Link href={`/office/customers/${call.customer.id}`} className="text-sm text-[var(--cy-orange)] hover:underline">
+                      Customer 360
+                    </Link>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : filter === "missed" || filter === "today" ? (
+        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
+          {filter === "missed" ? "No open missed-call records." : "No calls recorded today."}
         </p>
       ) : null}
 

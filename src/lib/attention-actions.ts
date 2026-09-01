@@ -8,16 +8,35 @@ export type AttentionCta = {
 export function attentionCardActions(type: string, entityId: string): AttentionCta[] {
   if (type === "estimate_not_followed_up") {
     return [
+      { label: "Review", href: `/estimates/${entityId}` },
+      { label: "Prepare follow-ups", prepare: true },
       { label: "Ask AI", ask: "Take care of my estimate follow-ups." },
-      { label: "Draft follow-up", prepare: true },
-      { label: "View", href: `/estimates/${entityId}` },
+    ];
+  }
+  if (type === "approved_estimate_not_scheduled") {
+    return [
+      { label: "Review", href: `/estimates/${entityId}` },
+      { label: "Schedule", href: `/estimates?status=needs_scheduling` },
+      { label: "Prepare follow-ups", prepare: true },
+    ];
+  }
+  if (type === "lead_unanswered") {
+    return [
+      { label: "Respond", href: `/marketing/leads/${entityId}` },
+      { label: "Review", href: `/marketing/leads/${entityId}` },
+    ];
+  }
+  if (type === "missed_call_no_follow_up") {
+    return [
+      { label: "Respond", href: "/marketing/communications?filter=missed" },
+      { label: "Review", href: "/marketing/communications?filter=missed" },
     ];
   }
   if (type === "invoice_overdue" || type === "invoice_awaiting_payment") {
     return [
+      { label: "Review", href: `/invoices/${entityId}` },
+      { label: "Prepare reminder", prepare: true },
       { label: "Ask AI", ask: "Who owes us money?" },
-      { label: "Draft reminder", prepare: true },
-      { label: "View", href: `/invoices/${entityId}` },
     ];
   }
   if (type === "job_missing_technician") {

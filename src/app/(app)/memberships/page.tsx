@@ -14,16 +14,21 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export default async function MembershipsPage() {
+export default async function MembershipsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ customerId?: string }>;
+}) {
   const ctx = await requirePermission("memberships:view");
   const canManage = can(ctx.role, "memberships:manage");
+  const { customerId } = await searchParams;
   const [plans, memberships, customers] = await Promise.all([
     prisma.membershipPlan.findMany({
       where: { companyId: ctx.company.id },
       orderBy: { name: "asc" },
     }),
     prisma.customerMembership.findMany({
-      where: { companyId: ctx.company.id },
+      where: { companyId: ctx.company.id, ...(customerId ? { customerId } : {}) },
       include: {
         customer: true,
         plan: true,
@@ -135,7 +140,14 @@ export default async function MembershipsPage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="font-medium">Sold memberships</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-medium">Sold memberships</h2>
+          {customerId ? (
+            <Link href="/memberships" className="text-sm text-[var(--cy-orange)] hover:underline">
+              All memberships
+            </Link>
+          ) : null}
+        </div>
         {memberships.length === 0 ? (
           <p className="text-sm text-[var(--muted-foreground)]">No memberships sold yet.</p>
         ) : (

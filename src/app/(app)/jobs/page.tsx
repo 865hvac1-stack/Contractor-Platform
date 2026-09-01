@@ -43,7 +43,7 @@ const STATUSES = [
 export default async function JobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string; customerId?: string; when?: string }>;
 }) {
   const ctx = await requirePermission("jobs:view");
   const access = jobAccessFilter(ctx.role, ctx.user.id);
@@ -54,6 +54,8 @@ export default async function JobsPage({
     access,
     q: query.q,
     status: query.status,
+    customerId: query.customerId,
+    when: query.when,
   });
   const skip = ((query.page ?? 1) - 1) * JOBS_PAGE_SIZE;
   const [total, jobs] = await Promise.all([
@@ -82,7 +84,10 @@ export default async function JobsPage({
           <h1 className="font-display text-3xl tracking-tight">Jobs</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             {total.toLocaleString()} job{total === 1 ? "" : "s"}
-            {query.q ? ` matching “${query.q}”` : ""}.
+            {query.q ? ` matching “${query.q}”` : ""}
+            {query.when === "today" ? " scheduled today" : ""}
+            {query.when === "upcoming" ? " upcoming" : ""}
+            {query.customerId ? " for this customer" : ""}.
           </p>
         </div>
         <Link href="/jobs/new" className={cn(buttonVariants())}>
@@ -108,6 +113,16 @@ export default async function JobsPage({
             </option>
           ))}
         </select>
+        <select
+          name="when"
+          defaultValue={query.when ?? ""}
+          className="h-10 rounded-lg border border-input bg-white px-3 text-sm"
+        >
+          <option value="">Any day</option>
+          <option value="today">Today</option>
+          <option value="upcoming">Upcoming</option>
+        </select>
+        {query.customerId ? <input type="hidden" name="customerId" value={query.customerId} /> : null}
         <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
           Search
         </button>
@@ -115,9 +130,9 @@ export default async function JobsPage({
 
       {jobs.length === 0 ? (
         <EmptyState
-          title={query.q || query.status ? "No matching jobs" : "No jobs yet"}
+          title={query.q || query.status || query.when || query.customerId ? "No matching jobs" : "No jobs yet"}
           description={
-            query.q || query.status
+            query.q || query.status || query.when || query.customerId
               ? "Try a different search or status."
               : "Create a job to schedule technicians and track progress."
           }
