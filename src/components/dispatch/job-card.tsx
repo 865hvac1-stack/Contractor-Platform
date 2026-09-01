@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { JOB_KIND_ACCENT, JOB_KIND_LABEL } from "@/lib/dispatch/job-type";
-import { isRunningLate } from "@/lib/dispatch/validate";
+import { isRunningLate, minutesLate } from "@/lib/dispatch/validate";
 import type { DispatchCard } from "@/lib/dispatch/types";
 
 function formatTime(value: Date | string | null) {
@@ -25,6 +25,7 @@ export function DispatchJobCard({
   asItem?: boolean;
 }) {
   const late = isRunningLate(job);
+  const lateBy = minutesLate(job);
   const dragging = useRef(false);
 
   function openJob() {
@@ -78,7 +79,9 @@ export function DispatchJobCard({
             <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800">High</span>
           ) : null}
           {late ? (
-            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">Running late</span>
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950">
+              ⚠ {lateBy ?? 0} min late
+            </span>
           ) : null}
         </div>
       </div>

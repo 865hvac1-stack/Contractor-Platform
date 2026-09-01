@@ -36,15 +36,16 @@ export default async function DispatchCenterPage({
   prevDay.setDate(prevDay.getDate() - 1);
   const nextDay = new Date(day);
   nextDay.setDate(nextDay.getDate() + 1);
+  const canCreate = can(ctx.role, "jobs:manage");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)] md:block">
             Dispatch Center
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--cy-navy)]">
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-2xl">
             Today&apos;s Dispatch
           </h1>
           {!isToday ? (
@@ -53,24 +54,24 @@ export default async function DispatchCenterPage({
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1 md:gap-2">
           <Link
             href={`/dispatch?date=${format(prevDay, "yyyy-MM-dd")}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "size-11 justify-center px-0 md:h-8 md:w-auto md:px-3")}
             aria-label="Previous day"
           >
             <ChevronLeft className="size-4" />
-            Previous
+            <span className="hidden md:inline">Previous</span>
           </Link>
-          <span className="min-w-[7.5rem] text-center text-sm font-semibold text-[var(--cy-navy)]">
+          <span className="min-w-[6.5rem] text-center text-sm font-semibold text-[var(--cy-navy)]">
             {format(day, "EEE, MMM d")}
           </span>
           <Link
             href={`/dispatch?date=${format(nextDay, "yyyy-MM-dd")}`}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "size-11 justify-center px-0 md:h-8 md:w-auto md:px-3")}
             aria-label="Next day"
           >
-            Next
+            <span className="hidden md:inline">Next</span>
             <ChevronRight className="size-4" />
           </Link>
           {!isToday ? (
@@ -78,10 +79,14 @@ export default async function DispatchCenterPage({
               Today
             </Link>
           ) : null}
-          {can(ctx.role, "jobs:manage") ? (
-            <Link href="/jobs/new?returnTo=dispatch" className={cn(buttonVariants({ size: "sm" }))}>
+          {canCreate ? (
+            <Link
+              href="/jobs/new?returnTo=dispatch"
+              className={cn(buttonVariants({ size: "sm" }), "h-11 px-3 md:h-8")}
+            >
               <Plus className="size-4" />
-              New Job
+              <span className="md:hidden">Job</span>
+              <span className="hidden md:inline">New Job</span>
             </Link>
           ) : null}
         </div>

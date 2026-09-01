@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { assignJobToTechnicianAction } from "@/server/actions/dispatch";
 import { DispatchJobCard } from "@/components/dispatch/job-card";
 import { DispatchJobDrawer } from "@/components/dispatch/job-drawer";
@@ -11,7 +11,7 @@ import { DispatchAskBar } from "@/components/dispatch/ai-bar";
 import { RouteOptimizePanel } from "@/components/dispatch/route-optimize";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { matchesDispatchFilters, uniqueCities, type DispatchPulse } from "@/lib/dispatch/filters";
+import { countActiveDispatchFilters, matchesDispatchFilters, uniqueCities, type DispatchPulse } from "@/lib/dispatch/filters";
 import { TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchBoardData, DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 
@@ -56,8 +56,11 @@ export function DispatchBoard({
   const [jobType, setJobType] = useState("all");
   const [status, setStatus] = useState("all");
   const [city, setCity] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [pulse, setPulse] = useState<DispatchPulse>("all");
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [routeHint, setRouteHint] = useState(false);
   const [density, setDensity] = useState<"compact" | "comfortable">("compact");
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +73,10 @@ export function DispatchBoard({
   const [pending, start] = useTransition();
 
   const filters = useMemo(
-    () => ({ query, jobType, status, city, pulse }),
-    [query, jobType, status, city, pulse]
+    () => ({ query, jobType, status, city, pulse, priority }),
+    [query, jobType, status, city, pulse, priority]
   );
+  const activeFilterCount = countActiveDispatchFilters({ techId, jobType, status, city, priority });
 
   const technicians = useMemo(
     () =>
@@ -124,7 +128,85 @@ export function DispatchBoard({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Daily pulse">
+      <div className="space-y-2 md:hidden">
+        <p className="text-sm text-[var(--cy-navy)]">
+          <span className="font-semibold">{board.metrics.jobs} Jobs</span>
+          <span className="text-[var(--muted-foreground)]">
+            {" "}
+            · {board.metrics.inProgress} In Progress · {board.issues.length} Issues
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Quick filters">
+          <PulseChip label="All" value={board.metrics.jobs} active={pulse === "all"} onClick={() => setPulse("all")} />
+          <PulseChip
+            label="Late"
+            value={board.metrics.runningLate}
+            active={pulse === "runningLate"}
+            onClick={() => setPulse("runningLate")}
+            tone={board.metrics.runningLate ? "late" : undefined}
+          />
+          <PulseChip
+            label="Emergency"
+            value={board.metrics.emergency}
+            active={pulse === "emergency"}
+            onClick={() => setPulse("emergency")}
+            tone={board.metrics.emergency ? "emergency" : undefined}
+          />
+          <PulseChip
+            label="Unassigned"
+            value={board.metrics.unassigned}
+            active={pulse === "unassigned"}
+            onClick={() => setPulse("unassigned")}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {searchOpen ? (
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search jobs or customers"
+              aria-label="Search jobs or customers"
+              className="h-11 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
+            />
+          ) : (
+            <button
+              type="button"
+              className="inline-flex h-11 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 text-sm text-[var(--muted-foreground)]"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search jobs or customers"
+            >
+              <Search className="size-4" />
+              Search
+            </button>
+          )}
+          <button
+            type="button"
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-3 text-sm font-medium text-[var(--cy-navy)]"
+            onClick={() => setFiltersOpen(true)}
+            aria-label={activeFilterCount ? `Filters ${activeFilterCount} active` : "Filters"}
+          >
+            <SlidersHorizontal className="size-4" />
+            Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+          </button>
+        </div>
+        {board.issues.length > 0 ? (
+          <button
+            type="button"
+            className="flex min-h-11 w-full items-center justify-between rounded-xl bg-amber-50 px-3 text-left text-sm font-medium text-amber-950"
+            onClick={() => setIssuesOpen(true)}
+          >
+            <span>
+              <AlertTriangle className="mr-1.5 inline size-4" />
+              {board.issues.length} Dispatch Issues
+              {board.metrics.emergency ? ` · ${board.metrics.emergency} Emergency` : ""}
+            </span>
+            <span className="text-[var(--cy-orange)]">View</span>
+          </button>
+        ) : null}
+      </div>
+
+      <div className="hidden flex-wrap gap-1.5 md:flex" role="toolbar" aria-label="Daily pulse">
         <PulseChip label="Jobs" value={board.metrics.jobs} active={pulse === "all"} onClick={() => setPulse("all")} />
         <PulseChip label="Completed" value={board.metrics.completed} active={pulse === "completed"} onClick={() => setPulse("completed")} />
         <PulseChip label="In progress" value={board.metrics.inProgress} active={pulse === "inProgress"} onClick={() => setPulse("inProgress")} />
@@ -145,7 +227,7 @@ export function DispatchBoard({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -253,7 +335,7 @@ export function DispatchBoard({
       </div>
 
       {routeHint ? (
-        <p className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--cy-navy)]">
+        <p className="hidden rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--cy-navy)] md:block">
           Connect Google Maps in Settings to enable drive-time optimization. ContractorYou will not invent savings.
         </p>
       ) : null}
@@ -342,35 +424,61 @@ export function DispatchBoard({
       </div>
 
       <div className="space-y-3 md:hidden">
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Dispatch issues · {board.issues.length}</h2>
-            <button type="button" className="text-xs font-medium text-[var(--cy-orange)]" onClick={() => setIssuesOpen(true)}>
-              Open
-            </button>
-          </div>
-        </section>
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-3">
-          <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Unassigned · {unassigned.length}</h2>
-          {unassigned.length === 0 ? (
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">No unassigned jobs.</p>
-          ) : (
+        {unassigned.length > 0 ? (
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--cy-navy)]">
+              Unassigned — {unassigned.length}
+            </h2>
             <ul className="mt-2 space-y-2">
               {unassigned.map((job) => (
-                <DispatchJobCard key={job.id} job={job} density={density} onSelect={setSelected} />
+                <DispatchJobCard key={job.id} job={job} density="compact" onSelect={setSelected} />
               ))}
             </ul>
-          )}
-        </section>
-        {technicians.length === 0 ? (
-          <p className="text-sm text-[var(--muted-foreground)]">No active technicians.</p>
+          </section>
+        ) : null}
+        {technicians.filter((lane) => lane.jobs.length > 0 || techId !== "all").length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">No technicians with jobs.</p>
         ) : (
-          technicians.map((lane) => (
-            <MobileTechCard key={lane.userId} lane={lane} density={density} onSelect={setSelected} />
-          ))
+          technicians
+            .filter((lane) => lane.jobs.length > 0 || techId !== "all")
+            .map((lane) => <MobileTechCard key={lane.userId} lane={lane} onSelect={setSelected} />)
         )}
         {filteredEmpty ? <p className="text-sm text-[var(--muted-foreground)]">No jobs match these filters.</p> : null}
       </div>
+
+      {filtersOpen ? (
+        <Sheet open onOpenChange={setFiltersOpen}>
+          <SheetContent side="bottom" className="max-h-[85vh] w-full rounded-t-2xl sm:max-w-none">
+            <SheetHeader>
+              <SheetTitle>Filters</SheetTitle>
+              <SheetDescription>Narrow today&apos;s board. Desktop dropdowns stay in the toolbar.</SheetDescription>
+            </SheetHeader>
+            <MobileFilterForm
+              technicians={board.technicians}
+              jobTypes={board.jobTypes}
+              statuses={statuses}
+              cities={cities}
+              values={{ techId, jobType, status, city, priority }}
+              onApply={(next) => {
+                setTechId(next.techId);
+                setJobType(next.jobType);
+                setStatus(next.status);
+                setCity(next.city);
+                setPriority(next.priority);
+                setFiltersOpen(false);
+              }}
+              onClear={() => {
+                setTechId("all");
+                setJobType("all");
+                setStatus("all");
+                setCity("all");
+                setPriority("all");
+                setFiltersOpen(false);
+              }}
+            />
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       {issuesOpen ? (
         <Sheet open onOpenChange={setIssuesOpen}>
@@ -573,44 +681,146 @@ function JobList({
 
 function MobileTechCard({
   lane,
-  density,
   onSelect,
 }: {
   lane: DispatchLane;
-  density: "compact" | "comfortable";
   onSelect: (job: DispatchCard) => void;
 }) {
-  const [open, setOpen] = useState(lane.state === "ON_JOB" || lane.state === "EN_ROUTE");
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-white">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-3 py-3 text-left"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--cy-navy)] text-[10px] font-semibold text-white">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--cy-navy)] text-[10px] font-semibold text-white">
             {lane.initials}
           </span>
-          <div>
-            <p className="font-semibold text-[var(--cy-navy)]">{lane.name}</p>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              {lane.jobCount} jobs · {TECH_STATE_LABEL[lane.state]}
-            </p>
+          <div className="min-w-0">
+            <p className="truncate font-semibold uppercase tracking-wide text-[var(--cy-navy)]">{lane.name}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">{TECH_STATE_LABEL[lane.state]}</p>
           </div>
         </div>
-        <span className="text-sm text-[var(--cy-orange)]">{open ? "Hide" : "Show"}</span>
-      </button>
-      {open ? (
-        <ul className="space-y-2 border-t border-[var(--border)] px-3 py-3">
-          {lane.jobs.length === 0 ? (
-            <li className="text-sm text-[var(--muted-foreground)]">No jobs on this technician.</li>
-          ) : (
-            lane.jobs.map((job) => <DispatchJobCard key={job.id} job={job} density={density} onSelect={onSelect} />)
-          )}
-        </ul>
-      ) : null}
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+          {lane.jobCount} {lane.jobCount === 1 ? "job" : "jobs"}
+        </span>
+      </div>
+      <ul className="space-y-2 border-t border-[var(--border)] px-3 py-3">
+        {lane.jobs.length === 0 ? (
+          <li className="text-sm text-[var(--muted-foreground)]">No jobs on this technician.</li>
+        ) : (
+          lane.jobs.map((job) => <DispatchJobCard key={job.id} job={job} density="compact" onSelect={onSelect} />)
+        )}
+      </ul>
     </section>
+  );
+}
+
+function MobileFilterForm({
+  technicians,
+  jobTypes,
+  statuses,
+  cities,
+  values,
+  onApply,
+  onClear,
+}: {
+  technicians: DispatchLane[];
+  jobTypes: string[];
+  statuses: string[];
+  cities: string[];
+  values: { techId: string; jobType: string; status: string; city: string; priority: string };
+  onApply: (values: { techId: string; jobType: string; status: string; city: string; priority: string }) => void;
+  onClear: () => void;
+}) {
+  const [draft, setDraft] = useState(values);
+  return (
+    <form
+      className="space-y-3 px-4 pb-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onApply(draft);
+      }}
+    >
+      <label className="block text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Technician</span>
+        <select
+          className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-white px-2"
+          value={draft.techId}
+          onChange={(event) => setDraft({ ...draft, techId: event.target.value })}
+        >
+          <option value="all">All technicians</option>
+          {technicians.map((lane) => (
+            <option key={lane.userId} value={lane.userId}>
+              {lane.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Job type</span>
+        <select
+          className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-white px-2"
+          value={draft.jobType}
+          onChange={(event) => setDraft({ ...draft, jobType: event.target.value })}
+        >
+          <option value="all">All types</option>
+          {jobTypes.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Status</span>
+        <select
+          className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-white px-2"
+          value={draft.status}
+          onChange={(event) => setDraft({ ...draft, status: event.target.value })}
+        >
+          <option value="all">All statuses</option>
+          {statuses.map((value) => (
+            <option key={value} value={value}>
+              {value.replaceAll("_", " ")}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Service area</span>
+        <select
+          className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-white px-2"
+          value={draft.city}
+          onChange={(event) => setDraft({ ...draft, city: event.target.value })}
+        >
+          <option value="all">All areas</option>
+          {cities.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Priority</span>
+        <select
+          className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-white px-2"
+          value={draft.priority}
+          onChange={(event) => setDraft({ ...draft, priority: event.target.value })}
+        >
+          <option value="all">All priorities</option>
+          <option value="URGENT">Urgent</option>
+          <option value="HIGH">High</option>
+          <option value="NORMAL">Normal</option>
+          <option value="LOW">Low</option>
+        </select>
+      </label>
+      <div className="flex gap-2 pt-2">
+        <Button type="button" variant="outline" className="h-11 flex-1" onClick={onClear}>
+          Clear
+        </Button>
+        <Button type="submit" className="h-11 flex-1">
+          Apply filters
+        </Button>
+      </div>
+    </form>
   );
 }

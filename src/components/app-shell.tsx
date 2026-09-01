@@ -44,7 +44,7 @@ import { logoutAction } from "@/server/actions/auth";
 import { can, type Permission } from "@/lib/permissions";
 import type { CompanyRole } from "@prisma/client";
 import { GlobalSearch } from "@/components/global-search";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { MobileWorkspaceLinks, WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { DemoModeBadge } from "@/components/demo-mode-badge";
 import { accessibleWorkspaces, type WorkspaceId } from "@/lib/workspaces";
 
@@ -276,6 +276,7 @@ export function AppShell({
                 </div>
               ) : null}
             </div>
+            <MobileWorkspaceLinks current={current} allowed={workspaces} onNavigate={() => setOpen(false)} />
             <NavList pathname={pathname} role={role} onNavigate={() => setOpen(false)} />
             <div className="border-t border-white/8 p-3">
               <Link
@@ -292,26 +293,29 @@ export function AppShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-white/95 px-3 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-[var(--border)] bg-white/95 px-3 backdrop-blur md:gap-3 md:px-6">
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="shrink-0 md:hidden"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </Button>
 
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--cy-navy)] md:hidden">
+            {companyName}
+          </p>
           <WorkspaceSwitcher current={current} allowed={workspaces} />
-          {isDemo ? <DemoModeBadge /> : null}
+          {isDemo ? <span className="hidden md:inline-flex"><DemoModeBadge /></span> : null}
           <GlobalSearch />
 
           <button
             type="button"
             disabled
             title="Notifications coming soon"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--cy-text-muted)]"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] md:inline-flex"
           >
             <Bell className="h-4 w-4" />
             <span className="sr-only">Notifications coming soon</span>
@@ -320,14 +324,14 @@ export function AppShell({
             type="button"
             disabled
             title="Help coming soon"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--cy-text-muted)]"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] md:inline-flex"
           >
             <CircleHelp className="h-4 w-4" />
             <span className="sr-only">Help coming soon</span>
           </button>
 
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-[var(--cy-gray)]">
+            <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-[var(--cy-gray)]">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--cy-navy)] text-xs font-semibold text-white">
                 {userName
                   .split(" ")

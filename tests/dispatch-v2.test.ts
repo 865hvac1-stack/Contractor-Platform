@@ -7,9 +7,9 @@ import { resolve } from "node:path";
 import { invokeRegisteredAction } from "@/lib/actions/invoke";
 import { planFromQuestion } from "@/lib/actions/planner";
 import { buildIssues, buildMetrics, getDispatchBoard, toDispatchCard } from "@/lib/dispatch/board";
-import { matchesDispatchFilters } from "@/lib/dispatch/filters";
+import { countActiveDispatchFilters, matchesDispatchFilters } from "@/lib/dispatch/filters";
 import { classifyDispatchJob } from "@/lib/dispatch/job-type";
-import { findScheduleConflict, isRunningLate, technicianBoardState } from "@/lib/dispatch/validate";
+import { findScheduleConflict, isRunningLate, minutesLate, technicianBoardState } from "@/lib/dispatch/validate";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
 import { can } from "@/lib/permissions";
 import { routingConfigured } from "@/lib/routing/provider";
@@ -59,6 +59,7 @@ describe("dispatch V2 helpers", () => {
     expect(isRunningLate({ scheduledStart: "2026-09-01T14:00:00", status: "SCHEDULED" }, now)).toBe(true);
     expect(isRunningLate({ scheduledStart: "2026-09-01T14:00:00", status: "IN_PROGRESS" }, now)).toBe(false);
     expect(isRunningLate({ scheduledStart: "2026-09-01T16:00:00", status: "SCHEDULED" }, now)).toBe(false);
+    expect(minutesLate({ scheduledStart: "2026-09-01T14:00:00", status: "SCHEDULED" }, now)).toBe(60);
   });
 
   it("derives technician board state from real job statuses", () => {
@@ -112,6 +113,8 @@ describe("dispatch V2 helpers", () => {
         matchesDispatchFilters(job, { query: "", jobType: "all", status: "all", city: "all", pulse: "runningLate" }, new Date("2026-09-01T12:00:00"))
       )
     ).toHaveLength(1);
+    expect(countActiveDispatchFilters({ techId: "all", jobType: "all", status: "all", city: "all" })).toBe(0);
+    expect(countActiveDispatchFilters({ techId: "t1", jobType: "Maintenance", status: "all", city: "all", priority: "URGENT" })).toBe(3);
   });
 
   it("builds today metrics and categorized issues from the same cards", () => {
@@ -165,10 +168,19 @@ describe("dispatch V2 helpers", () => {
     expect(board).toContain("md:hidden");
     expect(board).toContain("hidden min-h-[28rem] flex-1 md:block");
     expect(board).toContain("w-[300px]");
+    expect(board).toContain("Filters");
+    expect(board).toContain("hidden flex-wrap items-center gap-2 md:flex");
     const card = readFileSync(resolve("src/components/dispatch/job-card.tsx"), "utf8");
     expect(card).toContain('role="button"');
     expect(card).toContain("Open job");
     expect(card).not.toMatch(/<button[\s\S]*draggable/);
+    const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
+    expect(shell).toContain("overflow-hidden");
+    expect(shell).toContain("MobileWorkspaceLinks");
+    expect(shell).toContain("shrink-0");
+    const switcher = readFileSync(resolve("src/components/workspace-switcher.tsx"), "utf8");
+    expect(switcher).toContain("hidden min-w-0 md:flex");
+    expect(switcher).not.toContain("flex-wrap");
   });
 });
 

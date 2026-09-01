@@ -52,6 +52,14 @@ export function isRunningLate(
   return new Date(job.scheduledStart) < now;
 }
 
+export function minutesLate(
+  job: { scheduledStart: Date | string | null; status: string },
+  now = new Date()
+) {
+  if (!isRunningLate(job, now) || !job.scheduledStart) return null;
+  return Math.max(0, Math.round((now.getTime() - new Date(job.scheduledStart).getTime()) / 60000));
+}
+
 export const TECH_STATE_LABEL = {
   AVAILABLE: "Available",
   ON_JOB: "On job",
