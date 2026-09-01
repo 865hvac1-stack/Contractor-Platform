@@ -226,8 +226,10 @@ export async function identifyEstimateFollowups(
         ? "No open estimates currently meet the follow-up criteria."
         : `${eligible.length} open estimate${eligible.length === 1 ? "" : "s"} · ${formatMoney(total)} opportunity.${heldNote}`,
     data: eligible.map((row) => ({
+      id: row.id,
       estimateNumber: row.estimateNumber,
       customer: customerDisplayName(row.customer),
+      customerId: row.customer.id,
       totalCents: row.totalCents,
       daysOld: daysSince(row.issueDate),
       status: row.status,
