@@ -264,7 +264,8 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
         companyId: tenant.id,
         firstName: first,
         lastName: last,
-        businessName: i % 17 === 0 ? `${last} Holdings` : i % 23 === 0 ? `${last} Properties` : null,
+        businessName:
+          i < 5 ? null : i % 17 === 0 ? `${last} Holdings` : i % 23 === 0 ? `${last} Properties` : null,
         email: `${first}.${last}.${i}@${DEMO_CUSTOMER_EMAIL_DOMAIN}`.toLowerCase(),
         phone: `(865) 555-${String(1000 + i).padStart(4, "0")}`,
         preferredContactMethod: i % 3 === 0 ? "TEXT" : i % 3 === 1 ? "PHONE" : "EMAIL",

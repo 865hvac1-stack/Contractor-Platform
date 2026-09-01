@@ -216,7 +216,11 @@ export function AppShell({
         <div className="border-b border-white/8 px-4 py-5">
           <BrandMark variant="full" tone="light" />
           <p className="mt-3 truncate text-sm font-medium text-white/70">{companyName}</p>
-          {isDemo ? <div className="mt-2"><DemoModeBadge /></div> : null}
+          {isDemo ? (
+            <div className="mt-2">
+              <DemoModeBadge tone="on-dark" />
+            </div>
+          ) : null}
         </div>
         <NavList pathname={pathname} role={role} />
         <div className="border-t border-white/8 p-3">
@@ -254,7 +258,14 @@ export function AppShell({
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            <p className="truncate px-5 pt-3 text-sm text-white/60">{companyName}</p>
+            <div className="px-5 pt-3">
+              <p className="truncate text-sm text-white/60">{companyName}</p>
+              {isDemo ? (
+                <div className="mt-2">
+                  <DemoModeBadge tone="on-dark" />
+                </div>
+              ) : null}
+            </div>
             <NavList pathname={pathname} role={role} onNavigate={() => setOpen(false)} />
             <div className="border-t border-white/8 p-3">
               <Link
@@ -283,6 +294,7 @@ export function AppShell({
           </Button>
 
           <WorkspaceSwitcher current={current} allowed={workspaces} />
+          {isDemo ? <DemoModeBadge /> : null}
           <GlobalSearch />
 
           <button

@@ -42,6 +42,8 @@ const toneMap: Record<string, string> = {
   LOST: "bg-rose-50 text-rose-800",
   SPAM: "bg-stone-100 text-stone-500",
   NOT_CONNECTED: "bg-slate-100 text-slate-600",
+  DEMO_CONNECTED: "bg-[#FF6A1A]/10 text-[#9A3412]",
+  "DEMO CONNECTED": "bg-[#FF6A1A]/10 text-[#9A3412]",
   CONNECTING: "bg-amber-50 text-amber-800",
   SELECT_ACCOUNT: "bg-amber-50 text-amber-800",
   SYNCING: "bg-sky-50 text-sky-800",

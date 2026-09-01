@@ -73,7 +73,7 @@ export default async function SocialPage() {
             <article key={channel} className="rounded-2xl border bg-white p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium text-[var(--cy-navy)]">{channel.replaceAll("_", " ")}</p>
-                <StatusBadge status={card.status.replaceAll("_", " ")} />
+                <StatusBadge status={card.status} />
               </div>
               <p className="mt-2 text-sm text-[var(--muted-foreground)]">{card.detail}</p>
             </article>

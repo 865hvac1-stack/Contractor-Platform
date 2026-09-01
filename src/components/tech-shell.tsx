@@ -40,7 +40,11 @@ export function TechShell({
           <div className="min-w-0 text-right">
             <p className="truncate text-sm font-medium">{userName}</p>
             <p className="truncate text-[11px] text-white/55">{companyName}</p>
-            {isDemo ? <div className="mt-1 flex justify-end"><DemoModeBadge compact /></div> : null}
+            {isDemo ? (
+              <div className="mt-1 flex justify-end">
+                <DemoModeBadge compact tone="on-dark" />
+              </div>
+            ) : null}
           </div>
         </div>
       </header>
