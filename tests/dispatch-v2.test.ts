@@ -94,12 +94,13 @@ describe("dispatch V2 helpers", () => {
   it("filters pulse, search, type, status, and service area against real card fields", () => {
     const jobs = [
       card({ id: "1", status: "COMPLETED", city: "Knoxville", customer: "Patricia Holloway" }),
-      card({ id: "2", status: "IN_PROGRESS", city: "Farragut", jobType: "No Cooling", kind: "emergency", priority: "URGENT" }),
+      card({ id: "2", status: "IN_PROGRESS", city: "Farragut", customer: "John Smith", jobType: "No Cooling", kind: "emergency", priority: "URGENT" }),
       card({
         id: "3",
         status: "SCHEDULED",
         scheduledStart: new Date("2026-09-01T10:00:00"),
         city: "Knoxville",
+        customer: "Owen Hodge",
         assigneeIds: [],
       }),
     ];
