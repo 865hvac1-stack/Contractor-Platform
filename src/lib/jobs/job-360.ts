@@ -118,7 +118,7 @@ export async function loadJob360(
           payments: { orderBy: { paidAt: "desc" }, take: 40 },
         },
       },
-      photos: { orderBy: { createdAt: "desc" }, take: 40 },
+      photos: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 40 },
       workflowEvents: { orderBy: { createdAt: "asc" }, take: 40 },
     },
   });

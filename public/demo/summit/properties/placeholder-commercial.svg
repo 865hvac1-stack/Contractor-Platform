@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520" role="img" aria-label="Demo commercial property placeholder">
+  <rect width="800" height="520" fill="#111B2E"/>
+  <rect x="0" y="400" width="800" height="120" fill="#0c1424"/>
+  <rect x="150" y="90" width="500" height="310" fill="#1b2944"/>
+  <rect x="150" y="90" width="500" height="28" fill="#FF6A1A"/>
+  <rect x="190" y="150" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="280" y="150" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="370" y="150" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="460" y="150" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="540" y="150" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="190" y="230" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="280" y="230" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="370" y="230" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="460" y="230" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="540" y="230" width="70" height="50" fill="#d7e0ee"/>
+  <rect x="360" y="320" width="80" height="80" fill="#111B2E"/>
+  <text x="400" y="480" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="20">
+    Demo placeholder  not this customer's actual home
+  </text>
+</svg>

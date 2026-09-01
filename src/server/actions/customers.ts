@@ -163,3 +163,106 @@ export async function createPropertyAction(
     throw e;
   }
 }
+
+export async function addCustomerNoteAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("customers:manage");
+    const customerId = String(formData.get("customerId") || "");
+    const propertyId = String(formData.get("propertyId") || "") || null;
+    const body = String(formData.get("body") || "").trim();
+    if (!body) return { ok: false, error: "Write a note first." };
+    if (body.length > 2000) return { ok: false, error: "Keep the note under 2,000 characters." };
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId: ctx.company.id },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Customer not found." };
+    if (propertyId) {
+      const property = await prisma.property.findFirst({
+        where: { id: propertyId, companyId: ctx.company.id, customerId },
+      });
+      if (!property) return { ok: false, error: "Property not found." };
+    }
+    const note = await prisma.customerNote.create({
+      data: {
+        companyId: ctx.company.id,
+        customerId,
+        propertyId,
+        authorId: ctx.user.id,
+        body,
+      },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "customer.note_added",
+      entityType: "CustomerNote",
+      entityId: note.id,
+      metadata: { customerId },
+    });
+    revalidatePath(`/customers/${customerId}`);
+    revalidatePath(`/office/customers/${customerId}`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export async function updateCustomerProfileAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("customers:manage");
+    const customerId = String(formData.get("customerId") || "");
+    const parsed = customerSchema.pick({
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      preferredContactMethod: true,
+    }).safeParse({
+      firstName: formData.get("firstName"),
+      lastName: formData.get("lastName"),
+      email: formData.get("email") || "",
+      phone: formData.get("phone") || "",
+      preferredContactMethod: formData.get("preferredContactMethod") || "ANY",
+    });
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid customer." };
+    }
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId: ctx.company.id },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Customer not found." };
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+        email: emptyToNull(parsed.data.email),
+        phone: emptyToNull(parsed.data.phone),
+        preferredContactMethod: parsed.data.preferredContactMethod,
+      },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "customer.updated",
+      entityType: "Customer",
+      entityId: customer.id,
+      metadata: { fields: ["name", "phone", "email", "preferredContactMethod"] },
+    });
+    revalidatePath(`/customers/${customer.id}`);
+    revalidatePath(`/office/customers/${customer.id}`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}

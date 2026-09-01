@@ -32,6 +32,8 @@ export async function askContractorYouAction(
     const question = String(formData.get("question") || "");
     const conversationId = String(formData.get("conversationId") || "") || null;
     const jobId = String(formData.get("jobId") || "") || null;
+    const customerId = String(formData.get("customerId") || "") || null;
+    const propertyId = String(formData.get("propertyId") || "") || null;
     const result = await askContractorYou({
       companyId: ctx.company.id,
       userId: ctx.user.id,
@@ -39,6 +41,8 @@ export async function askContractorYouAction(
       question,
       conversationId,
       jobId,
+      customerId,
+      propertyId,
     });
     if (!result.ok) return { ok: false, error: result.error };
     revalidatePath("/intelligence");

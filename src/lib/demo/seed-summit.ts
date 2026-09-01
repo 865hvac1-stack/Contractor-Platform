@@ -30,6 +30,7 @@ import { assertResettableDemoCompany } from "@/lib/demo/guard";
 import { wipeDemoCompany } from "@/lib/demo/wipe";
 import { getStarterTemplate } from "@/lib/playbooks/templates";
 import { assignPlaybookToJob } from "@/lib/playbooks/assign";
+import { seedCustomer360Showcase } from "@/lib/demo/seed-customer-360";
 
 export type DemoSeedCounts = {
   companyId: string;
@@ -1049,6 +1050,14 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
       { companyId: tenant.id, name: "Service 18", unitNumber: "S18", year: 2021, make: "Ram", model: "ProMaster" },
       { companyId: tenant.id, name: "Install 4", unitNumber: "I4", year: 2020, make: "Ford", model: "F-250" },
     ],
+  });
+
+  await seedCustomer360Showcase({
+    prisma,
+    companyId: tenant.id,
+    ownerId,
+    customers,
+    now,
   });
 
   const historicalJobs = jobs.filter((job) => job.when.getTime() < startOfToday(now)).length;

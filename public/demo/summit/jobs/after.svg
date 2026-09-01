@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="Demo after photo">
+  <rect width="640" height="480" fill="#e8edf4"/>
+  <rect x="80" y="80" width="480" height="280" fill="#111B2E"/>
+  <circle cx="320" cy="210" r="70" fill="#FF6A1A"/>
+  <text x="320" y="400" text-anchor="middle" fill="#111B2E" font-family="Arial, sans-serif" font-size="22">
+    Demo AFTER photo  not a real job image
+  </text>
+</svg>

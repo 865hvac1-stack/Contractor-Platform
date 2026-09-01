@@ -31,6 +31,7 @@ export async function wipeDemoCompany(prisma: PrismaClient, companyId: string) {
   await prisma.invoice.deleteMany({ where: { companyId } });
   await prisma.estimate.deleteMany({ where: { companyId } });
   await prisma.jobPhoto.deleteMany({ where: { companyId } });
+  await prisma.customerNote.deleteMany({ where: { companyId } });
   await prisma.jobCost.deleteMany({ where: { companyId } });
   await prisma.jobWorkflowEvent.deleteMany({ where: { companyId } });
   await prisma.jobChecklistItem.deleteMany({ where: { companyId } });

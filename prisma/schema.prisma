@@ -365,6 +365,7 @@ model User {
   compensationEvents CompensationEvent[]
   compensationApprovals CompensationEvent[] @relation("CompensationApprover")
   jobPhotosUploaded JobPhoto[] @relation("JobPhotoUploader")
+  customerNotesAuthored CustomerNote[] @relation("CustomerNoteAuthor")
   performanceGoals PerformanceGoal[]
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
@@ -531,6 +532,7 @@ model Company {
   compensationEvents CompensationEvent[]
   performanceGoals PerformanceGoal[]
   jobPhotos JobPhoto[]
+  customerNotes CustomerNote[]
   teamInvites TeamInvite[]
   routeOptimizationRuns RouteOptimizationRun[]
   stripeConnectAccount StripeConnectAccount?
@@ -659,6 +661,7 @@ model Customer {
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
   compensationEvents CompensationEvent[]
+  customerNotes CustomerNote[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -682,6 +685,26 @@ model Property {
   accessNotes  String?
   gateCodeNotes String? // treat as sensitive operational note
   isPrimary    Boolean      @default(false)
+  yearBuilt    Int?
+  squareFeet   Int?
+  bedrooms     Int?
+  bathrooms    Float?
+  lotSizeSqFt  Int?
+  lastSaleDate DateTime?
+  lastSalePriceCents Int?
+  assessedValueCents Int?
+  latitude     Float?
+  longitude    Float?
+  photoPath    String?
+  photoSource  String?
+  photoCaption String?
+  propertyClass String?
+  tags         String[]     @default([])
+  enrichmentProvider     String?
+  enrichmentRetrievedAt  DateTime?
+  enrichmentExternalId   String?
+  enrichmentStatus       String?   @default("NONE")
+  factProvenance         Json?
   sourceSystem    String?
   externalId      String?
   importSessionId String?
@@ -698,12 +721,14 @@ model Property {
   leads     Lead[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
+  customerNotes CustomerNote[]
 
   @@index([companyId])
   @@index([companyId, customerId])
   @@index([customerId])
   @@index([companyId, importSessionId])
   @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, zip])
 }
 
 model Equipment {
@@ -739,6 +764,8 @@ model Equipment {
   @@index([companyId, propertyId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, serialNumber])
+  @@index([companyId, model])
 }
 
 model JobPhoto {
@@ -752,6 +779,7 @@ model JobPhoto {
   filePath      String
   mimeType      String
   uploadedById  String?
+  deletedAt     DateTime?
   createdAt     DateTime @default(now())
 
   company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -760,6 +788,26 @@ model JobPhoto {
   uploadedBy User?      @relation("JobPhotoUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([companyId, jobId])
+  @@index([companyId, kind, createdAt])
+}
+
+model CustomerNote {
+  id         String   @id @default(cuid())
+  companyId  String
+  customerId String
+  propertyId String?
+  jobId      String?
+  authorId   String?
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  author   User?    @relation("CustomerNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, customerId, createdAt])
+  @@index([companyId, propertyId])
 }
 
 // ============================================================

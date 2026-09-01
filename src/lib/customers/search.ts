@@ -26,6 +26,18 @@ export function customerSearchWhere(companyId: string, raw: string) {
         },
       },
     },
+    {
+      equipment: {
+        some: {
+          companyId,
+          OR: [
+            { model: { contains: query, mode: "insensitive" } },
+            { serialNumber: { contains: query, mode: "insensitive" } },
+            { name: { contains: query, mode: "insensitive" } },
+          ],
+        },
+      },
+    },
   ];
   if (tokens.length >= 2) {
     or.push({

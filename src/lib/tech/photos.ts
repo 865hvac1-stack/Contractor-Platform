@@ -5,6 +5,8 @@ export const JOB_PHOTO_KINDS = [
   { value: "DATA_PLATE", label: "Data plate / model-serial" },
   { value: "DIAGNOSTIC", label: "Diagnostic / problem" },
   { value: "REPAIR", label: "Repair / work performed" },
+  { value: "DAMAGE", label: "Damage" },
+  { value: "INSTALLATION", label: "Installation" },
   { value: "WARRANTY", label: "Warranty" },
   { value: "RECEIPT", label: "Receipt / part" },
   { value: "OTHER", label: "Other" },

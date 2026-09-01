@@ -1,8 +1,11 @@
 import type { ToolName } from "@/lib/intelligence/tools";
 
-export function toolsForQuestion(question: string, jobId?: string | null): ToolName[] {
+export function toolsForQuestion(question: string, jobId?: string | null, customerId?: string | null): ToolName[] {
   const q = question.toLowerCase();
   const tools = new Set<ToolName>();
+  if (customerId) {
+    tools.add("getCustomerSummary");
+  }
   if (jobId) {
     tools.add("getJobSummary");
     tools.add("getPlaybookStatus");
@@ -82,8 +85,12 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
     tools.add("getRouteOptimizationSavings");
   }
   if (tools.size === 0) {
-    tools.add("getTopInsights");
-    tools.add("getBusinessSummary");
+    if (customerId) {
+      tools.add("getCustomerSummary");
+    } else {
+      tools.add("getTopInsights");
+      tools.add("getBusinessSummary");
+    }
   }
   return [...tools].slice(0, 4);
 }

@@ -131,9 +131,21 @@ export function JobPhotoUpload({
       {pending ? <p className="text-sm text-[var(--muted-foreground)]">Uploading… keep this screen open.</p> : null}
       {message ? <p className="text-sm text-emerald-800">{message}</p> : null}
       {error ? (
-        <p className="text-sm text-rose-700" role="alert">
-          {error} Try again — the photo was not saved.
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-rose-700" role="alert">
+            {error} The photo was not saved.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (cameraRef.current?.files?.length) submit("camera");
+              else if (libraryRef.current?.files?.length) submit("library");
+            }}
+          >
+            Retry upload
+          </Button>
+        </div>
       ) : null}
     </form>
   );

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="Demo equipment photo">
+  <rect width="640" height="480" fill="#e8edf4"/>
+  <rect x="170" y="70" width="300" height="260" rx="16" fill="#1b2944"/>
+  <rect x="200" y="110" width="240" height="80" fill="#111B2E"/>
+  <rect x="220" y="220" width="80" height="70" fill="#6b778c"/>
+  <rect x="340" y="220" width="80" height="70" fill="#6b778c"/>
+  <text x="320" y="400" text-anchor="middle" fill="#111B2E" font-family="Arial, sans-serif" font-size="20">
+    Demo equipment photo  owned Summit asset
+  </text>
+</svg>

@@ -140,6 +140,13 @@ export async function uploadJobPhotoAction(
     if (!isJobPhotoKind(kind)) return { ok: false, error: "Choose a photo category." };
     const caption = emptyToNull(String(formData.get("caption") || ""));
     const equipmentId = emptyToNull(String(formData.get("equipmentId") || ""));
+    if (equipmentId) {
+      const equipment = await prisma.equipment.findFirst({
+        where: { id: equipmentId, companyId: ctx.company.id },
+        select: { id: true },
+      });
+      if (!equipment) return { ok: false, error: "Equipment not found." };
+    }
     const root = process.env.UPLOAD_DIR || "./uploads";
     const dir = path.join(root, ctx.company.id, "job-photos");
     await mkdir(dir, { recursive: true });
@@ -179,6 +186,41 @@ export async function uploadJobPhotoAction(
       },
     });
     revalidateJob(job.id);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export async function deleteJobPhotoAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("jobs:manage");
+    const photoId = String(formData.get("photoId") || "");
+    const photo = await prisma.jobPhoto.findFirst({
+      where: { id: photoId, companyId: ctx.company.id, deletedAt: null },
+      include: { job: { select: { id: true, customerId: true } } },
+    });
+    if (!photo) return { ok: false, error: "Photo not found." };
+    if (can(ctx.role, "jobs:assigned_only") && photo.uploadedById !== ctx.user.id) {
+      return { ok: false, error: "You can only remove photos you uploaded." };
+    }
+    await prisma.jobPhoto.update({
+      where: { id: photo.id },
+      data: { deletedAt: new Date() },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "job.photo_deleted",
+      entityType: "JobPhoto",
+      entityId: photo.id,
+      metadata: { jobId: photo.jobId, customerId: photo.job.customerId },
+    });
+    revalidateJob(photo.job.id);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

@@ -59,7 +59,7 @@ export default async function TechJobWorkspacePage({
           orderBy: { createdAt: "desc" },
         },
         invoices: { include: { payments: true, lineItems: true }, orderBy: { createdAt: "desc" } },
-        photos: { orderBy: { createdAt: "desc" }, take: 24 },
+        photos: { where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: 24 },
         customerMemberships: { include: { plan: true }, orderBy: { createdAt: "desc" } },
       },
     }),

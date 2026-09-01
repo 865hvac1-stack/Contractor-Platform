@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="Demo model serial plate">
+  <rect width="640" height="480" fill="#e8edf4"/>
+  <rect x="90" y="90" width="460" height="240" fill="#111B2E"/>
+  <text x="320" y="180" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="20">MODEL XR16-036</text>
+  <text x="320" y="220" text-anchor="middle" fill="#FF6A1A" font-family="Arial, sans-serif" font-size="18">SERIAL DEMO-TRN-2012-UP</text>
+  <text x="320" y="400" text-anchor="middle" fill="#111B2E" font-family="Arial, sans-serif" font-size="18">
+    Demo data plate  OCR is not extracted
+  </text>
+</svg>

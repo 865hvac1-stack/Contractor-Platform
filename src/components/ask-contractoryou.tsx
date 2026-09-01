@@ -9,17 +9,23 @@ import { ActionCard, KindBadge } from "@/components/action-card";
 export function AskContractorYou({
   suggestions,
   jobId,
+  customerId,
+  propertyId,
   compact = false,
   variant = "panel",
   initialQuestion = "",
   autoSubmit = false,
+  placeholder,
 }: {
   suggestions: string[];
   jobId?: string;
+  customerId?: string;
+  propertyId?: string;
   compact?: boolean;
   variant?: "panel" | "bar";
   initialQuestion?: string;
   autoSubmit?: boolean;
+  placeholder?: string;
 }) {
   const [question, setQuestion] = useState(initialQuestion);
   const [conversationId, setConversationId] = useState("");
@@ -44,6 +50,8 @@ export function AskContractorYou({
         <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
           {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
+          {customerId ? <input type="hidden" name="customerId" value={customerId} /> : null}
+          {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
           <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
             Ask ContractorYou
           </p>
@@ -55,7 +63,7 @@ export function AskContractorYou({
             name="question"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Ask anything about your business..."
+            placeholder={placeholder || "Ask anything about your business..."}
             className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/8 px-3 text-sm text-white placeholder:text-white/40"
           />
           <Button type="submit" disabled={pending} className="h-10 shrink-0">
@@ -118,6 +126,8 @@ export function AskContractorYou({
       <form ref={formRef} action={formAction} className="mt-4 space-y-3">
         {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
         {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
+        {customerId ? <input type="hidden" name="customerId" value={customerId} /> : null}
+        {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
         <label htmlFor={jobId ? `ask-cy-${jobId}` : "ask-cy"} className="sr-only">
           Ask ContractorYou
         </label>
@@ -126,7 +136,7 @@ export function AskContractorYou({
           name="question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder={jobId ? "Ask about this job..." : "Ask anything about your business..."}
+          placeholder={placeholder || (jobId ? "Ask about this job..." : "Ask anything about your business...")}
           className="h-12 w-full rounded-xl border border-white/10 bg-white/8 px-4 text-sm text-white placeholder:text-white/35"
         />
         <Button type="submit" disabled={pending} className="h-11 w-full sm:w-auto">

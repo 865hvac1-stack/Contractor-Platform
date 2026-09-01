@@ -1,9 +1,7 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { AuthError } from "@/lib/auth";
 import { requireAssignedJob } from "@/lib/tech/access";
+import { loadAuthorizedJobPhoto } from "@/lib/tech/photo-access";
 import { requirePermission } from "@/lib/tenant";
 
 export async function GET(
@@ -13,16 +11,16 @@ export async function GET(
   try {
     const ctx = await requirePermission("jobs:view");
     const { id } = await params;
-    const photo = await prisma.jobPhoto.findFirst({
-      where: { id, companyId: ctx.company.id },
+    const loaded = await loadAuthorizedJobPhoto({
+      companyId: ctx.company.id,
+      isDemo: ctx.company.isDemo,
+      photoId: id,
     });
-    if (!photo) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    await requireAssignedJob(photo.jobId);
-    const root = process.env.UPLOAD_DIR || "./uploads";
-    const file = await readFile(path.join(root, photo.filePath));
-    return new NextResponse(file, {
+    if (!loaded) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await requireAssignedJob(loaded.photo.jobId);
+    return new NextResponse(loaded.file, {
       headers: {
-        "Content-Type": photo.mimeType,
+        "Content-Type": loaded.photo.mimeType,
         "Cache-Control": "private, max-age=3600",
       },
     });
