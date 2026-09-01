@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { can } from "@/lib/permissions";
 import { getStarterTemplate } from "@/lib/playbooks/templates";
 import { loadJob360 } from "@/lib/jobs/job-360";
+import { deleteCompanyJob } from "@/lib/jobs/delete";
 import { publicImportedFields, buildImportedJobSnapshot, importedWorkFields, loadJobImportSupplement } from "@/lib/jobs/imported-history";
 import { buildWorkSummary, isGenericJobTypeLabel, stripImportBoilerplate } from "@/lib/jobs/work-summary";
 import { customerSearchWhere } from "@/lib/customers/search";
@@ -102,6 +103,7 @@ describe("Job 360 records", () => {
     importedJob: "",
     nativeJob: "",
     relatedJob: "",
+    deletableJob: "",
     jobB: "",
     invoiceA: "",
     paymentA: "",
@@ -256,6 +258,17 @@ describe("Job 360 records", () => {
       },
     });
     ids.relatedJob = related.id;
+    const deletable = await prisma.job.create({
+      data: {
+        companyId: companyA.id,
+        customerId: customerA.id,
+        propertyId: propertyA.id,
+        jobNumber: `JOB-DEL-${stamp}`,
+        status: "UNSCHEDULED",
+        description: "Scratch job to delete",
+      },
+    });
+    ids.deletableJob = deletable.id;
     const jobB = await prisma.job.create({
       data: {
         companyId: companyB.id,
@@ -402,6 +415,38 @@ describe("Job 360 records", () => {
     expect(assigned).toBeNull();
     const job = await prisma.job.findFirst({ where: { id: ids.importedJob } });
     expect(job?.playbookId).toBeNull();
+  });
+
+  it("deletes a job and leaves invoices on the customer", async () => {
+    const invoice = await prisma.invoice.create({
+      data: {
+        companyId: ids.companyA,
+        customerId: ids.customerA,
+        jobId: ids.deletableJob,
+        invoiceNumber: `INV-DEL-${Date.now()}`,
+        status: "DRAFT",
+        totalCents: 1000,
+        balanceCents: 1000,
+      },
+    });
+    const result = await deleteCompanyJob(prisma, {
+      companyId: ids.companyA,
+      actorId: ids.ownerA,
+      jobId: ids.deletableJob,
+    });
+    expect(result.ok).toBe(true);
+    expect(await prisma.job.findFirst({ where: { id: ids.deletableJob } })).toBeNull();
+    const kept = await prisma.invoice.findFirst({ where: { id: invoice.id } });
+    expect(kept?.customerId).toBe(ids.customerA);
+    expect(kept?.jobId).toBeNull();
+    const cross = await deleteCompanyJob(prisma, {
+      companyId: ids.companyA,
+      actorId: ids.ownerA,
+      jobId: ids.jobB,
+    });
+    expect(cross.ok).toBe(false);
+    expect(await prisma.job.findFirst({ where: { id: ids.jobB } })).not.toBeNull();
+    expect(can("TECHNICIAN", "jobs:manage")).toBe(false);
   });
 
   it("Company A cannot load Company B job", async () => {

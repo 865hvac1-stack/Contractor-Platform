@@ -14,6 +14,7 @@ import type { JobStatus } from "@prisma/client";
 import { assignPlaybookToJob } from "@/lib/playbooks/assign";
 import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
 import { maybeAutoSyncInvoice } from "@/server/actions/quickbooks";
+import { deleteCompanyJob } from "@/lib/jobs/delete";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
@@ -235,6 +236,32 @@ export async function updateJobStatusAction(
     revalidatePath("/dashboard");
     revalidatePath("/schedule");
     return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export async function deleteJobAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("jobs:manage");
+    const jobId = String(formData.get("jobId") || "");
+    if (!jobId) return { ok: false, error: "Job is required." };
+    const result = await deleteCompanyJob(prisma, {
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      jobId,
+    });
+    if (!result.ok) return result;
+    revalidatePath("/jobs");
+    revalidatePath("/schedule");
+    revalidatePath("/dashboard");
+    revalidatePath("/dispatch");
+    revalidatePath("/office");
+    redirect("/jobs");
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
     throw e;

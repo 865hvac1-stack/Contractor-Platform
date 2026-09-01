@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShowMoreText } from "@/components/jobs/show-more-text";
+import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { cn } from "@/lib/utils";
 
 function formatDate(d: Date | null | undefined) {
@@ -48,6 +49,7 @@ export function Job360View({
   canEstimate,
   canInvoice,
   canViewMoney,
+  canDelete,
 }: {
   view: Job360;
   backHref: string;
@@ -55,6 +57,7 @@ export function Job360View({
   canEstimate: boolean;
   canInvoice: boolean;
   canViewMoney: boolean;
+  canDelete: boolean;
 }) {
   const service = view.job.serviceTypeName || view.job.jobType;
   const performedBy = view.technicians.assigned[0]?.name || view.technicians.importedName;
@@ -137,6 +140,7 @@ export function Job360View({
                 View invoice
               </Link>
             ) : null}
+            {canDelete ? <DeleteJobButton jobId={view.job.id} jobNumber={view.job.jobNumber} /> : null}
           </div>
         </div>
         {view.job.historical ? (

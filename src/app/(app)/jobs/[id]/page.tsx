@@ -83,6 +83,7 @@ export default async function JobDetailPage({
         canEstimate={can(ctx.role, "estimates:manage")}
         canInvoice={can(ctx.role, "invoices:manage")}
         canViewMoney={can(ctx.role, "invoices:view")}
+        canDelete={can(ctx.role, "jobs:manage")}
       />
 
       {can(ctx.role, "intelligence:view") ? (
