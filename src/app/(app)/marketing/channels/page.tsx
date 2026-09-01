@@ -48,7 +48,9 @@ export default async function ChannelsPage({
             <div className="grid gap-3 md:grid-cols-2">
               {group.map((card) => {
                 const href =
-                  card.action === "CONNECT" || card.action === "RECONNECT"
+                  card.provider.key === "highlevel" || card.managedThroughHighLevel
+                    ? "/settings/highlevel"
+                    : card.action === "CONNECT" || card.action === "RECONNECT"
                     ? oauthStartHref(card.provider.key)
                     : `/marketing/channels/${card.provider.key}`;
                 return (
@@ -62,6 +64,11 @@ export default async function ChannelsPage({
                         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
                           {card.provider.description}
                         </p>
+                        {card.managedThroughHighLevel ? (
+                          <p className="mt-2 text-xs font-medium text-[var(--cy-navy)]">
+                            Managed through HighLevel
+                          </p>
+                        ) : null}
                       </div>
                       <StatusBadge status={card.status} />
                     </div>

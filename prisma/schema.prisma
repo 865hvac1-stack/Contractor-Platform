@@ -524,6 +524,9 @@ model Company {
   stripeConnectAccount StripeConnectAccount?
   stripeWebhookEvents StripeWebhookEvent[]
   serviceTypes ServiceType[]
+  providerIdentityMaps ProviderIdentityMap[]
+  communicationThreads CommunicationThread[]
+  communicationMessages CommunicationMessage[]
   techDiscountLimitBps Int?
   routeStartKind String?
   routeEndKind String?
@@ -639,6 +642,7 @@ model Customer {
   callRecords CallRecord[]
   formSubmissions FormSubmission[]
   attributionEvents AttributionEvent[]
+  communicationThreads CommunicationThread[]
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
   compensationEvents CompensationEvent[]
@@ -1540,6 +1544,7 @@ model Lead {
   attributionEvents AttributionEvent[]
   callRecords CallRecord[]
   formSubmissions FormSubmission[]
+  communicationThreads CommunicationThread[]
 
   @@index([companyId])
   @@index([companyId, status])
@@ -1706,6 +1711,73 @@ model CallRecord {
   @@index([companyId])
   @@index([companyId, startedAt])
   @@index([companyId, missed])
+}
+
+model ProviderIdentityMap {
+  id         String   @id @default(cuid())
+  companyId  String
+  provider   String
+  entityType String
+  internalId String
+  externalId String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, provider, entityType, internalId])
+  @@unique([companyId, provider, entityType, externalId])
+  @@index([companyId, provider])
+}
+
+model CommunicationThread {
+  id             String   @id @default(cuid())
+  companyId      String
+  provider       String
+  externalId     String
+  channel        String
+  customerId     String?
+  leadId         String?
+  contactName    String?
+  phone          String?
+  lastPreview    String?
+  lastActivityAt DateTime
+  unread         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company  Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead     Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages CommunicationMessage[]
+
+  @@unique([companyId, provider, externalId])
+  @@index([companyId, lastActivityAt])
+  @@index([companyId, unread])
+}
+
+model CommunicationMessage {
+  id         String   @id @default(cuid())
+  companyId  String
+  threadId   String
+  provider   String
+  externalId String
+  direction  String
+  channel    String
+  kind       String
+  body       String?
+  occurredAt DateTime
+  status     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  company Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  thread  CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, provider, externalId])
+  @@index([companyId, threadId])
+  @@index([companyId, occurredAt])
 }
 
 model Automation {

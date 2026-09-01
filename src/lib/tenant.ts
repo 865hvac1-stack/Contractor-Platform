@@ -26,6 +26,17 @@ export async function requirePermissions(
   return ctx;
 }
 
+export async function requireAnyPermission(
+  permissions: Permission[],
+  companyIdHint?: string
+): Promise<TenantContext> {
+  const ctx = await requireTenant(companyIdHint);
+  if (!permissions.some((permission) => can(ctx.role, permission))) {
+    throw new AuthError("Insufficient permissions", 403);
+  }
+  return ctx;
+}
+
 /**
  * Tenant-scoped findFirst helper.
  * Always injects companyId from verified membership — never from raw client input alone.

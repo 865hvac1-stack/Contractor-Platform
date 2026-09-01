@@ -8,6 +8,8 @@ import {
 import { refreshGoogleToken } from "@/lib/integrations/oauth/google";
 import { refreshTikTokToken } from "@/lib/integrations/oauth/tiktok";
 import { refreshQuickBooksToken } from "@/lib/quickbooks/oauth";
+import { refreshHighLevelToken } from "@/lib/highlevel/oauth";
+import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import type { IntegrationStatus } from "@prisma/client";
@@ -107,7 +109,9 @@ export async function getValidAccessToken(input: {
           ? await refreshTikTokToken(tokens.refreshToken)
           : input.providerKey === QUICKBOOKS_PROVIDER_KEY
             ? await refreshQuickBooksToken(tokens.refreshToken, await loadQuickBooksAppCredentials(prisma, input.companyId))
-            : tokens;
+            : input.providerKey === HIGHLEVEL_PROVIDER_KEY
+              ? await refreshHighLevelToken(tokens.refreshToken)
+              : tokens;
     await saveConnectionTokens({
       companyId: input.companyId,
       connectionId: input.connectionId,

@@ -1,0 +1,85 @@
+import { HIGHLEVEL_API_BASE, HIGHLEVEL_AUTHORIZE_URL, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
+import {
+  highlevelClientId,
+  highlevelClientSecret,
+  highlevelRedirectUri,
+  highlevelRequestedScopes,
+} from "@/lib/highlevel/env";
+import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
+
+export function highlevelAuthorizeUrl(state: string) {
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: highlevelClientId(),
+    redirect_uri: highlevelRedirectUri(),
+    scope: highlevelRequestedScopes().join(" "),
+    state,
+  });
+  return `${HIGHLEVEL_AUTHORIZE_URL}?${params.toString()}`;
+}
+
+type TokenResponse = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+  locationId?: string;
+  companyId?: string;
+  userType?: string;
+  userId?: string;
+};
+
+export async function exchangeHighLevelCode(code: string): Promise<{
+  tokens: ProviderTokenPayload;
+  locationId: string | null;
+  agencyId: string | null;
+  userType: string | null;
+}> {
+  return requestHighLevelToken({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: highlevelRedirectUri(),
+  });
+}
+
+export async function refreshHighLevelToken(refreshToken: string) {
+  const result = await requestHighLevelToken({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    user_type: "Location",
+  });
+  return result.tokens;
+}
+
+async function requestHighLevelToken(body: Record<string, string>) {
+  const params = new URLSearchParams({
+    client_id: highlevelClientId(),
+    client_secret: highlevelClientSecret(),
+    ...body,
+  });
+  const response = await fetch(`${HIGHLEVEL_API_BASE}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+  const data = (await response.json().catch(() => ({}))) as TokenResponse;
+  if (!response.ok || !data.access_token) {
+    throw new Error("HighLevel did not return an access token.");
+  }
+  const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : undefined;
+  return {
+    tokens: {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt,
+      scopes: data.scope?.split(/[,\s]+/).filter(Boolean) ?? highlevelRequestedScopes(),
+    } satisfies ProviderTokenPayload,
+    locationId: data.locationId ?? null,
+    agencyId: data.companyId ?? null,
+    userType: data.userType ?? null,
+  };
+}
+
+export function highlevelProviderKey() {
+  return HIGHLEVEL_PROVIDER_KEY;
+}

@@ -14,7 +14,7 @@ export function appUrl() {
   return (process.env.APP_URL || "http://127.0.0.1:43123").replace(/\/$/, "");
 }
 
-export function oauthCallbackUrl(family: "google" | "meta" | "tiktok" | "linkedin" | "quickbooks") {
+export function oauthCallbackUrl(family: "google" | "meta" | "tiktok" | "linkedin" | "quickbooks" | "highlevel") {
   return `${appUrl()}/api/integrations/${family}/callback`;
 }
 
@@ -78,6 +78,20 @@ export function getProviderEnv(providerKey: string): ProviderEnvStatus {
         configured: missing.length === 0,
         missing,
         notes: ["LinkedIn Marketing and Community Management APIs require product access approval."],
+      };
+    }
+    case "highlevel": {
+      const missing: string[] = [];
+      if (!present("HIGHLEVEL_CLIENT_ID")) missing.push("HIGHLEVEL_CLIENT_ID");
+      if (!present("HIGHLEVEL_CLIENT_SECRET")) missing.push("HIGHLEVEL_CLIENT_SECRET");
+      return {
+        providerKey,
+        configured: missing.length === 0,
+        missing,
+        notes: [
+          "Marketplace OAuth is the production path. A location Private Integration Token can connect 865 HVAC for testing.",
+          `Webhook: ${appUrl()}/api/webhooks/highlevel`,
+        ],
       };
     }
     case "business_phone":

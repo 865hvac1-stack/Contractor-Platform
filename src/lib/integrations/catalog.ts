@@ -6,7 +6,7 @@ export type ProviderCategory =
   | "ACCOUNTING"
   | "PAYMENTS";
 
-export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend" | "intuit" | "stripe";
+export type ProviderFamily = "google" | "meta" | "tiktok" | "linkedin" | "internal" | "twilio" | "resend" | "intuit" | "stripe" | "highlevel";
 
 export type IntegrationProvider = {
   key: string;
@@ -166,6 +166,18 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     internalLive: false,
     approvalRequired: true,
     futureCapabilities: ["Page", "Campaign analytics"],
+  },
+  {
+    key: "highlevel",
+    name: "HighLevel",
+    category: "COMMUNICATION",
+    family: "highlevel",
+    description: "Preferred phone, SMS, conversations, leads, and marketing automation infrastructure.",
+    value: "ContractorYou remains the operating system. HighLevel carries the conversations.",
+    oauthReady: true,
+    internalLive: false,
+    approvalRequired: true,
+    futureCapabilities: ["SMS", "Calls", "Inbox", "Leads", "Workflows"],
   },
   {
     key: "business_phone",

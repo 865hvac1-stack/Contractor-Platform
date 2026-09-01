@@ -93,6 +93,22 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
+      {can(ctx.role, "marketing:view") ? (
+        <Link
+          href="/settings/highlevel"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Integrations
+          </p>
+          <h2 className="mt-2 font-medium">HighLevel</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Connect the existing HighLevel location for phone, SMS, conversations, and marketing
+            automation. ContractorYou still owns jobs, invoices, and payments.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "accounting:view") ? (
         <Link
           href="/settings/quickbooks"

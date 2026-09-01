@@ -1,57 +1,114 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
+import { prisma } from "@/lib/db";
+import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { InboxReplyForm } from "@/components/highlevel/inbox-reply-form";
 
 export default async function CommunicationsPage() {
-  await requirePermission("marketing:view");
+  const ctx = await requirePermission("marketing:view");
+  const connection = await prisma.integrationConnection.findFirst({
+    where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+  });
+  const threads = await prisma.communicationThread.findMany({
+    where: { companyId: ctx.company.id },
+    orderBy: { lastActivityAt: "desc" },
+    take: 40,
+    include: {
+      customer: { select: { id: true, firstName: true, lastName: true, businessName: true } },
+      lead: { select: { id: true, firstName: true, lastName: true, source: true } },
+      messages: { orderBy: { occurredAt: "desc" }, take: 8 },
+    },
+  });
+  const calls = await prisma.callRecord.findMany({
+    where: { companyId: ctx.company.id },
+    orderBy: { startedAt: "desc" },
+    take: 10,
+  });
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)]">
-          Communications
-        </h1>
-        <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
-          Inbox for phone, SMS, email, and website chat. Coming soon — we will not simulate
-          conversations or send messages.
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)]">Communications</h1>
+          <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
+            ContractorYou inbox over HighLevel conversations. Messages are not invented. Connect HighLevel
+            to see texts, calls, and missed-call results.
+          </p>
+        </div>
+        <Link href="/settings/highlevel" className={cn(buttonVariants({ variant: "outline" }))}>
+          HighLevel settings
+        </Link>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {[
-          {
-            title: "Business phone",
-            body: "Call tracking, missed-call alerts, and recordings when a telephony provider is plugged in.",
-          },
-          {
-            title: "SMS",
-            body: "Two-way text and lead response time. Required before automations can text a customer.",
-          },
-          {
-            title: "Email",
-            body: "Estimate follow-up and reactivation campaigns with booked / sold outcomes.",
-          },
-          {
-            title: "Website chat",
-            body: "Normalize chat into the same lead pipeline as Google and Meta.",
-          },
-        ].map((item) => (
-          <article key={item.title} className="rounded-2xl border border-[var(--border)] bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-[var(--cy-navy)]">{item.title}</h2>
-              <span className="rounded bg-[var(--cy-gray)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--cy-text-muted)]">
-                Coming soon
-              </span>
-            </div>
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">{item.body}</p>
-          </article>
-        ))}
-      </div>
+      {connection?.status !== "CONNECTED" ? (
+        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
+          HighLevel is not connected. Settings → HighLevel. Direct Twilio is not required when HighLevel is
+          the communications provider.
+        </p>
+      ) : null}
 
-      <Link href="/marketing/channels" className={cn(buttonVariants(), "inline-flex")}>
-        View channel connections
-      </Link>
+      <section className="space-y-3">
+        <h2 className="font-medium">Inbox</h2>
+        {threads.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            No conversations have been received yet. After HighLevel webhooks are configured, inbound SMS
+            and call events appear here.
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border bg-white">
+            {threads.map((thread) => (
+              <li key={thread.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">
+                      {thread.customer
+                        ? thread.customer.businessName ||
+                          `${thread.customer.firstName} ${thread.customer.lastName}`
+                        : thread.contactName || thread.phone || "Unknown"}
+                    </p>
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      {thread.channel} · {thread.phone || "No phone"} ·{" "}
+                      {thread.lead ? `Lead · ${thread.lead.source}` : thread.customerId ? "Customer" : "Unmatched"}
+                    </p>
+                    <p className="mt-1 text-sm">{thread.lastPreview}</p>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    {thread.lastActivityAt.toLocaleString()}
+                  </span>
+                </div>
+                {thread.phone ? (
+                  <InboxReplyForm
+                    to={thread.phone}
+                    customerId={thread.customerId}
+                    leadId={thread.leadId}
+                  />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-medium">Recent calls</h2>
+        {calls.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            No HighLevel call events have been ingested. Browser calling is not implemented.
+          </p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {calls.map((call) => (
+              <li key={call.id} className="rounded-xl border bg-white px-4 py-3">
+                {call.missed ? "Missed call" : call.answered ? "Answered call" : "Call"} ·{" "}
+                {call.caller || "Unknown"} · {call.startedAt.toLocaleString()}
+                {call.missed ? " · Missed-call recovery stays in HighLevel workflows" : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

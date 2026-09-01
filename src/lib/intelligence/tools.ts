@@ -44,6 +44,12 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getJobSummary: "jobs:view",
   getPlaybookStatus: "jobs:view",
   getReviewMetrics: "marketing:view",
+  getLeadSummary: "leads:view",
+  getLeadSourcePerformance: "marketing:view",
+  getCallSummary: "marketing:view",
+  getMissedCallSummary: "marketing:view",
+  getConversationSummary: "marketing:view",
+  getBookingConversion: "leads:view",
   getExpenseSummary: "expenses:view",
   getRevenueMetrics: "reports:view",
   getTrend: "intelligence:view",
@@ -130,6 +136,36 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getReviewMetrics",
     description: "Imported review counts and rating.",
+    parameters: {},
+  },
+  {
+    name: "getLeadSummary",
+    description: "Verified HighLevel and ContractorYou lead counts. No invented attribution.",
+    parameters: {},
+  },
+  {
+    name: "getLeadSourcePerformance",
+    description: "Lead counts by recorded source only.",
+    parameters: {},
+  },
+  {
+    name: "getCallSummary",
+    description: "Call records ingested from HighLevel or stored in ContractorYou.",
+    parameters: {},
+  },
+  {
+    name: "getMissedCallSummary",
+    description: "Missed calls from ingested call records only.",
+    parameters: {},
+  },
+  {
+    name: "getConversationSummary",
+    description: "Inbox thread and message counts from ingested HighLevel events.",
+    parameters: {},
+  },
+  {
+    name: "getBookingConversion",
+    description: "Booked and won leads from ContractorYou lead statuses.",
     parameters: {},
   },
   {
@@ -533,6 +569,67 @@ export async function runIntelligenceTool(
           currentStage: workflow?.currentStageKey ?? null,
         },
         grounding: { sources: ["jobs", "playbooks"] },
+      };
+    }
+    case "getLeadSummary": {
+      const [total, highlevel, booked] = await Promise.all([
+        prisma.lead.count({ where: companyWhere }),
+        prisma.lead.count({ where: { ...companyWhere, provider: "highlevel" } }),
+        prisma.lead.count({ where: { ...companyWhere, status: { in: ["BOOKED", "WON"] } } }),
+      ]);
+      return {
+        ok: true,
+        data: { total, highlevel, booked },
+        grounding: { sources: ["leads"] },
+      };
+    }
+    case "getLeadSourcePerformance": {
+      const rows = await prisma.lead.groupBy({
+        by: ["source"],
+        where: companyWhere,
+        _count: { id: true },
+      });
+      return { ok: true, data: rows, grounding: { sources: ["leads"] } };
+    }
+    case "getCallSummary": {
+      const [total, missed, answered] = await Promise.all([
+        prisma.callRecord.count({ where: companyWhere }),
+        prisma.callRecord.count({ where: { ...companyWhere, missed: true } }),
+        prisma.callRecord.count({ where: { ...companyWhere, answered: true } }),
+      ]);
+      return { ok: true, data: { total, missed, answered }, grounding: { sources: ["call_records"] } };
+    }
+    case "getMissedCallSummary": {
+      const missed = await prisma.callRecord.count({ where: { ...companyWhere, missed: true } });
+      return {
+        ok: true,
+        data: { missed, note: "Missed-call text-back is executed by HighLevel workflows, not ContractorYou." },
+        grounding: { sources: ["call_records"] },
+      };
+    }
+    case "getConversationSummary": {
+      const [threads, unread, messages] = await Promise.all([
+        prisma.communicationThread.count({ where: companyWhere }),
+        prisma.communicationThread.count({ where: { ...companyWhere, unread: true } }),
+        prisma.communicationMessage.count({ where: companyWhere }),
+      ]);
+      return { ok: true, data: { threads, unread, messages }, grounding: { sources: ["communication_threads"] } };
+    }
+    case "getBookingConversion": {
+      const [leads, booked, won] = await Promise.all([
+        prisma.lead.count({ where: companyWhere }),
+        prisma.lead.count({ where: { ...companyWhere, status: { in: ["BOOKED", "ESTIMATE_SCHEDULED", "ESTIMATE_SENT", "WON"] } } }),
+        prisma.lead.count({ where: { ...companyWhere, status: "WON" } }),
+      ]);
+      return {
+        ok: true,
+        data: {
+          leads,
+          booked,
+          won,
+          bookingRate: leads ? Number(((booked / leads) * 100).toFixed(1)) : 0,
+        },
+        grounding: { sources: ["leads"] },
       };
     }
     case "getReviewMetrics": {

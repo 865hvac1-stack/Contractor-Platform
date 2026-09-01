@@ -54,5 +54,8 @@ export async function startOAuth(providerKey: string) {
   if (provider.family === "linkedin") {
     redirect(linkedinAuthorizeUrl({ state: state.state }));
   }
+  if (provider.family === "highlevel") {
+    redirect("/settings/highlevel");
+  }
   redirect("/marketing/channels?error=OAuth+is+not+available+for+this+provider");
 }

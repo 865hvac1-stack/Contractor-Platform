@@ -68,7 +68,7 @@ const groups: NavGroup[] = [
       { href: "/dispatch", label: "Dispatch", icon: CalendarDays, permission: "schedule:view" },
       { href: "/office", label: "Customer Hub", icon: Users, permission: "customers:view" },
       { href: "/intelligence", label: "Intelligence", icon: CircleHelp, permission: "intelligence:view" },
-      { label: "Inbox", icon: Inbox, comingSoon: true },
+      { href: "/marketing/communications", label: "Inbox", icon: Inbox, permission: "marketing:view" },
     ],
   },
   {

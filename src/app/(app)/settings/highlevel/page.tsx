@@ -1,0 +1,166 @@
+import Link from "next/link";
+import { requirePermission } from "@/lib/tenant";
+import { prisma } from "@/lib/db";
+import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
+import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
+import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
+import { highlevelAuthMode } from "@/lib/highlevel/connection";
+import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/status-badge";
+
+export default async function HighLevelSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; connected?: string }>;
+}) {
+  const ctx = await requirePermission("marketing:manage");
+  const { error, connected } = await searchParams;
+  const connection = await prisma.integrationConnection.findFirst({
+    where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+  });
+  const lastEvent = connection
+    ? await prisma.integrationEvent.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id },
+        orderBy: { receivedAt: "desc" },
+      })
+    : null;
+  const failedEvents = connection
+    ? await prisma.integrationEvent.count({
+        where: { companyId: ctx.company.id, connectionId: connection.id, processedAt: null },
+      })
+    : 0;
+  const mapped = await prisma.providerIdentityMap.count({
+    where: { companyId: ctx.company.id, provider: HIGHLEVEL_PROVIDER_KEY },
+  });
+  const oauth = highlevelOAuthNotes();
+  const isConnected = connection?.status === "CONNECTED";
+  const capabilities = highlevelCapabilities({
+    connected: Boolean(isConnected),
+    scopes: connection?.scopes ?? [],
+    verifiedKeys: lastEvent ? ["contacts"] : [],
+  });
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <Link href="/settings" className="text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+          ← Settings
+        </Link>
+        <h1 className="mt-2 font-display text-3xl tracking-tight">HighLevel</h1>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Marketing and communications infrastructure. ContractorYou stays the system of record for jobs,
+          customers, invoices, and payments.
+        </p>
+      </div>
+
+      {error ? (
+        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+          {decodeURIComponent(error.replaceAll("+", " "))}
+        </p>
+      ) : null}
+      {connected ? (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">HighLevel location connected.</p>
+      ) : null}
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Connection</CardTitle>
+          <StatusBadge status={connection?.status ?? "NOT_CONNECTED"} />
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Location name</dt>
+              <dd>{connection?.accountLabel ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Location ID</dt>
+              <dd className="break-all">{connection?.externalAccountId ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Auth mode</dt>
+              <dd>
+                {connection
+                  ? highlevelAuthMode(connection.scopes) === "oauth"
+                    ? "Marketplace OAuth"
+                    : "Private location token (testing)"
+                  : "Not connected"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Connected</dt>
+              <dd>{connection?.updatedAt ? connection.updatedAt.toLocaleString() : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Last successful sync</dt>
+              <dd>{connection?.lastSyncAt ? connection.lastSyncAt.toLocaleString() : "Never"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Last webhook</dt>
+              <dd>{lastEvent ? `${lastEvent.eventType} · ${lastEvent.receivedAt.toLocaleString()}` : "None"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Failed events</dt>
+              <dd>{failedEvents}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Records mapped</dt>
+              <dd>{mapped}</dd>
+            </div>
+          </dl>
+          {connection?.healthMessage ? (
+            <p className="text-[var(--muted-foreground)]">{connection.healthMessage}</p>
+          ) : null}
+          {connection?.errorMessage ? <p className="text-rose-700">{connection.errorMessage}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Capabilities</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {capabilities.map((capability) => (
+              <li key={capability.key} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                <span>{capability.label}</span>
+                <StatusBadge status={capability.status.replaceAll("_", " ")} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+            CONNECTED is shown only after ContractorYou verifies access. AVAILABLE means the authorized scopes
+            include that capability.
+          </p>
+        </CardContent>
+      </Card>
+
+      <HighLevelSettingsForm
+        oauthReady={highlevelOAuthConfigured()}
+        connected={Boolean(isConnected)}
+        missing={oauth.missing}
+        webhookUrl={highlevelWebhookUrl()}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Advanced HighLevel settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p className="text-[var(--muted-foreground)]">
+            Campaigns, funnels, and workflow builders stay in HighLevel. Daily work stays in ContractorYou.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <a href={HIGHLEVEL_DEEP_LINKS.workflows} className="underline" target="_blank" rel="noreferrer">
+              Manage workflows in HighLevel
+            </a>
+            <a href={HIGHLEVEL_DEEP_LINKS.campaigns} className="underline" target="_blank" rel="noreferrer">
+              Manage campaigns in HighLevel
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

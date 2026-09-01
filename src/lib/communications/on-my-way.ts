@@ -3,7 +3,8 @@ import { writeAudit } from "@/lib/audit";
 import { renderMergeFields, type MergeContext } from "@/lib/playbooks/merge-fields";
 import { flattenSteps } from "@/lib/playbooks/types";
 import { parseDefinition } from "@/lib/playbooks/engine";
-import { smsProviderConfigured, sendCompanySms } from "@/lib/communications/sms";
+import { resolveCommunicationProvider, sendCompanyCommunication } from "@/lib/comms/provider";
+import { isHistoricalImport } from "@/lib/imports/safety";
 import { customerLabel } from "@/lib/tech/today";
 import { propertyAddress } from "@/lib/tech/access";
 
@@ -27,7 +28,11 @@ export async function maybeSendOnMyWayMessage(input: {
       playbookSnapshot: true,
     },
   });
-  if (!job?.playbookSnapshot) return { attempted: false, sent: false, reason: "no_playbook" as const };
+  if (!job) return { attempted: false, sent: false, reason: "no_job" as const };
+  if (isHistoricalImport(job.importMode)) {
+    return { attempted: false, sent: false, reason: "historical" as const };
+  }
+  if (!job.playbookSnapshot) return { attempted: false, sent: false, reason: "no_playbook" as const };
 
   const definition = parseDefinition(job.playbookSnapshot.definition);
   const step = flattenSteps(definition).find((item) => item.actionKey === "ON_MY_WAY");
@@ -44,7 +49,8 @@ export async function maybeSendOnMyWayMessage(input: {
   });
   if (already) return { attempted: false, sent: false, reason: "already_sent" as const };
 
-  if (!smsProviderConfigured()) {
+  const provider = await resolveCommunicationProvider(input.companyId);
+  if (provider === "none") {
     await writeAudit({
       companyId: input.companyId,
       actorId: input.actorId,
@@ -86,7 +92,13 @@ export async function maybeSendOnMyWayMessage(input: {
     "property.address": propertyAddress(job.property),
   };
   const body = renderMergeFields(template, context);
-  const result = await sendCompanySms({ to: job.customer.phone, body });
+  const result = await sendCompanyCommunication({
+    companyId: input.companyId,
+    channel: "SMS",
+    to: job.customer.phone,
+    body,
+    customerId: job.customerId,
+  });
 
   await writeAudit({
     companyId: input.companyId,
@@ -95,8 +107,8 @@ export async function maybeSendOnMyWayMessage(input: {
     entityType: "Job",
     entityId: job.id,
     metadata: result.ok
-      ? { provider: "twilio" }
-      : { configured: result.configured, error: result.error },
+      ? { provider: result.provider }
+      : { configured: result.configured, error: result.error, provider: result.provider },
   });
 
   if (result.ok && step) {

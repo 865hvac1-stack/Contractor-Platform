@@ -8,6 +8,7 @@ export function oauthStartHref(providerKey: string) {
   if (provider.family === "tiktok") return `/api/integrations/tiktok/start?provider=${providerKey}`;
   if (provider.family === "linkedin") return `/api/integrations/linkedin/start`;
   if (provider.family === "intuit") return `/api/integrations/quickbooks/start`;
+  if (provider.family === "highlevel" || providerKey === "highlevel") return `/settings/highlevel`;
   return `/marketing/channels/${providerKey}`;
 }
 

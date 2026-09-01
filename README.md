@@ -32,6 +32,7 @@ Multi-tenant SaaS foundation for home-service contractors (HVAC first template, 
 - **Technician Portal:** `/tech` is a mobile-first field experience for TECHNICIAN and INSTALLER roles. Same jobs, playbooks, pricebook, estimates, invoices, payments, memberships, receipts, and scorecards — not a second system. Bottom nav: Home, Jobs, Performance, Inbox, More. Job workspace uses progressive sections + Next Step. Photos support camera capture and photo-library upload. Sign out clears the session cookie. Office customer search is server-side (not a client-only filter). Team invites send through Resend when `RESEND_API_KEY` is set.
 - **Playbooks:** company-owned job workflows (Settings → Playbooks). Each playbook is versioned. Assigning a playbook to a job freezes a snapshot so later edits do not change historical jobs. Jobs without a playbook keep working. Message preview never sends. SMS/email delivery stays off until a provider is connected.
 - **Intelligence:** Deterministic metrics and attention first. Ask ContractorYou retrieves tenant-scoped tools, then optionally explains with OpenAI (`gpt-4o-mini`). Never invents numbers. Set `OPENAI_API_KEY` on Railway for language-model wording.
+- **HighLevel:** Settings → HighLevel. Preferred infrastructure for phone, SMS, conversations, leads, and marketing automation. ContractorYou stays the system of record for customers, jobs, invoices, Stripe, and QuickBooks. Marketplace OAuth is the production path. A location Private Integration Token can connect the existing 865 HVAC location for testing. Direct Google/Twilio/Resend foundations are preserved. Resend still sends platform emails. Connecting HighLevel does not text customers or change historical jobs.
 - **Job 360:** Jobs → open a job. Shows what was recorded: job type, work notes from the import file, line items, technician, dates, and leftover imported fields. Historical imports stay inert. Owners and office can delete a job; invoices and payments stay on the customer. New job customer pick is type-to-search (first name, last name, phone, or address) — it does not load every customer into a dropdown.
 - **Import Data:** Settings → Import Data. Universal CSV/XLSX/XLS customer import with source-agnostic mapping, preview, duplicate detection, and batch write. Vendor names are presets, not separate importers. Direct vendor sync is not claimed.
 - **Integrations:** AES-256-GCM credential storage (`src/lib/integrations/crypto.ts`). Tokens never go to the browser.
@@ -154,6 +155,8 @@ Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into ea
 | TikTok | `{APP_URL}/api/integrations/tiktok/callback` |
 | LinkedIn | `{APP_URL}/api/integrations/linkedin/callback` |
 | QuickBooks Online | `{APP_URL}/api/integrations/quickbooks/callback` |
+| HighLevel Marketplace | `{APP_URL}/api/integrations/highlevel/callback` |
+| HighLevel webhooks | `{APP_URL}/api/webhooks/highlevel` |
 
 Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 
@@ -179,8 +182,27 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
 | `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback` |
+| `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` | Marketplace OAuth (production multi-tenant). Not required to paste a location Private Integration Token for 865 HVAC testing. |
+| `HIGHLEVEL_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/highlevel/callback` |
 
 Never commit real values. Platform Admin → Integrations shows **presence only**.
+
+### Connect the existing 865 HVAC HighLevel location
+
+Do **not** create a new HighLevel account or a second 865 HVAC location.
+
+1. In HighLevel, open the existing 865 HVAC location.
+2. Create or copy a **Private Integration Token** for that location (Settings → Private Integrations, or the current HighLevel equivalent). Grant contacts, conversations/messages, and opportunities if those scopes are offered.
+3. Copy the **Location ID**.
+4. In ContractorYou: Settings → HighLevel → **865 HVAC / single-location testing**.
+5. Paste Location ID and token. ContractorYou encrypts the token server-side. It is never shown again and never sent to the browser.
+6. Click **Connect existing location**. Status should become Connected and the location name should appear.
+7. Click **Preview initial sync** before importing. Existing ContractorYou customers match by HighLevel contact ID, verified email, or normalized phone. Name-only never auto-merges. Unmatched contacts become **leads**, not duplicate customers.
+8. In the HighLevel Marketplace app (when you create one), set the webhook URL to `{APP_URL}/api/webhooks/highlevel` and subscribe to Contact, Opportunity, and Conversation/Message events that HighLevel actually offers.
+
+Connecting HighLevel does **not** text customers, send review requests, create automations, or change historical jobs.
+
+**Marketplace OAuth** is the production path for other contractors. Until `HIGHLEVEL_CLIENT_ID` and `HIGHLEVEL_CLIENT_SECRET` are set and a Marketplace app is approved, Settings → HighLevel shows **Provider configuration required** for OAuth. The private-token path remains available for 865 HVAC testing.
 
 ## Railway deployment
 

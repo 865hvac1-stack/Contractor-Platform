@@ -32,6 +32,7 @@ import { createInvoiceFromJobAction } from "@/server/actions/field";
 import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/config";
 import { appUrl } from "@/lib/payments/config";
 import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 
 export default async function TechJobWorkspacePage({
   params,
@@ -201,20 +202,20 @@ export default async function TechJobWorkspacePage({
             Directions
           </a>
           {phone ? (
-            <a href={`tel:${phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--muted)] text-sm font-medium">
-              Call
+            <a
+              href={`tel:${phone}`}
+              title="Device call. Company browser calling is not available."
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--muted)] text-sm font-medium"
+            >
+              Device call
             </a>
           ) : (
             <span className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--muted)] text-sm text-[var(--muted-foreground)]">
               No phone
             </span>
           )}
-          {phone ? (
-            <a href={`sms:${phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--muted)] text-sm font-medium">
-              Text
-            </a>
-          ) : null}
         </div>
+        {phone ? <CompanySmsForm to={phone} customerId={full.customer.id} /> : null}
         <FieldStatusButtons jobId={full.id} status={full.status} />
       </section>
 
@@ -237,6 +238,7 @@ export default async function TechJobWorkspacePage({
             remaining={remaining}
             checklist={workflow.checklist}
             customerPhone={phone}
+            customerId={full.customer.id}
             propertyAddress={addr}
             canAct={full.status !== "COMPLETED" && full.status !== "CANCELED"}
             compact

@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
 import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 
 export const dynamic = "force-dynamic";
 
@@ -79,13 +80,12 @@ export default async function OfficeCustomer360Page({
         </div>
         <div className="flex flex-wrap gap-2">
           {customer.phone ? (
-            <a href={`tel:${customer.phone}`} className="rounded-lg border px-3 py-2 text-sm">
-              Call
-            </a>
-          ) : null}
-          {customer.phone ? (
-            <a href={`sms:${customer.phone}`} className="rounded-lg border px-3 py-2 text-sm">
-              Text
+            <a
+              href={`tel:${customer.phone}`}
+              title="Device call. Company browser calling is not available."
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              Device call
             </a>
           ) : null}
           {can(ctx.role, "jobs:manage") ? (
@@ -101,6 +101,7 @@ export default async function OfficeCustomer360Page({
           </Link>
         </div>
       </div>
+      {customer.phone ? <CompanySmsForm to={customer.phone} customerId={customer.id} /> : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="rounded-2xl border bg-white p-4 lg:col-span-2">

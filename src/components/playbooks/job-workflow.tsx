@@ -14,6 +14,7 @@ import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CompleteJobButton } from "@/components/playbooks/complete-job-button";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 
 type ChecklistRow = { itemId: string; completed: boolean };
 
@@ -28,6 +29,7 @@ export function JobWorkflowPanel({
   remaining,
   checklist,
   customerPhone,
+  customerId,
   propertyAddress,
   canAct,
   compact = false,
@@ -42,6 +44,7 @@ export function JobWorkflowPanel({
   remaining: RemainingItem[];
   checklist: ChecklistRow[];
   customerPhone: string | null;
+  customerId?: string | null;
   propertyAddress: string;
   canAct: boolean;
   compact?: boolean;
@@ -107,25 +110,14 @@ export function JobWorkflowPanel({
         {customerPhone ? (
           <a
             href={`tel:${customerPhone}`}
+            title="Device call. Company browser calling is not available."
             className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cy-gray)] px-3 py-3 text-center text-sm font-semibold text-[var(--cy-navy)]"
           >
-            Call
+            Device call
           </a>
         ) : (
           <span className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cy-gray)] px-3 py-3 text-center text-sm text-[var(--cy-text-muted)]">
             No phone
-          </span>
-        )}
-        {customerPhone ? (
-          <a
-            href={`sms:${customerPhone}`}
-            className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cy-gray)] px-3 py-3 text-center text-sm font-semibold text-[var(--cy-navy)]"
-          >
-            Message
-          </a>
-        ) : (
-          <span className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--cy-gray)] px-3 py-3 text-center text-sm text-[var(--cy-text-muted)]">
-            No SMS
           </span>
         )}
         <a
@@ -144,6 +136,7 @@ export function JobWorkflowPanel({
         </Link>
       </div>
       )}
+      {customerPhone && !compact ? <CompanySmsForm to={customerPhone} customerId={customerId} /> : null}
 
       {stages.length > 0 ? (
         <ol className="space-y-1.5">

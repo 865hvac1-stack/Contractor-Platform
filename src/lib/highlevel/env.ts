@@ -1,0 +1,47 @@
+import { appUrl } from "@/lib/integrations/env";
+import { HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
+
+export function highlevelOAuthConfigured() {
+  return Boolean(process.env.HIGHLEVEL_CLIENT_ID?.trim() && process.env.HIGHLEVEL_CLIENT_SECRET?.trim());
+}
+
+export function highlevelClientId() {
+  return process.env.HIGHLEVEL_CLIENT_ID?.trim() || "";
+}
+
+export function highlevelClientSecret() {
+  return process.env.HIGHLEVEL_CLIENT_SECRET?.trim() || "";
+}
+
+export function highlevelRedirectUri() {
+  return (
+    process.env.HIGHLEVEL_REDIRECT_URI?.trim() ||
+    `${appUrl()}/api/integrations/highlevel/callback`
+  );
+}
+
+export function highlevelWebhookUrl() {
+  return `${appUrl()}/api/webhooks/highlevel`;
+}
+
+export function highlevelRequestedScopes() {
+  const extra = process.env.HIGHLEVEL_SCOPES?.trim();
+  if (extra) return extra.split(/[,\s]+/).filter(Boolean);
+  return [...HIGHLEVEL_SCOPES];
+}
+
+export function highlevelOAuthNotes() {
+  const missing: string[] = [];
+  if (!highlevelClientId()) missing.push("HIGHLEVEL_CLIENT_ID");
+  if (!highlevelClientSecret()) missing.push("HIGHLEVEL_CLIENT_SECRET");
+  return {
+    configured: missing.length === 0,
+    missing,
+    notes: [
+      "Marketplace OAuth is the production multi-tenant path.",
+      `Redirect URI: ${highlevelRedirectUri()}`,
+      `Webhook URL: ${highlevelWebhookUrl()}`,
+      "A location Private Integration Token can connect 865 HVAC for testing without Marketplace approval.",
+    ],
+  };
+}

@@ -1,6 +1,7 @@
 import type { IntegrationStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { INTEGRATION_PROVIDERS, getProvider } from "@/lib/integrations/catalog";
+import { HIGHLEVEL_MANAGED_CHANNELS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { getProviderEnv } from "@/lib/integrations/env";
 import { scopedCompanyWhere } from "@/lib/intelligence/scope";
 
@@ -65,28 +66,37 @@ export function primaryAction(input: {
 export async function getChannelCards(companyId: string) {
   const connections = await listPublicConnections(companyId);
   const byKey = new Map(connections.map((c) => [c.providerKey, c]));
+  const highlevel = byKey.get(HIGHLEVEL_PROVIDER_KEY);
+  const highlevelConnected = highlevel?.status === "CONNECTED";
 
   return INTEGRATION_PROVIDERS.map((provider) => {
     const connection = byKey.get(provider.key);
     const env = getProviderEnv(provider.key);
+    const managedThroughHighLevel = highlevelConnected && HIGHLEVEL_MANAGED_CHANNELS.has(provider.key);
     const status = connection?.status ?? ("NOT_CONNECTED" as const);
     return {
       provider,
       env,
       status,
-      accountLabel: connection?.accountLabel ?? null,
-      lastSyncAt: connection?.lastSyncAt ?? null,
+      accountLabel: connection?.accountLabel ?? (managedThroughHighLevel ? "Managed through HighLevel" : null),
+      lastSyncAt: connection?.lastSyncAt ?? highlevel?.lastSyncAt ?? null,
       lastAttemptAt: connection?.lastAttemptAt ?? null,
-      healthMessage: connection?.healthMessage ?? null,
+      healthMessage: managedThroughHighLevel
+        ? "Managed through HighLevel. Direct OAuth is optional."
+        : connection?.healthMessage ?? null,
       errorMessage: connection?.errorMessage ?? null,
       scopes: connection?.scopes ?? [],
-      action: primaryAction({
-        internalLive: provider.internalLive,
-        oauthReady: provider.oauthReady,
-        configured: env.configured,
-        comingSoon: provider.comingSoon,
-        status,
-      }),
+      managedThroughHighLevel,
+      action:
+        provider.key === HIGHLEVEL_PROVIDER_KEY || managedThroughHighLevel
+          ? "MANAGE"
+          : primaryAction({
+              internalLive: provider.internalLive,
+              oauthReady: provider.oauthReady,
+              configured: env.configured,
+              comingSoon: provider.comingSoon,
+              status,
+            }),
     };
   });
 }

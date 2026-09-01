@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShowMoreText } from "@/components/jobs/show-more-text";
 import { DeleteJobButton } from "@/components/jobs/delete-job-button";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { cn } from "@/lib/utils";
 
 function formatDate(d: Date | null | undefined) {
@@ -108,14 +109,13 @@ export function Job360View({
           </div>
           <div className="flex flex-wrap gap-2">
             {canCall && view.customer.phone ? (
-              <>
-                <a href={`tel:${view.customer.phone}`} className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
-                  Call customer
-                </a>
-                <a href={`sms:${view.customer.phone}`} className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
-                  Text customer
-                </a>
-              </>
+              <a
+                href={`tel:${view.customer.phone}`}
+                title="Device call. Browser calling through HighLevel is not available."
+                className={cn(buttonVariants({ variant: "outline" }), "h-10")}
+              >
+                Device call
+              </a>
             ) : null}
             <a
               href={mapsUrl(view.property.line)}
@@ -143,6 +143,9 @@ export function Job360View({
             {canDelete ? <DeleteJobButton jobId={view.job.id} jobNumber={view.job.jobNumber} /> : null}
           </div>
         </div>
+        {canCall && view.customer.phone ? (
+          <CompanySmsForm to={view.customer.phone} customerId={view.customer.id} />
+        ) : null}
         {view.job.historical ? (
           <p className="rounded-xl bg-[var(--cy-gray)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
             Historical import from {view.import.sourceLabel}

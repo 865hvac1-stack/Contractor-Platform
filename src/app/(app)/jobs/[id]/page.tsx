@@ -103,6 +103,7 @@ export default async function JobDetailPage({
           remaining={workflow.remaining}
           checklist={workflow.checklist}
           customerPhone={view.customer.phone}
+          customerId={view.customer.id}
           propertyAddress={view.property.line}
           canAct={canAct && !view.job.historical}
         />
