@@ -33,6 +33,12 @@ export async function seedCustomer360Showcase(input: {
   if (!patricia || !nathan) return;
 
   const patriciaPrimary = patricia.propertyIds[0]!;
+  if (patricia.propertyIds[1]) {
+    await prisma.property.update({
+      where: { id: patricia.propertyIds[1] },
+      data: { name: "Rental", propertyClass: "RENTAL" },
+    });
+  }
   await prisma.property.update({
     where: { id: patriciaPrimary },
     data: {
