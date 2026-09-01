@@ -165,6 +165,31 @@ export function planFromQuestion(question: string, lastResult?: LastResultSet | 
     };
   }
 
+  if (lastResult?.ids.length && /take the (three|3|two|2)\b|three biggest|biggest three/.test(q)) {
+    const n = /\b(two|2)\b/.test(q) && !/\b(three|3)\b/.test(q) ? 2 : 3;
+    const ids = lastResult.ids.slice(0, n);
+    const key =
+      lastResult.kind === "INVOICE"
+        ? "invoice.identify_overdue"
+        : lastResult.kind === "MEMBERSHIP"
+          ? "membership.identify_renewals"
+          : "estimate.identify_followups";
+    return { handled: true, steps: [{ key, input: { recordIds: ids } }] };
+  }
+
+  if (/business health|why is (my|our) (business )?health|health only \d/.test(q)) {
+    return { handled: true, steps: [{ key: "report.business_health", input: {} }] };
+  }
+  if (/what should I do|highest-impact|do about (it|that|health)|focus on today/.test(q)) {
+    return { handled: true, steps: [{ key: "report.recommended_actions", input: {} }] };
+  }
+  if (/what changed|changed in (my|our|the) business|this month compared/.test(q)) {
+    return { handled: true, steps: [{ key: "report.what_changed", input: { period: "month" } }] };
+  }
+  if (/why.*(leave|left|skip|out)|why.*(high-?value|owner follow|rule)/.test(q)) {
+    return { handled: true, steps: [{ key: "report.operating_rules", input: {} }] };
+  }
+
   if (/lost money|losing money|job profitability|which jobs lost/.test(q)) {
     return { handled: true, steps: [{ key: "report.job_profitability", input: {} }] };
   }

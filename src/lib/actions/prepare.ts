@@ -23,6 +23,7 @@ import {
   identifyMembershipRenewals,
   identifyOverdueInvoices,
 } from "@/lib/actions/read";
+import { getBusinessContext } from "@/lib/intelligence/operating-context";
 import type { ActionContext, ActionTargetDraft, PrepareActionResult } from "@/lib/actions/types";
 
 const DRAFT_LABEL = "DRAFT — NOTHING HAS BEEN SENT" as const;
@@ -96,10 +97,21 @@ async function draftEstimateFollowups(ctx: ActionContext, input: Record<string, 
     },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const context = await getBusinessContext(ctx.companyId);
+  const ownerHoldCents = context?.notes.some((note) => note.id === "high-value-estimate")
+    ? context.highValueEstimateCents
+    : null;
+  const held: string[] = [];
   const targets: ActionTargetDraft[] = [];
   for (const id of ids) {
     const row = byId.get(id);
     if (!row || !estimateStillOpen(row.status)) continue;
+    if (ownerHoldCents && row.totalCents >= ownerHoldCents) {
+      held.push(
+        `${customerDisplayName(row.customer)} — ${formatMoney(row.totalCents)} stays with the owner under High-Value Estimate Ownership.`
+      );
+      continue;
+    }
     const recipient = smsRecipient(row.customer);
     targets.push({
       recordType: "ESTIMATE",
@@ -122,15 +134,19 @@ async function draftEstimateFollowups(ctx: ActionContext, input: Record<string, 
     });
   }
   const total = targets.reduce((sum, target) => sum + (target.amountCents ?? 0), 0);
+  const heldNote = held.length ? ` ${held.join(" ")}` : "";
   return prepareResult({
     executeActionKey: "estimate.send_followup",
     title: "Estimate follow-up",
-    summary: `ContractorYou prepared ${targets.length} personalized follow-up${targets.length === 1 ? "" : "s"}. ${formatMoney(total)} open opportunity.`,
+    summary:
+      targets.length === 0 && held.length > 0
+        ? `No drafts were prepared. ${held.join(" ")}`
+        : `ContractorYou prepared ${targets.length} personalized follow-up${targets.length === 1 ? "" : "s"}. ${formatMoney(total)} open opportunity.${heldNote}`,
     targets,
     estimatedImpactCents: total,
-    criteria: identified.criteria,
-    preview: { count: targets.length, opportunityCents: total },
-    grounding: { sources: ["estimates", "customers"] },
+    criteria: { ...identified.criteria, ownerHeld: held },
+    preview: { count: targets.length, opportunityCents: total, ownerHeld: held },
+    grounding: { sources: ["estimates", "customers", "company_operating_notes"] },
   });
 }
 

@@ -14,6 +14,10 @@ import {
   isSmsOptedOut,
   smsRecipient,
 } from "@/lib/actions/eligibility";
+import { getCommandCenterData } from "@/lib/dashboard";
+import { explainBusinessHealth } from "@/lib/intelligence/health-explain";
+import { getBusinessContext } from "@/lib/intelligence/operating-context";
+import { getIntelligenceWorkspace } from "@/lib/intelligence/workspace";
 import type { ActionContext, ReadActionResult } from "@/lib/actions/types";
 
 function periodOf(value: unknown): PeriodKey {
@@ -49,6 +53,14 @@ export async function handleReadAction(
       return jobProfitability(ctx);
     case "report.team_performance":
       return teamPerformance(ctx, input);
+    case "report.business_health":
+      return businessHealth(ctx);
+    case "report.recommended_actions":
+      return recommendedActions(ctx);
+    case "report.what_changed":
+      return whatChanged(ctx);
+    case "report.operating_rules":
+      return operatingRules(ctx);
     default:
       throw new Error("Unregistered read action.");
   }
@@ -181,29 +193,45 @@ export async function identifyEstimateFollowups(
     take: 25,
   });
   const eligible = rows.filter((row) => estimateStillOpen(row.status));
+  const context = await getBusinessContext(ctx.companyId);
+  const ownerHoldCents = context?.notes.some((note) => note.id === "high-value-estimate")
+    ? context.highValueEstimateCents
+    : null;
+  const ownerHeld = ownerHoldCents
+    ? eligible.filter((row) => row.totalCents >= ownerHoldCents).map((row) => ({
+        customer: customerDisplayName(row.customer),
+        estimateNumber: row.estimateNumber,
+        totalCents: row.totalCents,
+        rule: "High-Value Estimate Ownership",
+      }))
+    : [];
   const total = eligible.reduce((sum, row) => sum + row.totalCents, 0);
   const criteria = {
     statuses: ["SENT", "VIEWED"],
     minDays,
     minCents,
+    ownerHoldCents,
+    ownerHeld,
     note: "Open estimates only. Approved, declined, expired, and canceled estimates are excluded.",
   };
+  const heldNote =
+    ownerHeld.length > 0
+      ? ` ${ownerHeld.map((row) => row.customer).join(", ")} stay${ownerHeld.length === 1 ? "s" : ""} with the owner under High-Value Estimate Ownership.`
+      : "";
   return {
     kind: "READ",
     title: "Estimates needing follow-up",
     summary:
       eligible.length === 0
         ? "No open estimates currently meet the follow-up criteria."
-        : `${eligible.length} open estimate${eligible.length === 1 ? "" : "s"} · ${formatMoney(total)} opportunity.`,
+        : `${eligible.length} open estimate${eligible.length === 1 ? "" : "s"} · ${formatMoney(total)} opportunity.${heldNote}`,
     data: eligible.map((row) => ({
-      id: row.id,
       estimateNumber: row.estimateNumber,
       customer: customerDisplayName(row.customer),
-      customerId: row.customer.id,
       totalCents: row.totalCents,
       daysOld: daysSince(row.issueDate),
       status: row.status,
-      phone: smsRecipient(row.customer),
+      ownerFollowUp: Boolean(ownerHoldCents && row.totalCents >= ownerHoldCents),
       optedOut: isSmsOptedOut(row.customer),
     })),
     recordKind: "ESTIMATE",
@@ -472,5 +500,99 @@ async function teamPerformance(ctx: ActionContext, input: Record<string, unknown
     summary: `${rows.length} technicians for ${period.replaceAll("_", " ")}.`,
     data: { rows, note: "Callbacks and revenue are stored activity, not a ranking of the best technician." },
     grounding: { sources: ["jobs", "invoices", "estimates"] },
+  };
+}
+
+async function businessHealth(ctx: ActionContext): Promise<ReadActionResult> {
+  if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "reports:view")) {
+    throw new Error("Company-wide Business Health is not available for this role.");
+  }
+  const data = await getCommandCenterData(ctx.companyId);
+  const explanation = explainBusinessHealth(data);
+  return {
+    kind: "READ",
+    title: "Business Health",
+    summary: explanation.narrative,
+    data: {
+      score: explanation.score,
+      label: explanation.label,
+      drivers: explanation.drivers.map((row) => ({
+        label: row.label,
+        score: row.score,
+        reason: row.reason,
+        facts: row.facts,
+      })),
+      missing: explanation.missing,
+      next: explanation.cta.map((row) => row.label),
+    },
+    grounding: { sources: ["command_center_health", "estimates", "invoices", "jobs"] },
+  };
+}
+
+async function recommendedActions(ctx: ActionContext): Promise<ReadActionResult> {
+  const user = await prisma.user.findFirst({
+    where: { id: ctx.userId },
+    select: { firstName: true },
+  });
+  const workspace = await getIntelligenceWorkspace(ctx.companyId, user?.firstName || "there");
+  const lines = workspace.recommendations.map(
+    (row, index) => `${index + 1}. ${row.title} — ${row.detail}`
+  );
+  return {
+    kind: "READ",
+    title: "Recommended next actions",
+    summary:
+      lines.length === 0
+        ? "Nothing on the books needs a prepared action right now. Command Center still has the live numbers if you want to look around."
+        : `Highest-impact next steps from your records:\n${lines.join("\n")}\nI can prepare the work. Nothing is sent until you approve.`,
+    data: workspace.recommendations.map((row) => ({
+      title: row.title,
+      detail: row.detail,
+      count: row.count,
+      opportunity: row.valueCents,
+    })),
+    grounding: { sources: ["estimates", "invoices", "jobs", "memberships"] },
+  };
+}
+
+async function whatChanged(ctx: ActionContext): Promise<ReadActionResult> {
+  const user = await prisma.user.findFirst({
+    where: { id: ctx.userId },
+    select: { firstName: true },
+  });
+  const workspace = await getIntelligenceWorkspace(ctx.companyId, user?.firstName || "there");
+  const lines = workspace.changed.map((row) => `${row.title}: ${row.detail}`);
+  return {
+    kind: "READ",
+    title: "What changed",
+    summary:
+      lines.length === 0
+        ? "There is not enough recorded history yet to describe a month-over-month change."
+        : `Here is what changed in your recorded books:\n${lines.join("\n")}`,
+    data: workspace.changed,
+    grounding: { sources: ["invoices", "payments", "estimates", "jobs", "leads"] },
+  };
+}
+
+async function operatingRules(ctx: ActionContext): Promise<ReadActionResult> {
+  const context = await getBusinessContext(ctx.companyId);
+  const notes = context?.notes ?? [];
+  const highValue = notes.find((note) => note.id === "high-value-estimate");
+  const summary =
+    notes.length === 0
+      ? "This company has not stored extra operating notes. ContractorYou still applies hard product rules and live records."
+      : highValue
+        ? `${highValue.statement} That is why high-value estimates stay with the owner and are left out of bulk follow-up drafts.`
+        : `${notes.length} company operating notes are active for ${context?.companyName}.`;
+  return {
+    kind: "READ",
+    title: "Company operating notes",
+    summary,
+    data: {
+      company: context?.companyName,
+      source: context?.source,
+      notes: notes.map((note) => ({ title: note.title, statement: note.statement, category: note.category })),
+    },
+    grounding: { sources: ["company_operating_notes"] },
   };
 }

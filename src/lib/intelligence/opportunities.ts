@@ -79,6 +79,32 @@ export async function getOpportunities(companyId: string): Promise<OpportunityIt
     take: 5,
     include: { customer: { select: { id: true, firstName: true, lastName: true, businessName: true } } },
   });
+  const completedJobCounts = await prisma.job.groupBy({
+    by: ["customerId"],
+    where: { companyId, status: "COMPLETED" },
+    _count: { customerId: true },
+  });
+  const repeatIds = completedJobCounts.filter((row) => row._count.customerId >= 2).map((row) => row.customerId);
+  if (repeatIds.length > 0) {
+    const members = await prisma.customerMembership.findMany({
+      where: { companyId, status: "ACTIVE", customerId: { in: repeatIds } },
+      select: { customerId: true },
+    });
+    const memberSet = new Set(members.map((row) => row.customerId));
+    const withoutMembership = repeatIds.filter((id) => !memberSet.has(id)).length;
+    if (withoutMembership >= 3) {
+      items.push({
+        id: "membership-opportunity",
+        type: "membership_opportunity",
+        title: `${withoutMembership} repeat customers without a membership`,
+        summary: `${withoutMembership} customers`,
+        reason: "Repeat service history with no active membership.",
+        href: "/memberships",
+        priority: "NORMAL",
+      });
+    }
+  }
+
   for (const job of completed) {
     const recent = await prisma.job.count({
       where: {

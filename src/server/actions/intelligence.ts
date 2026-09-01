@@ -8,6 +8,8 @@ import { can } from "@/lib/permissions";
 import { writeAudit } from "@/lib/audit";
 import { askContractorYou } from "@/lib/intelligence/service";
 import { refreshCompanyInsights } from "@/lib/intelligence/generate";
+import { identifyEstimateFollowups } from "@/lib/actions/read";
+import { formatMoney } from "@/lib/money";
 import type { ActionResult } from "@/server/actions/auth";
 
 import type { AskKind, PublicActionRequest } from "@/lib/actions/types";
@@ -156,6 +158,35 @@ export async function decideAIActionAction(
       entityId: draft.id,
     });
     return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export async function testEstimateFollowupRuleAction(
+  _prev: ActionResult | null,
+  _formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("intelligence:view");
+    const result = await identifyEstimateFollowups(
+      {
+        companyId: ctx.company.id,
+        userId: ctx.user.id,
+        role: ctx.role,
+        source: "ui",
+        companyName: ctx.company.businessName,
+        isDemo: ctx.company.isDemo,
+      },
+      { minDays: 3, minCents: 0 }
+    );
+    return {
+      ok: true,
+      message: `${result.summary} No messages sent. No tasks created.${
+        result.estimatedImpactCents ? ` ${formatMoney(result.estimatedImpactCents)} open value.` : ""
+      }`,
+    };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
     throw e;

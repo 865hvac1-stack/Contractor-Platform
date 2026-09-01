@@ -16,6 +16,12 @@ import {
 const kindTone: Record<string, string> = {
   ANSWER: "bg-white/10 text-white/80",
   INSIGHT: "bg-sky-500/20 text-sky-100",
+  METRIC: "bg-white/10 text-white/80",
+  TREND: "bg-sky-500/20 text-sky-100",
+  OPPORTUNITY: "bg-amber-500/20 text-amber-50",
+  LIST: "bg-white/10 text-white/80",
+  GOAL_PROGRESS: "bg-emerald-500/20 text-emerald-50",
+  RULE_CONFLICT: "bg-amber-500/20 text-amber-50",
   DRAFT: "bg-amber-500/20 text-amber-50",
   ACTION_REQUIRES_APPROVAL: "bg-[var(--cy-orange)] text-white",
   ACTION_COMPLETED: "bg-emerald-500/20 text-emerald-50",

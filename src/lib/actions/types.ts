@@ -107,6 +107,12 @@ export type ActionDefinition = {
 export type AskKind =
   | "ANSWER"
   | "INSIGHT"
+  | "METRIC"
+  | "TREND"
+  | "OPPORTUNITY"
+  | "LIST"
+  | "GOAL_PROGRESS"
+  | "RULE_CONFLICT"
   | "DRAFT"
   | "ACTION_REQUIRES_APPROVAL"
   | "ACTION_COMPLETED"

@@ -126,7 +126,7 @@ export function AskContractorYou({
           name="question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder={jobId ? "Ask about this job..." : "Take care of my estimate follow-ups."}
+          placeholder={jobId ? "Ask about this job..." : "Ask anything about your business..."}
           className="h-12 w-full rounded-xl border border-white/10 bg-white/8 px-4 text-sm text-white placeholder:text-white/35"
         />
         <Button type="submit" disabled={pending} className="h-11 w-full sm:w-auto">

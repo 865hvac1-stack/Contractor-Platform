@@ -16,6 +16,18 @@ export async function getActionRequestForCompany(companyId: string, requestId: s
   });
 }
 
+export async function listRecentActionRequests(companyId: string, take = 5) {
+  return prisma.aIActionRequest.findMany({
+    where: { companyId },
+    include: {
+      requestedBy: { select: { firstName: true, lastName: true } },
+      targets: { select: { id: true, status: true, amountCents: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+}
+
 export async function listActionRequests(companyId: string, tab: "approval" | "drafts" | "completed" | "failed") {
   const status =
     tab === "approval"

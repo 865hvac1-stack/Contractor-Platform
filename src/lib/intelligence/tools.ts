@@ -18,6 +18,9 @@ import { summarizeCompensation } from "@/lib/compensation/calculate";
 import { compensationUserFilter } from "@/lib/compensation/access";
 import { companyPaymentMetrics } from "@/lib/payments/metrics";
 import { collectedAmountCents } from "@/lib/payments/record";
+import { getCommandCenterData } from "@/lib/dashboard";
+import { explainBusinessHealth } from "@/lib/intelligence/health-explain";
+import { getBusinessContext, formatOperatingNotesForModel } from "@/lib/intelligence/operating-context";
 
 export type ToolContext = {
   companyId: string;
@@ -80,6 +83,8 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getPaymentCollection: "invoices:view",
   getFailedPayments: "invoices:view",
   getProcessingPayments: "invoices:view",
+  getBusinessHealth: "intelligence:view",
+  getOperatingNotes: "intelligence:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -322,6 +327,16 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getProcessingPayments",
     description: "Bank/card payments still processing. These are not collected yet.",
+    parameters: {},
+  },
+  {
+    name: "getBusinessHealth",
+    description: "Explain the Command Center Business Health score. Uses the same deterministic engine. Does not invent a second score.",
+    parameters: {},
+  },
+  {
+    name: "getOperatingNotes",
+    description: "Authorized company operating notes for this tenant only.",
     parameters: {},
   },
 ] as const;
@@ -1110,6 +1125,41 @@ export async function runIntelligenceTool(
           payments: processing,
         },
         grounding: { sources: ["payments"] },
+      };
+    }
+    case "getBusinessHealth": {
+      if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "reports:view")) {
+        return deny("Company-wide Business Health is not available for this role.");
+      }
+      const data = await getCommandCenterData(ctx.companyId);
+      const explanation = explainBusinessHealth(data);
+      return {
+        ok: true,
+        data: {
+          narrative: explanation.narrative,
+          score: explanation.score,
+          label: explanation.label,
+          drivers: explanation.drivers.map((row) => ({
+            label: row.label,
+            score: row.score,
+            reason: row.reason,
+            facts: row.facts,
+          })),
+          missing: explanation.missing,
+        },
+        grounding: { sources: ["command_center_health", "estimates", "invoices", "jobs"] },
+      };
+    }
+    case "getOperatingNotes": {
+      const context = await getBusinessContext(ctx.companyId);
+      return {
+        ok: true,
+        data: {
+          company: context?.companyName,
+          notes: context?.notes.map((note) => ({ title: note.title, statement: note.statement })) ?? [],
+          text: context ? formatOperatingNotesForModel(context) : "No operating notes on file.",
+        },
+        grounding: { sources: ["company_operating_notes"] },
       };
     }
     default:

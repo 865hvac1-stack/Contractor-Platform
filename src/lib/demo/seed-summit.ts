@@ -993,6 +993,53 @@ export async function resetSummitDemoCompany(prisma: PrismaClient, now = new Dat
       { companyId: tenant.id, metricKey: "revenue", target: 5_000_000, period: "MONTH" },
       { companyId: tenant.id, metricKey: "close_rate", target: 400, period: "MONTH" },
       { companyId: tenant.id, metricKey: "reviews", target: 30, period: "MONTH" },
+      { companyId: tenant.id, metricKey: "memberships", target: 8, period: "MONTH" },
+      { companyId: tenant.id, metricKey: "gross_margin", target: 450, period: "MONTH" },
+    ],
+  });
+
+  await prisma.automation.createMany({
+    data: [
+      {
+        companyId: tenant.id,
+        name: "Weekday estimate review",
+        trigger: "Weekday morning",
+        action: "estimate.identify_followups",
+        enabled: false,
+        status: "DRAFT",
+      },
+      {
+        companyId: tenant.id,
+        name: "Overdue invoice review",
+        trigger: "Daily",
+        action: "invoice.identify_overdue",
+        enabled: false,
+        status: "DRAFT",
+      },
+      {
+        companyId: tenant.id,
+        name: "Membership renewal review",
+        trigger: "Weekly",
+        action: "membership.identify_renewals",
+        enabled: false,
+        status: "DRAFT",
+      },
+      {
+        companyId: tenant.id,
+        name: "Daily dispatch review",
+        trigger: "Weekday 7am",
+        action: "job.propose_assignment",
+        enabled: false,
+        status: "DRAFT",
+      },
+      {
+        companyId: tenant.id,
+        name: "Weekly social draft preparation",
+        trigger: "Monday morning",
+        action: "social.create_draft",
+        enabled: false,
+        status: "DRAFT",
+      },
     ],
   });
 

@@ -4,6 +4,18 @@ export function kindLabel(kind?: string | null) {
   switch (kind) {
     case "INSIGHT":
       return "Insight";
+    case "METRIC":
+      return "Metric";
+    case "TREND":
+      return "Trend";
+    case "OPPORTUNITY":
+      return "Opportunity";
+    case "GOAL_PROGRESS":
+      return "Goal progress";
+    case "RULE_CONFLICT":
+      return "Rule conflict";
+    case "LIST":
+      return "List";
     case "DRAFT":
       return "Draft";
     case "ACTION_REQUIRES_APPROVAL":

@@ -72,6 +72,10 @@ export function toolsForQuestion(question: string, jobId?: string | null): ToolN
   }
   if (/who sold|revenue by|produced/.test(q)) tools.add("getRevenueByTechnician");
   if (/margin by technician|gross profit/.test(q)) tools.add("getMarginByTechnician");
+  if (/business health|health only|why is (my|our) health|why is (my|our) business/.test(q)) {
+    tools.add("getBusinessHealth");
+    tools.add("getOperatingNotes");
+  }
   if (/how are we|this month|this week|summary|happening/.test(q)) tools.add("getBusinessSummary");
   if (/drive|route|unassigned|fit another|dispatch|late/.test(q)) {
     tools.add("getDispatchWorkload");
@@ -116,6 +120,20 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
       "Which estimates are still open?",
       "Who has an unpaid invoice?",
       "What should I do next for this customer?",
+    ];
+  }
+  if (workspace === "intelligence") {
+    return [
+      "Why is my business health only 60?",
+      "What should I do about it?",
+      "What changed in my business this month?",
+      "Which estimates should I follow up on?",
+      "Who owes us the most money?",
+      "Which technicians have the most callbacks?",
+      "Where are our best leads coming from?",
+      "Which customers should become members?",
+      "How are we doing against our goals?",
+      "What should I focus on today?",
     ];
   }
   return [

@@ -70,12 +70,12 @@ export default async function SettingsPage() {
           className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-            Intelligence
+            AI Control Center
           </p>
-          <h2 className="mt-2 font-medium">ContractorYou Intelligence</h2>
+          <h2 className="mt-2 font-medium">Configure the brain</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Status, daily brief, and usage. Provider keys stay on ContractorYou — not in your
-            settings form.
+            Rules, preferences, goals, automations, permissions, memory, and audit. Intelligence
+            uses the brain — this page configures it.
           </p>
         </Link>
       ) : null}

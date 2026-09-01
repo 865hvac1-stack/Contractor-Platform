@@ -14,6 +14,7 @@ import { invokeRegisteredAction, modelSafeToolPayload } from "@/lib/actions/invo
 import { deterministicActionAnswer, runActionPlan } from "@/lib/actions/run-plan";
 import type { ActionContext, AskKind, PublicActionRequest } from "@/lib/actions/types";
 import { sanitizeForModel } from "@/lib/actions/public";
+import { formatOperatingNotesForModel, getBusinessContext } from "@/lib/intelligence/operating-context";
 
 export type AskInput = {
   companyId: string;
@@ -22,6 +23,7 @@ export type AskInput = {
   question: string;
   conversationId?: string | null;
   jobId?: string | null;
+  recordContext?: { type: "JOB" | "ESTIMATE" | "INVOICE" | "CUSTOMER" | "MEMBERSHIP" | "TECHNICIAN"; id: string } | null;
 };
 
 function formatMetricLine(metric: MetricResult) {
@@ -34,11 +36,38 @@ function formatMetricLine(metric: MetricResult) {
 }
 
 function formatToolData(name: string, data: unknown): string {
+  if (data && typeof data === "object" && "narrative" in (data as Record<string, unknown>)) {
+    return String((data as { narrative: string }).narrative);
+  }
+  if (data && typeof data === "object" && "summary" in (data as Record<string, unknown>) && typeof (data as { summary: unknown }).summary === "string") {
+    return (data as { summary: string }).summary;
+  }
   if (Array.isArray(data) && data.length === 0) return "No matching records.";
   if (Array.isArray(data) && data[0] && typeof data[0] === "object" && "label" in data[0]) {
     return (data as MetricResult[]).map(formatMetricLine).join("\n");
   }
   return JSON.stringify(data);
+}
+
+function advisorFallback(payloads: { name: string; result: unknown }[]) {
+  const lines: string[] = [];
+  for (const row of payloads) {
+    if (!row.result || typeof row.result !== "object") continue;
+    const payload = row.result as Record<string, unknown>;
+    if (typeof payload.narrative === "string") {
+      lines.push(payload.narrative);
+      continue;
+    }
+    if (typeof payload.summary === "string") {
+      lines.push(payload.summary);
+      continue;
+    }
+    if (typeof payload.error === "string") {
+      lines.push(payload.error);
+    }
+  }
+  if (lines.length) return lines.join("\n\n");
+  return payloads.map((row) => formatToolData(row.name, row.result)).join("\n\n");
 }
 
 const SYSTEM_PROMPT = `You are ContractorYou Intelligence, a controlled business operator for one contractor company.
@@ -75,10 +104,13 @@ export async function askContractorYou(input: AskInput) {
       });
   if (!conversation) return { ok: false as const, error: "Conversation not found." };
 
-  const company = await prisma.company.findFirst({
-    where: { id: input.companyId },
-    select: { businessName: true, isDemo: true },
-  });
+  const [company, businessContext] = await Promise.all([
+    prisma.company.findFirst({
+      where: { id: input.companyId },
+      select: { businessName: true, isDemo: true },
+    }),
+    getBusinessContext(input.companyId),
+  ]);
   const actionCtx: ActionContext = {
     companyId: input.companyId,
     userId: input.userId,
@@ -149,8 +181,40 @@ export async function askContractorYou(input: AskInput) {
         orderBy: { createdAt: "asc" },
         take: 12,
       });
+      const selectedRecord = input.jobId
+        ? await prisma.job.findFirst({
+            where: { id: input.jobId, companyId: input.companyId },
+            select: {
+              jobNumber: true,
+              jobType: true,
+              status: true,
+              customer: { select: { firstName: true, lastName: true } },
+            },
+          })
+        : input.recordContext?.type === "ESTIMATE"
+          ? await prisma.estimate.findFirst({
+              where: { id: input.recordContext.id, companyId: input.companyId },
+              select: { estimateNumber: true, totalCents: true, status: true, customer: { select: { firstName: true, lastName: true } } },
+            })
+          : null;
+      const recordLine = selectedRecord
+        ? "jobNumber" in selectedRecord
+          ? `Selected record (server-verified): Job ${selectedRecord.jobNumber} (${selectedRecord.jobType}, ${selectedRecord.status}) for ${selectedRecord.customer.firstName} ${selectedRecord.customer.lastName}. Use this record unless the user names another.`
+          : "estimateNumber" in selectedRecord
+            ? `Selected record (server-verified): Estimate ${selectedRecord.estimateNumber} (${formatMoney(selectedRecord.totalCents)}, ${selectedRecord.status}) for ${selectedRecord.customer.firstName} ${selectedRecord.customer.lastName}. Use this record unless the user names another.`
+            : ""
+        : "";
       const messages: ChatMessage[] = [
-        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "system",
+          content: [
+            SYSTEM_PROMPT,
+            businessContext ? formatOperatingNotesForModel(businessContext) : "",
+            recordLine,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
         ...history.map((row) => ({
           role: row.role as "user" | "assistant",
           content: row.content,
@@ -213,22 +277,17 @@ export async function askContractorYou(input: AskInput) {
         if (planned.handled) {
           answer = deterministicActionAnswer(planned);
         } else {
-          const lines = toolPayloads.map((row) => `## ${row.name}\n${formatToolData(row.name, row.result)}`);
           answer = [
             "I couldn't reach the language model, so here is what your ContractorYou records show. Nothing in your business was changed.",
             "",
-            ...lines,
+            advisorFallback(toolPayloads),
           ].join("\n");
         }
       }
     }
   } else if (!answer.trim()) {
-    const lines = toolPayloads.map((row) => `## ${row.name}\n${formatToolData(row.name, row.result)}`);
-    answer = [
-      "Here is what your ContractorYou records show. Language-model explanation turns on when Intelligence is configured.",
-      "",
-      ...lines,
-    ].join("\n");
+    answer = advisorFallback(toolPayloads) ||
+      "I don't have enough recorded data to answer that yet.";
   }
 
   const grounding = {

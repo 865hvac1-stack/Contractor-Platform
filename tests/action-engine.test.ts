@@ -26,6 +26,7 @@ describe("Action Registry", () => {
     expect(keys).toContain("estimate.identify_followups");
     expect(keys).toContain("estimate.draft_followup");
     expect(keys).toContain("estimate.send_followup");
+    expect(keys).toContain("report.business_health");
     expect(isRegisteredAction("customer.delete")).toBe(false);
     expect(assertInvocableAction("not.a.tool").ok).toBe(false);
   });

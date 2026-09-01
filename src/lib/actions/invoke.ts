@@ -94,7 +94,7 @@ export async function invokeRegisteredAction(input: {
         entityType: "AIActionRequest",
         metadata: { actionKey: definition.key, count: result.recordIds?.length ?? 0 },
       });
-      return { ok: true, actionKey: definition.key, level: "READ", result, kind: "ANSWER" };
+      return { ok: true, actionKey: definition.key, level: "READ", result, kind: kindForReadAction(definition.key) };
     }
 
     const prepared = await handlePrepareAction(input.ctx, definition.key, parsed);
@@ -203,6 +203,16 @@ async function persistPreparedRequest(input: {
     },
     include: { targets: { orderBy: { createdAt: "asc" } } },
   });
+}
+
+function kindForReadAction(actionKey: string): AskKind {
+  if (actionKey === "report.business_health") return "INSIGHT";
+  if (actionKey === "report.what_changed") return "TREND";
+  if (actionKey === "report.recommended_actions") return "OPPORTUNITY";
+  if (actionKey === "report.operating_rules") return "RULE_CONFLICT";
+  if (actionKey.startsWith("report.")) return "METRIC";
+  if (actionKey.includes("identify") || actionKey.endsWith(".search")) return "LIST";
+  return "ANSWER";
 }
 
 export function modelSafeToolPayload(result: InvokeResult) {

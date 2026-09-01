@@ -48,6 +48,7 @@ export async function wipeDemoCompany(prisma: PrismaClient, companyId: string) {
   await prisma.playbook.updateMany({ where: { companyId }, data: { currentVersionId: null } });
   await prisma.playbookVersion.deleteMany({ where: { companyId } });
   await prisma.playbook.deleteMany({ where: { companyId } });
+  await prisma.automation.deleteMany({ where: { companyId } });
   await prisma.insight.deleteMany({ where: { companyId } });
   await prisma.metricSnapshot.deleteMany({ where: { companyId } });
   await prisma.integrationAccount.deleteMany({ where: { companyId } });
