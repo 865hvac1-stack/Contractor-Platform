@@ -174,6 +174,9 @@ describe("dispatch V2 helpers", () => {
     expect(card).toContain('role="button"');
     expect(card).toContain("Open job");
     expect(card).not.toMatch(/<button[\s\S]*draggable/);
+    const drawer = readFileSync(resolve("src/components/dispatch/job-drawer.tsx"), "utf8");
+    expect(drawer).toContain("Open Job 360");
+    expect(drawer).toContain("sticky bottom-0");
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
     expect(shell).toContain("overflow-hidden");
     expect(shell).toContain("MobileWorkspaceLinks");

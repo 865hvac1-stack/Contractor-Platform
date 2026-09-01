@@ -252,59 +252,59 @@ export function DispatchJobDrawer({
             </p>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2">
-            {job.phone ? (
-              <a href={`tel:${job.phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-gray)] text-sm font-medium">
-                Call
-              </a>
-            ) : null}
-            {job.phone ? (
-              <a href={`sms:${job.phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-gray)] text-sm font-medium">
-                Text
-              </a>
-            ) : null}
-            <Link href={`/office/customers/${job.customerId}`} className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
-              Open customer
+          {canLock ? (
+            <button
+              type="button"
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl border text-sm"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  await toggleJobLockAction(job.id);
+                  onAssigned();
+                })
+              }
+            >
+              {job.scheduleLocked ? "Unlock time" : "Lock time"}
+            </button>
+          ) : null}
+          {job.phone && isRunningLate(job) ? (
+            <button
+              type="button"
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl border text-sm"
+              onClick={() => {
+                start(async () => {
+                  const result = await prepareDispatchMessageAction(job.customerId);
+                  if (result.ok && result.request) setDraftHref(`/actions/${result.request.id}`);
+                  else if (!result.ok) setError(result.error);
+                });
+              }}
+            >
+              Prepare customer update
+            </button>
+          ) : null}
+          {draftHref ? (
+            <Link href={draftHref} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[var(--cy-orange)] text-sm font-medium text-white">
+              Review drafted message
             </Link>
-            <Link href={`/jobs/${job.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white">
-              Open Job 360
-            </Link>
-            {canLock ? (
-              <button
-                type="button"
-                className="col-span-2 inline-flex h-11 items-center justify-center rounded-xl border text-sm"
-                disabled={pending}
-                onClick={() =>
-                  start(async () => {
-                    await toggleJobLockAction(job.id);
-                    onAssigned();
-                  })
-                }
-              >
-                {job.scheduleLocked ? "Unlock time" : "Lock time"}
-              </button>
-            ) : null}
-            {job.phone && isRunningLate(job) ? (
-              <button
-                type="button"
-                className="col-span-2 inline-flex h-11 items-center justify-center rounded-xl border text-sm"
-                onClick={() => {
-                  start(async () => {
-                    const result = await prepareDispatchMessageAction(job.customerId);
-                    if (result.ok && result.request) setDraftHref(`/actions/${result.request.id}`);
-                    else if (!result.ok) setError(result.error);
-                  });
-                }}
-              >
-                Prepare customer update
-              </button>
-            ) : null}
-            {draftHref ? (
-              <Link href={draftHref} className="col-span-2 inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-orange)] text-sm font-medium text-white">
-                Review drafted message
-              </Link>
-            ) : null}
-          </div>
+          ) : null}
+        </div>
+        <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-[var(--border)] bg-white px-4 py-3">
+          {job.phone ? (
+            <a href={`tel:${job.phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-gray)] text-sm font-medium">
+              Call
+            </a>
+          ) : null}
+          {job.phone ? (
+            <a href={`sms:${job.phone}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-gray)] text-sm font-medium">
+              Text
+            </a>
+          ) : null}
+          <Link href={`/office/customers/${job.customerId}`} className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
+            Open customer
+          </Link>
+          <Link href={`/jobs/${job.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white">
+            Open Job 360
+          </Link>
         </div>
       </aside>
     </div>
