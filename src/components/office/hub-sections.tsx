@@ -494,11 +494,8 @@ export function OfficeCommunicationsSection({
           {items.map((item) => {
             const Icon = communicationIcon(item.channel);
             return (
-              <li key={item.id}>
-                <Link
-                  href={item.href}
-                  className="flex min-h-11 items-start gap-3 rounded-xl px-2 py-2 transition-colors duration-200 hover:bg-[var(--cy-gray)]"
-                >
+              <li key={item.id} className="flex min-h-11 items-start gap-3 rounded-xl px-2 py-2 transition-colors duration-200 hover:bg-[var(--cy-gray)]">
+                <Link href={item.href} className="flex min-w-0 flex-1 items-start gap-3">
                   <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cy-gray)] text-[var(--cy-navy)]">
                     <Icon className="size-3.5" aria-hidden />
                   </span>
@@ -513,10 +510,20 @@ export function OfficeCommunicationsSection({
                       <span className="mt-0.5 block truncate text-sm text-[var(--muted-foreground)]">{item.preview}</span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 pt-0.5 text-[11px] text-[var(--cy-text-muted)]">
+                </Link>
+                <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
+                  <span className="text-[11px] text-[var(--cy-text-muted)]">
                     {formatDistanceToNow(item.lastActivityAt, { addSuffix: true })}
                   </span>
-                </Link>
+                  {item.customerId ? (
+                    <Link
+                      href={`/office/customers/${item.customerId}`}
+                      className="text-[11px] font-medium text-[var(--cy-orange)] hover:underline"
+                    >
+                      Customer
+                    </Link>
+                  ) : null}
+                </span>
               </li>
             );
           })}
