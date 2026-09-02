@@ -10,11 +10,21 @@ import { buildOfficeAttentionCategories, officeAttentionTypes } from "@/lib/offi
 import { buildOfficeIntelligence } from "@/lib/office/intelligence";
 import { buildOfficePipeline } from "@/lib/office/pipeline";
 
+export type OfficeScorecardTone =
+  | "neutral"
+  | "opportunity"
+  | "money"
+  | "urgent"
+  | "positive"
+  | "schedule";
+
 export type OfficeScorecard = {
   label: string;
   value: string;
   context?: string;
   href: string;
+  tone: OfficeScorecardTone;
+  period: string;
 };
 
 export type OfficeRecentCustomer = {
@@ -45,6 +55,7 @@ export type OfficeCommunicationItem = {
   preview: string | null;
   lastActivityAt: Date;
   unread: boolean;
+  channel: string;
   customerId: string | null;
   href: string;
 };
@@ -89,7 +100,7 @@ export async function getOfficeHubData(companyId: string) {
     prisma.job.count({
       where: {
         companyId,
-        createdAt: { gte: dayStart, lte: dayEnd },
+        scheduledStart: { gte: dayStart, lte: dayEnd },
         status: { not: "CANCELED" },
       },
     }),
@@ -225,42 +236,56 @@ export async function getOfficeHubData(companyId: string) {
       value: String(callsToday),
       context: missedCallThreads > 0 ? `${missedCallThreads} missed today` : "Recorded call activity",
       href: "/marketing/communications?filter=today",
+      tone: "neutral",
+      period: "Today",
     },
     {
       label: "New leads",
       value: String(newLeadsToday),
       context: "Received today",
       href: "/marketing/leads?status=NEW",
+      tone: "opportunity",
+      period: "Today",
     },
     {
       label: "Jobs booked",
       value: String(jobsBookedToday),
-      context: "Created today",
+      context: "Scheduled today",
       href: "/jobs?when=today",
+      tone: "schedule",
+      period: "Today",
     },
     {
       label: "Follow-ups due",
       value: String(followUpCount),
       context: followUpValueCents > 0 ? `${formatMoney(followUpValueCents)} opportunity` : "Estimates awaiting follow-up",
       href: "/attention?filter=follow_ups",
+      tone: "opportunity",
+      period: "Current pipeline",
     },
     {
       label: "Open estimates",
       value: String(openEstimateCount),
       context: openEstimateValueCents > 0 ? formatMoney(openEstimateValueCents) : "Awaiting decision",
       href: "/estimates?status=open",
+      tone: "opportunity",
+      period: "Current open",
     },
     {
       label: "Approved — not scheduled",
       value: String(approvedNotScheduled),
       context: approvedValueCents > 0 ? formatMoney(approvedValueCents) : "Needs scheduling",
       href: "/estimates?status=approved",
+      tone: "schedule",
+      period: "Current pipeline",
     },
     {
       label: "Overdue A/R",
       value: overdueCount > 0 ? formatMoney(overdueBalanceCents) : "$0",
-      context: `${overdueCount} invoice${overdueCount === 1 ? "" : "s"}`,
+      context: `${overdueCount} invoice${overdueCount === 1 ? "" : "s"} currently overdue`,
       href: "/invoices?status=overdue",
+      tone: overdueCount > 0 ? "money" : "neutral",
+      period: "Currently overdue",
     },
     {
       label: "Missed / unanswered",
@@ -272,12 +297,16 @@ export async function getOfficeHubData(companyId: string) {
         .filter(Boolean)
         .join(" · ") || "No missed calls or unanswered leads",
       href: missedCallsOpen > 0 ? "/marketing/communications?filter=missed" : "/marketing/leads?status=NEW",
+      tone: missedCallsOpen + unansweredLeads > 0 ? "urgent" : "neutral",
+      period: "Current open",
     },
     {
       label: "Upcoming jobs",
       value: String(upcomingJobs.length),
-      context: "Scheduled today",
+      context: "On today's board",
       href: `/dispatch?date=${todayDate}`,
+      tone: "schedule",
+      period: "Today",
     },
   ];
 
@@ -391,6 +420,7 @@ export async function getOfficeHubData(companyId: string) {
       preview: thread.lastPreview,
       lastActivityAt: thread.lastActivityAt,
       unread: thread.unread,
+      channel: thread.channel,
       customerId: thread.customerId,
       href: `/marketing/communications/${thread.id}`,
     };

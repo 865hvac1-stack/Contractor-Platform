@@ -1,6 +1,8 @@
 import { formatMoney } from "@/lib/money";
 import type { RankedAttention } from "@/lib/attention-priority";
 
+export type OfficeAttentionTone = "opportunity" | "schedule" | "money" | "urgent" | "neutral";
+
 export type OfficeAttentionCategory = {
   id: string;
   label: string;
@@ -13,6 +15,8 @@ export type OfficeAttentionCategory = {
   prepareType?: string;
   askQuestion?: string;
   priority: number;
+  tone: OfficeAttentionTone;
+  signal: "high" | "opportunity" | null;
 };
 
 const OFFICE_ATTENTION_TYPES = new Set([
@@ -26,7 +30,10 @@ const OFFICE_ATTENTION_TYPES = new Set([
 
 const CATEGORY_DEFS: Record<
   string,
-  Omit<OfficeAttentionCategory, "count" | "customerCount" | "amountCents" | "summary" | "priority">
+  Omit<
+    OfficeAttentionCategory,
+    "count" | "customerCount" | "amountCents" | "summary" | "priority" | "signal"
+  >
 > = {
   estimate_follow_up: {
     id: "estimate_follow_up",
@@ -35,14 +42,16 @@ const CATEGORY_DEFS: Record<
     actionLabel: "Review",
     prepareType: "estimate_not_followed_up",
     askQuestion: "Which estimates should we call?",
+    tone: "opportunity",
   },
   approved_not_scheduled: {
     id: "approved_not_scheduled",
     label: "Approved — not scheduled",
     href: "/estimates?status=approved",
-    actionLabel: "Schedule work",
+    actionLabel: "Schedule",
     prepareType: "approved_estimate_not_scheduled",
     askQuestion: "What approved work needs scheduling?",
+    tone: "schedule",
   },
   overdue_invoices: {
     id: "overdue_invoices",
@@ -51,6 +60,7 @@ const CATEGORY_DEFS: Record<
     actionLabel: "Review",
     prepareType: "invoice_overdue",
     askQuestion: "Who owes us money?",
+    tone: "money",
   },
   unanswered_leads: {
     id: "unanswered_leads",
@@ -58,6 +68,7 @@ const CATEGORY_DEFS: Record<
     href: "/marketing/leads?status=NEW",
     actionLabel: "Respond",
     askQuestion: "Which leads have not been answered?",
+    tone: "neutral",
   },
   missed_calls: {
     id: "missed_calls",
@@ -65,6 +76,7 @@ const CATEGORY_DEFS: Record<
     href: "/marketing/communications?filter=missed",
     actionLabel: "Respond",
     askQuestion: "Who needs a callback?",
+    tone: "neutral",
   },
 };
 
@@ -120,13 +132,27 @@ export function buildOfficeAttentionCategories(items: RankedAttention[]): Office
       } else if (categoryId === "missed_calls") {
         summary = `${bucket.items.length} call${bucket.items.length === 1 ? "" : "s"}`;
       }
+      const hasHighPriority = bucket.items.some(
+        (item) => item.priority === "HIGH" || item.priority === "CRITICAL"
+      );
+      const signal: OfficeAttentionCategory["signal"] = hasHighPriority
+        ? "high"
+        : categoryId === "estimate_follow_up" && amountCents != null && amountCents >= 1_000_000
+          ? "opportunity"
+          : null;
+      const tone =
+        hasHighPriority && (categoryId === "unanswered_leads" || categoryId === "missed_calls")
+          ? "urgent"
+          : def.tone;
       return {
         ...def,
+        tone,
         count: bucket.items.length,
         customerCount,
         amountCents,
         summary,
         priority: PRIORITY_ORDER[categoryId] ?? 99,
+        signal,
       };
     })
     .sort((a, b) => a.priority - b.priority);

@@ -38,38 +38,49 @@ export default async function OfficeHubPage() {
   const data = await getOfficeHubData(ctx.company.id);
 
   return (
-    <div className="space-y-8">
-      <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
-          Customer Hub
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-4xl">
-          Run the front office from one screen.
-        </h1>
-        <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
-          Find customers, handle calls, book work, follow up, and keep the day moving.
+    <div className="space-y-6 md:space-y-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
+            Customer Hub
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-4xl">
+            Run the front office from one screen.
+          </h1>
+          <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
+            Find customers, handle calls, book work, follow up, and keep the day moving.
+          </p>
+        </div>
+        <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-text-muted)]">
+          Today · Front office
         </p>
       </header>
 
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--cy-navy)]">Customer search</h2>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Name, phone, email, address, or company — property-aware.
-        </p>
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-4 sm:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+              Start here
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--cy-navy)]">Customer search</h2>
+          </div>
+          <p className="text-xs text-[var(--muted-foreground)]">Name, phone, email, address, or company</p>
+        </div>
+        <div className="mt-3">
+          <CustomerSearchTypeahead hrefPrefix="/office/customers" showActions emphasis />
+        </div>
         <div className="mt-4">
-          <CustomerSearchTypeahead hrefPrefix="/office/customers" showActions />
+          <OfficeQuickActions
+            canManageCustomers={can(ctx.role, "customers:manage")}
+            canManageJobs={can(ctx.role, "jobs:manage")}
+            canDispatch={canAccessWorkspace(ctx.role, "dispatch")}
+          />
         </div>
       </section>
 
-      <OfficeQuickActions
-        canManageCustomers={can(ctx.role, "customers:manage")}
-        canManageJobs={can(ctx.role, "jobs:manage")}
-        canDispatch={canAccessWorkspace(ctx.role, "dispatch")}
-      />
-
       <OfficeScorecards scorecards={data.scorecards} />
 
-      <OfficeAttentionSection categories={data.attentionCategories} items={data.attentionItems} />
+      <OfficeAttentionSection categories={data.attentionCategories} />
 
       <OfficePipelineSection stages={data.pipeline} />
 

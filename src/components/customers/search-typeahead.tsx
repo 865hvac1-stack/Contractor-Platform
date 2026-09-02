@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type PropertyHit = {
   id: string;
@@ -34,10 +36,12 @@ export function CustomerSearchTypeahead({
   hrefPrefix = "/customers",
   placeholder = "Search name, phone, email, address, or company…",
   showActions = false,
+  emphasis = false,
 }: {
   hrefPrefix?: string;
   placeholder?: string;
   showActions?: boolean;
+  emphasis?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -63,15 +67,32 @@ export function CustomerSearchTypeahead({
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={placeholder}
-          aria-label="Search customers"
-          className="h-12"
-          autoComplete="off"
-          inputMode="search"
-        />
+        <div
+          className={cn(
+            "relative min-w-0 flex-1",
+            emphasis &&
+              "rounded-2xl border border-[var(--border)] bg-[var(--cy-gray)]/70 transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-[var(--cy-orange)] focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(248,112,0,0.16)] motion-reduce:transition-none"
+          )}
+        >
+          {emphasis ? (
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--cy-text-muted)]"
+              aria-hidden
+            />
+          ) : null}
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={placeholder}
+            aria-label="Search customers"
+            className={cn(
+              "h-12",
+              emphasis && "border-0 bg-transparent pl-10 shadow-none focus-visible:border-transparent focus-visible:ring-0"
+            )}
+            autoComplete="off"
+            inputMode="search"
+          />
+        </div>
         {query ? (
           <button
             type="button"
@@ -85,6 +106,11 @@ export function CustomerSearchTypeahead({
           </button>
         ) : null}
       </div>
+      {emphasis ? (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Property-aware — an address match opens the right customer and property.
+        </p>
+      ) : null}
       {loading ? <p className="text-sm text-[var(--muted-foreground)]">Searching…</p> : null}
       {query.trim().length >= 2 && !loading && items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[var(--border)] px-3 py-4 text-sm text-[var(--muted-foreground)]">

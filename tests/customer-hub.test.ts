@@ -160,7 +160,7 @@ describe("Customer Hub V2", () => {
     }
   });
 
-  it("builds pipeline stages only when data exists", () => {
+  it("builds the full front office pipeline flow", () => {
     const stages = buildOfficePipeline({
       newLeads: 10,
       contactedLeads: 0,
@@ -169,9 +169,18 @@ describe("Customer Hub V2", () => {
       approvedNotScheduled: 0,
       paymentFollowUp: 7,
     });
-    expect(stages.map((stage) => stage.id)).toEqual(["new_leads", "estimate_follow_up", "payment_follow_up"]);
+    expect(stages.map((stage) => stage.id)).toEqual([
+      "new_leads",
+      "contacted",
+      "booked",
+      "estimate_follow_up",
+      "approved_scheduling",
+      "payment_follow_up",
+    ]);
     expect(stages[0]?.href).toBe("/marketing/leads?status=NEW");
-    expect(stages[2]?.href).toBe("/invoices?status=overdue");
+    expect(stages[0]?.count).toBe(10);
+    expect(stages[1]?.count).toBe(0);
+    expect(stages.find((stage) => stage.id === "payment_follow_up")?.href).toBe("/invoices?status=overdue");
   });
 
   it("builds front office intelligence from verified counts only", () => {
@@ -203,6 +212,40 @@ describe("Customer Hub V2", () => {
     expect(page).toMatch(/OfficePipelineSection/);
     expect(page).toMatch(/variant="bar"/);
     expect(page).not.toMatch(/Follow-up/);
+    expect(page).not.toMatch(/attentionItems/);
+    expect(page).toMatch(/emphasis/);
+  });
+
+  it("keeps Customer Hub as a summary — no individual Action Center rows", () => {
+    const sections = readFileSync(resolve("src/components/office/hub-sections.tsx"), "utf8");
+    expect(sections).not.toMatch(/AttentionCardActions/);
+    expect(sections).not.toMatch(/Prepare Reminder/);
+    expect(sections).toMatch(/Action Center/);
+  });
+
+  it("labels Jobs booked as scheduled today, not created today", async () => {
+    const now = new Date();
+    const later = new Date(now.getTime() + 60 * 60 * 1000);
+    await prisma.job.create({
+      data: {
+        companyId: ids.companyA,
+        customerId: ids.customerA,
+        propertyId: ids.propertyA,
+        jobNumber: `JOB-HUB-${Date.now()}`,
+        status: "SCHEDULED",
+        scheduledStart: now,
+        scheduledEnd: later,
+      },
+    });
+    const data = await getOfficeHubData(ids.companyA);
+    const booked = data.scorecards.find((card) => card.label === "Jobs booked");
+    expect(booked?.context).toBe("Scheduled today");
+    expect(booked?.period).toBe("Today");
+    expect(Number(booked?.value)).toBeGreaterThanOrEqual(1);
+    expect(booked?.href).toBe("/jobs?when=today");
+    const hub = readFileSync(resolve("src/lib/office/hub.ts"), "utf8");
+    expect(hub).not.toMatch(/Created today/);
+    expect(hub).toMatch(/scheduledStart: \{ gte: dayStart, lte: dayEnd \}/);
   });
 
   it("supports filtered invoice and estimate list routes", () => {
