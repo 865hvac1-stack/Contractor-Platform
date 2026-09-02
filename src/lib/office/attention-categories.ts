@@ -132,16 +132,14 @@ export function buildOfficeAttentionCategories(items: RankedAttention[]): Office
       } else if (categoryId === "missed_calls") {
         summary = `${bucket.items.length} call${bucket.items.length === 1 ? "" : "s"}`;
       }
-      const hasHighPriority = bucket.items.some(
-        (item) => item.priority === "HIGH" || item.priority === "CRITICAL"
-      );
-      const signal: OfficeAttentionCategory["signal"] = hasHighPriority
+      const hasCritical = bucket.items.some((item) => item.priority === "CRITICAL");
+      const signal: OfficeAttentionCategory["signal"] = hasCritical
         ? "high"
         : categoryId === "estimate_follow_up" && amountCents != null && amountCents >= 1_000_000
           ? "opportunity"
           : null;
       const tone =
-        hasHighPriority && (categoryId === "unanswered_leads" || categoryId === "missed_calls")
+        hasCritical && (categoryId === "unanswered_leads" || categoryId === "missed_calls")
           ? "urgent"
           : def.tone;
       return {
