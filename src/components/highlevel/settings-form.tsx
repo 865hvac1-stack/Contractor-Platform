@@ -25,6 +25,8 @@ export function HighLevelSettingsForm({
   storedLocationId,
   storedLocationName,
   tokenStored,
+  sandboxOAuth = false,
+  testOnly = false,
 }: {
   oauthReady: boolean;
   connected: boolean;
@@ -33,6 +35,8 @@ export function HighLevelSettingsForm({
   storedLocationId: string | null;
   storedLocationName: string | null;
   tokenStored: boolean;
+  sandboxOAuth?: boolean;
+  testOnly?: boolean;
 }) {
   const [replaceToken, setReplaceToken] = useState(false);
   const tokenRequired = !tokenStored || replaceToken;
@@ -44,10 +48,13 @@ export function HighLevelSettingsForm({
         <p className="text-sm text-[var(--muted-foreground)]">
           Production contractors connect their own HighLevel location through a Marketplace app. This is the
           multi-tenant path.
+          {sandboxOAuth
+            ? " This Summit sandbox may authorize an existing location as TEST ONLY. It cannot take ownership of another company location."
+            : ""}
         </p>
         {oauthReady ? (
           <a href="/api/integrations/highlevel/start" className={cn(buttonVariants())}>
-            {connected ? "Reconnect HighLevel" : "Connect HighLevel"}
+            {testOnly ? "Reauthorize TEST ONLY HighLevel" : connected ? "Reconnect HighLevel" : "Connect HighLevel"}
           </a>
         ) : (
           <div className="rounded-xl bg-[var(--cy-gray)] px-4 py-3 text-sm">

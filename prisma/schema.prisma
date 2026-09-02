@@ -455,6 +455,7 @@ model Company {
   description   String?
   hoursNote     String?
   isDemo        Boolean       @default(false)
+  allowExternalIntegrationTesting Boolean @default(false)
   status        CompanyStatus @default(ONBOARDING)
   companySize   String?
   serviceArea   String?
@@ -544,6 +545,8 @@ model Company {
   techDiscountLimitBps Int?
   routeStartKind String?
   routeEndKind String?
+  providerTestGrantsAsTenant ProviderTestGrant[] @relation("ProviderTestGrantTenant")
+  providerTestGrantsAsOwner  ProviderTestGrant[] @relation("ProviderTestGrantOwner")
 
   @@index([status])
   @@index([industry])
@@ -1773,6 +1776,26 @@ model CallRecord {
   @@index([companyId])
   @@index([companyId, startedAt])
   @@index([companyId, missed])
+}
+
+model ProviderTestGrant {
+  id              String   @id @default(cuid())
+  tenantCompanyId String
+  ownerCompanyId  String
+  providerKey     String
+  ownerLocationId String
+  mode            String   @default("TEST_ONLY")
+  status          String   @default("AUTHORIZED")
+  accountLabel    String?
+  scopes          String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenantCompany Company @relation("ProviderTestGrantTenant", fields: [tenantCompanyId], references: [id], onDelete: Cascade)
+  ownerCompany  Company @relation("ProviderTestGrantOwner", fields: [ownerCompanyId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantCompanyId, providerKey])
+  @@index([ownerCompanyId, providerKey, ownerLocationId])
 }
 
 model ProviderIdentityMap {

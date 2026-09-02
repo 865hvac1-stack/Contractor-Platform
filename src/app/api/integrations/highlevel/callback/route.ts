@@ -30,6 +30,20 @@ export async function GET(request: Request) {
     }
     const { assertHighLevelLocationAvailable } = await import("@/lib/highlevel/phone-numbers");
     const { prisma } = await import("@/lib/db");
+    const { companyAllowsExternalIntegrationTesting } = await import("@/lib/demo/guard");
+    const { authorizeHighLevelTestGrant } = await import("@/lib/highlevel/test-grant");
+    if (await companyAllowsExternalIntegrationTesting(stored.companyId, prisma)) {
+      const grant = await authorizeHighLevelTestGrant(prisma, {
+        tenantCompanyId: stored.companyId,
+        actorId: stored.userId,
+        locationId,
+        scopes: exchanged.tokens.scopes ?? [],
+      });
+      if (!grant.ok) {
+        return NextResponse.redirect(new URL(`/settings/highlevel?error=${encodeURIComponent(grant.error)}`, origin));
+      }
+      return NextResponse.redirect(new URL("/settings/highlevel?test_connected=1", origin));
+    }
     const locationLock = await assertHighLevelLocationAvailable(prisma, locationId, stored.companyId);
     if (!locationLock.ok) {
       return NextResponse.redirect(new URL(`/settings/highlevel?error=${encodeURIComponent(locationLock.error)}`, origin));

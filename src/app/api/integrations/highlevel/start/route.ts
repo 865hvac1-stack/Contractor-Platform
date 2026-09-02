@@ -10,9 +10,8 @@ import { upsertConnection } from "@/lib/integrations/store";
 export async function GET() {
   try {
     const ctx = await requirePermission("marketing:manage");
-    const { refuseDemoExternal } = await import("@/lib/demo/guard");
-    const demo = await refuseDemoExternal(ctx.company.id);
-    if (demo) {
+    const { canStartHighLevelOAuth, companyAllowsExternalIntegrationTesting } = await import("@/lib/demo/guard");
+    if (!(await canStartHighLevelOAuth(ctx.company.id))) {
       return NextResponse.redirect(
         new URL("/settings/highlevel?error=demo_blocked", process.env.APP_URL || "http://127.0.0.1:43123")
       );
@@ -26,12 +25,15 @@ export async function GET() {
       providerKey: HIGHLEVEL_PROVIDER_KEY,
       redirectTo: "/settings/highlevel",
     });
-    await upsertConnection({
-      companyId: ctx.company.id,
-      providerKey: HIGHLEVEL_PROVIDER_KEY,
-      status: "CONNECTING",
-      healthMessage: "Waiting for HighLevel Marketplace authorization.",
-    });
+    const sandbox = await companyAllowsExternalIntegrationTesting(ctx.company.id);
+    if (!sandbox) {
+      await upsertConnection({
+        companyId: ctx.company.id,
+        providerKey: HIGHLEVEL_PROVIDER_KEY,
+        status: "CONNECTING",
+        healthMessage: "Waiting for HighLevel Marketplace authorization.",
+      });
+    }
     return NextResponse.redirect(highlevelAuthorizeUrl(state.state));
   } catch (error) {
     if (error instanceof AuthError) {

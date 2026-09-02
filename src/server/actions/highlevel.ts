@@ -49,8 +49,27 @@ export async function connectHighLevelPrivateTokenAction(
     if (!resolvedLocationId) {
       return { ok: false, error: "HighLevel Location ID is required." };
     }
+    const { companyAllowsExternalIntegrationTesting } = await import("@/lib/demo/guard");
+    if (await companyAllowsExternalIntegrationTesting(ctx.company.id, prisma)) {
+      const { authorizeHighLevelTestGrant } = await import("@/lib/highlevel/test-grant");
+      const grant = await authorizeHighLevelTestGrant(prisma, {
+        tenantCompanyId: ctx.company.id,
+        actorId: ctx.user.id,
+        locationId: resolvedLocationId,
+        accountLabel: locationName || null,
+      });
+      if (!grant.ok) return grant;
+      revalidatePath("/settings/highlevel");
+      return {
+        ok: true,
+        message:
+          "HighLevel TEST ONLY authorization recorded. The owner company remains the location owner. No historical data was imported.",
+      };
+    }
     const locationLock = await assertHighLevelLocationAvailable(prisma, resolvedLocationId, ctx.company.id);
-    if (!locationLock.ok) return locationLock;
+    if (!locationLock.ok) {
+      return locationLock;
+    }
 
     let token = submittedToken;
     if (!token && existing) {

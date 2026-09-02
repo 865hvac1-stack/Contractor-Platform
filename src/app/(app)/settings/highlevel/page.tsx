@@ -9,6 +9,8 @@ import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+import { getHighLevelTestGrant, toHighLevelTestGrantView } from "@/lib/highlevel/test-grant";
+import { companyAllowsExternalIntegrationTesting } from "@/lib/demo/guard";
 
 function commsSummaryText(summary: unknown, fallback: string) {
   if (!summary || typeof summary !== "object") return fallback;
@@ -36,10 +38,15 @@ function commsSummaryText(summary: unknown, fallback: string) {
 export default async function HighLevelSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; connected?: string }>;
+  searchParams: Promise<{ error?: string; connected?: string; test_connected?: string }>;
 }) {
   const ctx = await requirePermission("marketing:manage");
-  const { error, connected } = await searchParams;
+  const { error, connected, test_connected: testConnected } = await searchParams;
+  const [testGrantRow, sandboxEnabled] = await Promise.all([
+    getHighLevelTestGrant(prisma, ctx.company.id),
+    companyAllowsExternalIntegrationTesting(ctx.company.id, prisma),
+  ]);
+  const testGrant = toHighLevelTestGrantView(testGrantRow);
   const connection = await prisma.integrationConnection.findFirst({
     where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
   });
@@ -118,11 +125,44 @@ export default async function HighLevelSettingsPage({
       {connected ? (
         <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">HighLevel location connected.</p>
       ) : null}
+      {testConnected || testGrant ? (
+        <section className="rounded-2xl border-2 border-[var(--cy-orange)] bg-[#fff7f0] p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
+            HIGHLEVEL TEST CONNECTION
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--cy-navy)]">TEST ONLY</h2>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-[var(--muted-foreground)]">ContractorYou company</dt>
+              <dd className="font-medium">{ctx.company.businessName}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Provider location</dt>
+              <dd className="font-medium">
+                {testGrant?.accountLabel || testGrant?.ownerCompanyName || "865 HVAC"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Owner company</dt>
+              <dd className="font-medium">{testGrant?.ownerCompanyName ?? "865 HVAC"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">Mode</dt>
+              <dd className="font-medium">{testGrant?.mode ?? "TEST ONLY"}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            This is not {ctx.company.businessName}&apos;s production HighLevel location.{" "}
+            {testGrant?.ownerCompanyName ?? "865 HVAC"} remains the owner. ContractorYou will not import that
+            company&apos;s contacts, customers, conversations, leads, or history from this grant.
+          </p>
+        </section>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Connection</CardTitle>
-          <StatusBadge status={connection?.status ?? "NOT_CONNECTED"} />
+          <StatusBadge status={testGrant ? "TEST ONLY" : connection?.status ?? "NOT_CONNECTED"} />
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <dl className="grid gap-3 sm:grid-cols-2">
@@ -219,6 +259,8 @@ export default async function HighLevelSettingsPage({
         storedLocationId={publicConnection.locationId}
         storedLocationName={publicConnection.locationName}
         tokenStored={publicConnection.tokenStored}
+        sandboxOAuth={sandboxEnabled}
+        testOnly={Boolean(testGrant)}
       />
 
       <Card>

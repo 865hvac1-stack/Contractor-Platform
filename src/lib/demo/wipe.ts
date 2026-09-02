@@ -52,6 +52,7 @@ export async function wipeDemoCompany(prisma: PrismaClient, companyId: string) {
   await prisma.automation.deleteMany({ where: { companyId } });
   await prisma.insight.deleteMany({ where: { companyId } });
   await prisma.metricSnapshot.deleteMany({ where: { companyId } });
+  await prisma.providerTestGrant.deleteMany({ where: { tenantCompanyId: companyId } });
   await prisma.integrationAccount.deleteMany({ where: { companyId } });
   await prisma.integrationEvent.deleteMany({ where: { companyId } });
   await prisma.integrationSync.deleteMany({ where: { companyId } });

@@ -158,6 +158,7 @@ export function isHighLevelConversationEvent(fields: HighLevelInboundFields) {
   );
 }
 
+/** Owner IntegrationConnection only. ProviderTestGrant rows are never webhook targets. */
 export async function resolveHighLevelConnectionByLocation(prisma: PrismaClient, locationId: string) {
   if (!locationId) return null;
   return prisma.integrationConnection.findFirst({

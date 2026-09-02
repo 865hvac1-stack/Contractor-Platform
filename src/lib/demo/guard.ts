@@ -13,6 +13,25 @@ export async function isDemoCompany(companyId: string | null | undefined, db: Pr
   return Boolean(company?.isDemo);
 }
 
+export async function companyAllowsExternalIntegrationTesting(
+  companyId: string | null | undefined,
+  db: PrismaClient = defaultPrisma
+) {
+  if (!companyId) return false;
+  const company = await db.company.findFirst({
+    where: { id: companyId },
+    select: { allowExternalIntegrationTesting: true },
+  });
+  return Boolean(company?.allowExternalIntegrationTesting);
+}
+
+/** HighLevel Marketplace OAuth start/callback only. Does not unlock SMS, purchase, sync, or social. */
+export async function canStartHighLevelOAuth(companyId: string | null | undefined, db: PrismaClient = defaultPrisma) {
+  if (!companyId) return false;
+  if (await companyAllowsExternalIntegrationTesting(companyId, db)) return true;
+  return !(await isDemoCompany(companyId, db));
+}
+
 export async function demoOutboundBlock(companyId: string | null | undefined, db: PrismaClient = defaultPrisma) {
   if (await isDemoCompany(companyId, db)) {
     return { blocked: true as const, message: DEMO_BLOCKED_MESSAGE };

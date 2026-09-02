@@ -105,3 +105,38 @@ export async function reactivateCompanyAction(companyId: string): Promise<Action
     throw e;
   }
 }
+
+export async function setExternalIntegrationTestingAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const admin = await requirePlatformAdmin();
+    const companyId = String(formData.get("companyId") || "").trim();
+    const enabled = String(formData.get("enabled") || "") === "true";
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+    if (!company) return { ok: false, error: "Company not found." };
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { allowExternalIntegrationTesting: enabled },
+    });
+    await writeAudit({
+      companyId,
+      actorId: admin.id,
+      action: enabled ? "company.integration_testing.enabled" : "company.integration_testing.disabled",
+      entityType: "Company",
+      entityId: companyId,
+    });
+    revalidatePath(`/platform/companies/${companyId}`);
+    return {
+      ok: true,
+      message: enabled ? "External integration testing enabled." : "External integration testing disabled.",
+    };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}

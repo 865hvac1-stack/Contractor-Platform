@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { ActionForm } from "@/components/action-form";
 import { resetSummitDemoAction } from "@/server/actions/demo";
+import { setExternalIntegrationTestingAction } from "@/server/actions/team";
 import { DEMO_EMAIL_DOMAIN, DEMO_PASSWORD, SUMMIT_COMPANY_NAME } from "@/lib/demo/constants";
 import { DemoModeBadge } from "@/components/demo-mode-badge";
 
@@ -107,6 +108,24 @@ export default async function PlatformCompanyPage({
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+        <h2 className="font-medium">External integration testing</h2>
+        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+          Platform admins only. Allows HighLevel Marketplace OAuth as TEST ONLY. Does not unlock SMS,
+          number purchase, social publishing, or historical import.
+        </p>
+        <p className="mt-1 text-sm">
+          Current: {company.allowExternalIntegrationTesting ? "Enabled" : "Disabled"}
+        </p>
+        <ActionForm action={setExternalIntegrationTestingAction} className="mt-3">
+          <input type="hidden" name="companyId" value={company.id} />
+          <input type="hidden" name="enabled" value={company.allowExternalIntegrationTesting ? "false" : "true"} />
+          <Button type="submit" variant="outline">
+            {company.allowExternalIntegrationTesting ? "Disable integration testing" : "Enable integration testing"}
+          </Button>
+        </ActionForm>
       </div>
 
       {company.isDemo && company.businessName === SUMMIT_COMPANY_NAME ? (
