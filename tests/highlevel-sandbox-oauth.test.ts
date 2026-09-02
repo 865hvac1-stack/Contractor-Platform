@@ -181,13 +181,15 @@ describe("HighLevel integration sandbox and TEST_ONLY grants", () => {
   });
 
   it("keeps production tenant isolation after TEST_ONLY authorization", async () => {
-    const ownerMaps = await prisma.providerIdentityMap.count({ where: { companyId: ids.owner } });
     const summitMaps = await prisma.providerIdentityMap.count({ where: { companyId: ids.summit } });
     const summitConnections = await prisma.integrationConnection.count({
       where: { companyId: ids.summit, providerKey: HIGHLEVEL_PROVIDER_KEY },
     });
     const summitCredentials = await prisma.integrationCredential.count({ where: { companyId: ids.summit } });
-    expect(ownerMaps).toBe(0);
+    const ownerCall = await prisma.callRecord.findFirst({
+      where: { companyId: ids.owner, recordingRef: "msg_owner_1" },
+    });
+    expect(ownerCall).toBeTruthy();
     expect(summitMaps).toBe(0);
     expect(summitConnections).toBe(0);
     expect(summitCredentials).toBe(0);
