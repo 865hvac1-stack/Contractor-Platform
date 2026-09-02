@@ -14,6 +14,7 @@ import {
 } from "@/server/actions/highlevel";
 
 const SOURCES = [
+  "Google LSA Test",
   "GOOGLE_LSA",
   "GOOGLE_ADS",
   "WEBSITE",
@@ -45,8 +46,8 @@ export async function TrackingNumbersPanel({
         </p>
         <h2 className="mt-1 text-lg font-semibold text-[var(--cy-navy)]">HighLevel location numbers</h2>
         <p className="mt-1 max-w-2xl text-sm text-[var(--muted-foreground)]">
-          Sync the location&apos;s active LC Phone numbers, map each one to a source such as Google LSA, and
-          choose the approved SMS sender. ContractorYou never picks a from-number at random. Purchase is
+          Sync the location&apos;s active LC Phone numbers, map each one to a source such as Google LSA Test,
+          and choose the approved SMS sender. ContractorYou never picks a from-number at random. Purchase is
           billable and never runs during tests.
         </p>
       </div>
@@ -149,7 +150,7 @@ export async function TrackingNumbersPanel({
         <h3 className="font-medium text-[var(--cy-navy)]">Summit / 865 human proof</h3>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--muted-foreground)]">
           <li>Connect this company to its own HighLevel location — never reuse 865 HVAC&apos;s location on Summit.</li>
-          <li>Sync active numbers, map the LSA line to GOOGLE_LSA, then call that number from a real phone.</li>
+          <li>Sync active numbers, map the Summit test line to Google LSA Test, then call that number from a real phone.</li>
           <li>The InboundMessage CALL webhook should create the Communications row, Call record, and lead.</li>
           <li>Set the approved SMS sender, open a customer, send a company text, then reply inbound.</li>
         </ol>

@@ -105,6 +105,7 @@ export async function upsertConversationMessage(
     attachments?: unknown;
     toNumber?: string | null;
     fromNumber?: string | null;
+    locationId?: string | null;
   }
 ) {
   const match = await resolveHighLevelParticipant(prisma, {
@@ -125,6 +126,23 @@ export async function upsertConversationMessage(
   const channel = (input.channel || input.kind || "SMS").toUpperCase();
   const kind = (input.kind || channel).toUpperCase();
   const occurredAt = input.occurredAt ?? new Date();
+  const isCall = kind === "CALL" || kind === "VOICEMAIL";
+  const tracking = isCall ? await findTrackingNumberByPhone(prisma, input.companyId, input.toNumber) : null;
+  const hasRecording = extractHighLevelRecordingHint(input.attachments, input.recordingUrl).hasRecording;
+  const messageMetadata = {
+    provider: HIGHLEVEL_PROVIDER_KEY,
+    contactId: input.contactId ?? null,
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    locationId: input.locationId ?? null,
+    callDuration: input.callDuration ?? null,
+    callStatus: input.callStatus ?? null,
+    hasRecording,
+    toNumber: input.toNumber ?? null,
+    fromNumber: input.fromNumber ?? input.phone ?? null,
+    trackingSource: tracking?.source ?? null,
+    trackingNumber: tracking?.phoneNumber ?? input.toNumber ?? null,
+  };
   const thread = await prisma.communicationThread.upsert({
     where: {
       companyId_provider_externalId: {
@@ -144,7 +162,7 @@ export async function upsertConversationMessage(
       contactName: input.contactName ?? null,
       phone: input.phone ?? null,
       email: input.email ?? null,
-      lastPreview: (input.body ?? "").slice(0, 240) || kind,
+      lastPreview: (input.body ?? "").slice(0, 240) || (isCall ? "Inbound Call" : kind),
       lastActivityAt: occurredAt,
       unread: input.unread ?? input.direction === "inbound",
     },
@@ -156,7 +174,7 @@ export async function upsertConversationMessage(
       contactName: input.contactName ?? undefined,
       phone: input.phone ?? undefined,
       email: input.email ?? undefined,
-      lastPreview: (input.body ?? "").slice(0, 240) || kind,
+      lastPreview: (input.body ?? "").slice(0, 240) || (isCall ? "Inbound Call" : kind),
       lastActivityAt: occurredAt,
       unread: input.unread ?? input.direction === "inbound",
     },
@@ -189,22 +207,21 @@ export async function upsertConversationMessage(
       body: input.body ?? null,
       occurredAt,
       status: input.status ?? null,
-      metadata: {
-        contactId: input.contactId,
-        callDuration: input.callDuration,
-        callStatus: input.callStatus,
-        hasRecording: extractHighLevelRecordingHint(input.attachments, input.recordingUrl).hasRecording,
-        toNumber: input.toNumber ?? null,
-        fromNumber: input.fromNumber ?? input.phone ?? null,
-      } as Prisma.InputJsonValue,
+      metadata: messageMetadata as Prisma.InputJsonValue,
     },
     update: {
       body: input.body ?? undefined,
       status: input.status ?? undefined,
+      metadata: messageMetadata as Prisma.InputJsonValue,
     },
   });
 
-  if (kind === "CALL" || kind === "VOICEMAIL") {
+  let leadId = match.leadId;
+  let leadCreated = false;
+  let callRecordCreated = false;
+  let callRecordUpdated = false;
+
+  if (isCall) {
     const missed = /missed|voicemail|no-answer|no_answer/i.test(`${input.callStatus ?? ""} ${input.status ?? ""}`);
     const existingCall = await prisma.callRecord.findFirst({
       where: {
@@ -212,9 +229,23 @@ export async function upsertConversationMessage(
         recordingRef: input.messageId,
       },
     });
-    if (!existingCall) {
-      const tracking = await findTrackingNumberByPhone(prisma, input.companyId, input.toNumber);
-      let leadId = match.leadId;
+    if (existingCall) {
+      await prisma.callRecord.update({
+        where: { id: existingCall.id },
+        data: {
+          durationSeconds: input.callDuration ?? existingCall.durationSeconds,
+          answered: input.callStatus || input.status ? !missed : existingCall.answered,
+          missed: input.callStatus || input.status ? missed : existingCall.missed,
+          source: tracking?.source ?? existingCall.source,
+          campaign: tracking?.campaign ?? existingCall.campaign,
+          trackingNumber: tracking?.phoneNumber ?? existingCall.trackingNumber ?? input.toNumber ?? null,
+          caller: input.fromNumber ?? input.phone ?? existingCall.caller,
+          customerId: match.customerId ?? existingCall.customerId,
+          leadId: leadId ?? existingCall.leadId,
+        },
+      });
+      callRecordUpdated = true;
+    } else {
       if (!match.customerId && !leadId && (input.direction || "inbound").toLowerCase() === "inbound") {
         const ingested = await ingestHighLevelLead(prisma, {
           companyId: input.companyId,
@@ -229,6 +260,7 @@ export async function upsertConversationMessage(
           message: `Inbound ${kind.toLowerCase()} to ${input.toNumber || "HighLevel number"}`,
         });
         leadId = ingested.lead.id;
+        leadCreated = ingested.created;
       }
       await prisma.callRecord.create({
         data: {
@@ -247,6 +279,7 @@ export async function upsertConversationMessage(
           recordingRef: input.messageId,
         },
       });
+      callRecordCreated = true;
       if (tracking && (match.customerId || leadId)) {
         await recordAttribution({
           companyId: input.companyId,
@@ -259,6 +292,12 @@ export async function upsertConversationMessage(
         });
       }
     }
+    if (leadId && !thread.leadId) {
+      await prisma.communicationThread.update({
+        where: { id: thread.id },
+        data: { leadId },
+      });
+    }
   }
 
   if (input.contactId && match.customerId) {
@@ -270,5 +309,15 @@ export async function upsertConversationMessage(
     });
   }
 
-  return { thread, message, customerId: match.customerId, leadId: match.leadId, bucket: match.bucket };
+  return {
+    thread,
+    message,
+    customerId: match.customerId,
+    leadId,
+    bucket: match.bucket,
+    trackingSource: tracking?.source ?? null,
+    leadCreated,
+    callRecordCreated,
+    callRecordUpdated,
+  };
 }

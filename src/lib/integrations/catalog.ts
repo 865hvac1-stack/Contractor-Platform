@@ -257,7 +257,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     name: "Tracking Numbers",
     category: "WEBSITE",
     family: "highlevel",
-    description: "HighLevel LC Phone numbers mapped to sources such as Google LSA. Incoming calls inherit that source.",
+    description: "HighLevel LC Phone numbers mapped to sources such as Google LSA Test. Incoming calls inherit that source.",
     value: "Tracking number → call → lead → job → revenue.",
     oauthReady: false,
     internalLive: true,

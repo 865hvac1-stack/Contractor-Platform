@@ -127,7 +127,7 @@ export function getProviderEnv(providerKey: string): ProviderEnvStatus {
         missing: [],
         notes: [
           "Preferred path: connect HighLevel, then sync LC Phone active numbers.",
-          "Map each number to a source such as GOOGLE_LSA. Incoming CALL events inherit that source.",
+          "Map each number to a source such as Google LSA Test. Incoming CALL events inherit that source.",
         ],
       };
     }

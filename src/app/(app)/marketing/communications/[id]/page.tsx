@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { isHighLevelConnected } from "@/lib/highlevel/connection";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { StatusBadge } from "@/components/status-badge";
+import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
 
 export default async function CommunicationThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -83,25 +84,49 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
         ) : (
           thread.messages.map((message) => {
             const outbound = message.direction === "OUTBOUND";
-            const metadata = (message.metadata ?? {}) as { recordingUrl?: string | null };
-            const recording =
-              typeof metadata.recordingUrl === "string" && /^https?:\/\//i.test(metadata.recordingUrl)
-                ? metadata.recordingUrl
-                : null;
+            const metadata = (message.metadata ?? {}) as {
+              hasRecording?: boolean;
+              recordingUrl?: string | null;
+              callDuration?: number | null;
+              callStatus?: string | null;
+              trackingSource?: string | null;
+              trackingNumber?: string | null;
+              fromNumber?: string | null;
+              toNumber?: string | null;
+            };
+            const isCall = message.kind === "CALL" || message.kind === "VOICEMAIL" || message.channel === "CALL";
+            const hasRecording = Boolean(metadata.hasRecording) || metadata.recordingUrl === "available";
+            const duration = formatCallDurationLabel(metadata.callDuration);
             return (
               <article
                 key={message.id}
                 className={`max-w-2xl rounded-2xl border px-4 py-3 ${outbound ? "ml-auto bg-[var(--cy-navy)] text-white" : "bg-white"}`}
               >
                 <p className={`text-xs ${outbound ? "text-white/70" : "text-[var(--muted-foreground)]"}`}>
-                  {outbound ? "Outbound" : "Inbound"} · {message.channel}
-                  {message.status ? ` · ${message.status}` : ""} · {message.occurredAt.toLocaleString()}
+                  {outbound ? "Outbound" : "Inbound"} · {isCall ? "Inbound Call" : message.channel}
+                  {metadata.callStatus || message.status ? ` · ${metadata.callStatus || message.status}` : ""}
+                  {duration ? ` · ${duration}` : ""}
+                  {metadata.trackingSource ? ` · ${metadata.trackingSource}` : ""}
+                  {" · "}
+                  {message.occurredAt.toLocaleString()}
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{message.body || `${message.kind} event`}</p>
-                {recording ? (
-                  <a href={recording} className="mt-2 inline-block text-xs underline" target="_blank" rel="noreferrer">
-                    Recording / voicemail
-                  </a>
+                {metadata.fromNumber || metadata.toNumber ? (
+                  <p className={`mt-1 text-xs ${outbound ? "text-white/70" : "text-[var(--muted-foreground)]"}`}>
+                    {metadata.fromNumber ? `From ${metadata.fromNumber}` : ""}
+                    {metadata.fromNumber && metadata.toNumber ? " · " : ""}
+                    {metadata.toNumber ? `To ${metadata.toNumber}` : ""}
+                    {metadata.trackingNumber && metadata.trackingNumber !== metadata.toNumber
+                      ? ` · Tracking ${metadata.trackingNumber}`
+                      : ""}
+                  </p>
+                ) : null}
+                <p className="mt-2 whitespace-pre-wrap text-sm">
+                  {message.body || (isCall ? "Inbound call" : `${message.kind} event`)}
+                </p>
+                {hasRecording ? (
+                  <p className={`mt-2 text-xs ${outbound ? "text-white/80" : "text-[var(--muted-foreground)]"}`}>
+                    Recording on file in HighLevel. ContractorYou does not store or open the provider URL.
+                  </p>
                 ) : null}
               </article>
             );

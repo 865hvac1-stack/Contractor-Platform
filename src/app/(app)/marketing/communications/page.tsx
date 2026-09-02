@@ -9,12 +9,23 @@ import { StatusBadge } from "@/components/status-badge";
 import { customerLabel } from "@/lib/tech/today";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { isDemoCompany } from "@/lib/demo/guard";
+import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
 
 const COMM_FILTERS = [
   { id: "inbox", label: "Inbox" },
   { id: "today", label: "Today's calls" },
   { id: "missed", label: "Missed" },
 ] as const;
+
+type MessageMeta = {
+  callDuration?: number | null;
+  callStatus?: string | null;
+  trackingSource?: string | null;
+  trackingNumber?: string | null;
+  fromNumber?: string | null;
+  toNumber?: string | null;
+  hasRecording?: boolean;
+};
 
 export default async function CommunicationsPage({
   searchParams,
@@ -41,22 +52,37 @@ export default async function CommunicationsPage({
     include: {
       customer: { select: { id: true, firstName: true, lastName: true, businessName: true } },
       lead: { select: { id: true, firstName: true, lastName: true, source: true } },
+      messages: { orderBy: { occurredAt: "desc" }, take: 1 },
     },
   });
   const connected = connection?.status === "CONNECTED";
-  const calls =
-    filter === "today" || filter === "missed"
-      ? await prisma.callRecord.findMany({
+  const loadCalls = filter === "inbox" || filter === "today" || filter === "missed";
+  const calls = loadCalls
+    ? await prisma.callRecord.findMany({
+        where: {
+          companyId: ctx.company.id,
+          ...(filter === "missed" ? { missed: true, booked: { not: true } } : { startedAt: { gte: dayStart, lte: dayEnd } }),
+        },
+        include: {
+          customer: { select: { id: true, firstName: true, lastName: true, businessName: true } },
+          lead: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { startedAt: "desc" },
+        take: 80,
+      })
+    : [];
+  const callThreadRows =
+    calls.length > 0
+      ? await prisma.communicationMessage.findMany({
           where: {
             companyId: ctx.company.id,
-            ...(filter === "today" ? { startedAt: { gte: dayStart, lte: dayEnd } } : {}),
-            ...(filter === "missed" ? { missed: true, booked: { not: true } } : {}),
+            provider: HIGHLEVEL_PROVIDER_KEY,
+            externalId: { in: calls.map((call) => call.recordingRef).filter((value): value is string => Boolean(value)) },
           },
-          include: { customer: { select: { id: true, firstName: true, lastName: true, businessName: true } } },
-          orderBy: { startedAt: "desc" },
-          take: 80,
+          select: { externalId: true, threadId: true },
         })
       : [];
+  const threadByMessageId = new Map(callThreadRows.map((row) => [row.externalId, row.threadId]));
   const composeCustomer = composeCustomerId
     ? await prisma.customer.findFirst({
         where: { id: composeCustomerId, companyId: ctx.company.id },
@@ -73,7 +99,7 @@ export default async function CommunicationsPage({
           <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)]">Communications</h1>
           <p className="mt-2 max-w-2xl text-[var(--muted-foreground)]">
             ContractorYou inbox over HighLevel. Historical conversations appear after Sync communications.
-            New messages arrive from webhooks after that.
+            New inbound calls arrive from the HighLevel webhook.
           </p>
         </div>
         <Link href="/settings/highlevel" className={cn(buttonVariants({ variant: "outline" }))}>
@@ -128,32 +154,51 @@ export default async function CommunicationsPage({
             <h2 className="font-medium">{filter === "missed" ? "Missed calls" : "Calls"}</h2>
           </div>
           <ul className="divide-y divide-[var(--border)]">
-            {calls.map((call) => (
-              <li key={call.id} className="px-4 py-3">
+            {calls.map((call) => {
+              const threadId = call.recordingRef ? threadByMessageId.get(call.recordingRef) : null;
+              const href = threadId
+                ? `/marketing/communications/${threadId}`
+                : call.customer
+                  ? `/office/customers/${call.customer.id}`
+                  : null;
+              const duration = formatCallDurationLabel(call.durationSeconds);
+              const name = call.customer
+                ? customerLabel(call.customer)
+                : call.lead
+                  ? `${call.lead.firstName} ${call.lead.lastName}`.trim()
+                  : call.caller || "Unknown caller";
+              const status = call.missed ? "Missed" : call.answered ? "Answered" : call.direction;
+              const inner = (
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    {call.customer ? (
-                      <Link href={`/office/customers/${call.customer.id}`} className="font-medium hover:underline">
-                        {customerLabel(call.customer)}
-                      </Link>
-                    ) : (
-                      <p className="font-medium">{call.caller || "Unknown caller"}</p>
-                    )}
+                    <p className="font-medium">{name}</p>
                     <p className="text-sm text-[var(--muted-foreground)]">
-                      {call.missed ? "Missed" : call.answered ? "Answered" : call.direction}
+                      Inbound Call
+                      {call.caller ? ` · ${call.caller}` : ""}
                       {call.source ? ` · ${call.source}` : ""}
                       {call.trackingNumber ? ` · ${call.trackingNumber}` : ""}
+                      {status ? ` · ${status}` : ""}
+                      {duration ? ` · ${duration}` : ""}
                       {call.recordingRef ? " · Recording on file" : ""} · {call.startedAt.toLocaleString()}
                     </p>
                   </div>
                   {call.customer ? (
-                    <Link href={`/office/customers/${call.customer.id}`} className="text-sm text-[var(--cy-orange)] hover:underline">
-                      Customer 360
-                    </Link>
+                    <span className="text-sm text-[var(--cy-orange)]">Customer 360</span>
                   ) : null}
                 </div>
-              </li>
-            ))}
+              );
+              return (
+                <li key={call.id} className="px-4 py-3">
+                  {href ? (
+                    <Link href={href} className="block hover:opacity-90">
+                      {inner}
+                    </Link>
+                  ) : (
+                    inner
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : filter === "missed" || filter === "today" ? (
@@ -178,6 +223,10 @@ export default async function CommunicationsPage({
               const name = thread.customer
                 ? thread.customer.businessName || `${thread.customer.firstName} ${thread.customer.lastName}`
                 : thread.contactName || thread.phone || thread.email || "Unknown contact";
+              const latest = thread.messages[0];
+              const meta = (latest?.metadata ?? {}) as MessageMeta;
+              const isCall = thread.channel === "CALL" || latest?.kind === "CALL" || latest?.kind === "VOICEMAIL";
+              const duration = formatCallDurationLabel(meta.callDuration);
               return (
                 <li key={thread.id}>
                   <Link href={`/marketing/communications/${thread.id}`} className="block px-4 py-3 hover:bg-[var(--cy-gray)]">
@@ -188,7 +237,11 @@ export default async function CommunicationsPage({
                           {thread.unread ? <span className="ml-2 text-xs text-[var(--cy-orange)]">Unread</span> : null}
                         </p>
                         <p className="text-sm text-[var(--muted-foreground)]">
-                          {thread.channel} · {thread.phone || thread.email || "No contact detail"}
+                          {isCall ? "Inbound Call" : thread.channel}
+                          {thread.phone ? ` · ${thread.phone}` : thread.email ? ` · ${thread.email}` : " · No contact detail"}
+                          {meta.trackingSource ? ` · ${meta.trackingSource}` : ""}
+                          {latest?.status ? ` · ${latest.status}` : ""}
+                          {duration ? ` · ${duration}` : ""}
                           {thread.customerId
                             ? " · Customer"
                             : thread.lead
@@ -200,7 +253,7 @@ export default async function CommunicationsPage({
                         <p className="mt-1 text-sm">{thread.lastPreview || "No preview"}</p>
                       </div>
                       <div className="text-right">
-                        <StatusBadge status={thread.channel} />
+                        <StatusBadge status={isCall ? "Inbound Call" : thread.channel} />
                         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                           {thread.lastActivityAt.toLocaleString()}
                         </p>
