@@ -26,6 +26,15 @@ export async function GET() {
       redirectTo: "/settings/highlevel",
     });
     const sandbox = await companyAllowsExternalIntegrationTesting(ctx.company.id);
+    const { logHighLevelOAuth } = await import("@/lib/highlevel/oauth-log");
+    logHighLevelOAuth({
+      reason: "OAUTH_START",
+      companyId: ctx.company.id,
+      userId: ctx.user.id,
+      sandbox,
+      hasState: true,
+      hasCode: false,
+    });
     if (!sandbox) {
       await upsertConnection({
         companyId: ctx.company.id,

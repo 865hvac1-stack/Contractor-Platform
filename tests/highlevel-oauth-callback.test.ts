@@ -8,8 +8,10 @@ import { highlevelRedirectUri, highlevelWebhookUrl } from "@/lib/highlevel/env";
 import { MARKETPLACE_OAUTH_CALLBACK_PATH, oauthCallbackUrl } from "@/lib/integrations/env";
 import { handleHighLevelMarketplaceCallback } from "@/lib/highlevel/oauth-callback";
 import { GET as marketplaceOAuthCallback } from "@/app/api/integrations/oauth/callback/route";
-import { createOAuthState } from "@/lib/integrations/oauth/state";
+import { consumeOAuthState, consumeOAuthStateDetailed, createOAuthState } from "@/lib/integrations/oauth/state";
 import { decryptProviderTokens } from "@/lib/integrations/crypto";
+import * as highlevelConnection from "@/lib/highlevel/connection";
+import { upsertConnection, saveConnectionTokens } from "@/lib/integrations/store";
 
 const prisma = new PrismaClient();
 const PRODUCTION_ORIGIN = "https://contractor-platform-production-c444.up.railway.app";
@@ -98,12 +100,69 @@ describe("HighLevel Marketplace OAuth callback", () => {
     return new Request(`https://contractor-platform-production-c444.up.railway.app/api/integrations/oauth/callback?${query}`);
   }
 
-  it("rejects missing or invalid OAuth state", async () => {
+  function mockVerifiedLocation(locationId: string, name = "865 HVAC") {
+    return vi.spyOn(highlevelConnection, "probeHighLevelLocation").mockResolvedValue({
+      ok: true,
+      location: { id: locationId, name },
+      locationId,
+    });
+  }
+
+  it("rejects missing HighLevel-install state without treating it as a silent connect", async () => {
     const missing = await marketplaceOAuthCallback(callbackRequest("code=auth-code"));
     expect(missing.status).toBeGreaterThanOrEqual(300);
-    expect(missing.headers.get("location") || "").toContain("Authorization+expired");
+    const missingText = decodeURIComponent((missing.headers.get("location") || "").replaceAll("+", " "));
+    expect(missingText).toContain("Marketplace install link cannot create ContractorYou authorization state");
+    expect(missingText).not.toContain("connected=1");
     const unknown = await handleHighLevelMarketplaceCallback(callbackRequest("code=auth-code&state=not-a-real-state"));
-    expect(unknown.headers.get("location") || "").toContain("Authorization+expired");
+    expect(decodeURIComponent((unknown.headers.get("location") || "").replaceAll("+", " "))).toContain(
+      "Marketplace install link cannot create ContractorYou authorization state"
+    );
+  });
+
+  it("rejects expired and mismatched state and refuses reuse", async () => {
+    const expired = await prisma.oAuthState.create({
+      data: {
+        companyId: ids.company,
+        userId: ids.user,
+        providerKey: HIGHLEVEL_PROVIDER_KEY,
+        state: `expired-${Date.now()}`,
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    const expiredCb = await handleHighLevelMarketplaceCallback(
+      callbackRequest(`code=auth-code&state=${expired.state}`)
+    );
+    expect(expiredCb.headers.get("location") || "").toContain("Authorization+expired");
+    const expiredAgain = await prisma.oAuthState.create({
+      data: {
+        companyId: ids.company,
+        userId: ids.user,
+        providerKey: HIGHLEVEL_PROVIDER_KEY,
+        state: `expired-detail-${Date.now()}`,
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    });
+    const expiredResult = await consumeOAuthStateDetailed(expiredAgain.state, HIGHLEVEL_PROVIDER_KEY);
+    expect(expiredResult.ok).toBe(false);
+    if (!expiredResult.ok) expect(expiredResult.reason).toBe("OAUTH_STATE_EXPIRED");
+
+    const mismatch = await createOAuthState({
+      companyId: ids.company,
+      userId: ids.user,
+      providerKey: "google_ads",
+    });
+    const mismatchResult = await consumeOAuthStateDetailed(mismatch.state, HIGHLEVEL_PROVIDER_KEY);
+    expect(mismatchResult.ok).toBe(false);
+    if (!mismatchResult.ok) expect(mismatchResult.reason).toBe("OAUTH_STATE_MISMATCH");
+
+    const once = await createOAuthState({
+      companyId: ids.company,
+      userId: ids.user,
+      providerKey: HIGHLEVEL_PROVIDER_KEY,
+    });
+    expect((await consumeOAuthState(once.state))?.companyId).toBe(ids.company);
+    expect(await consumeOAuthState(once.state)).toBeNull();
   });
 
   it("rejects a missing authorization code", async () => {
@@ -145,6 +204,7 @@ describe("HighLevel Marketplace OAuth callback", () => {
       agencyId: "agency_1",
       userType: "Location",
     });
+    mockVerifiedLocation(locationId);
     const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=valid-code&state=${row.state}`));
     expect(response.headers.get("location") || "").toContain("connected=1");
     const connection = await prisma.integrationConnection.findFirst({
@@ -168,6 +228,14 @@ describe("HighLevel Marketplace OAuth callback", () => {
     expect(decrypted.refreshToken).toBe(refreshToken);
     expect(decrypted.expiresAt).toBe(expiresAt);
     expect(connection!.credentials!.tokenExpiresAt?.toISOString()).toBe(new Date(expiresAt).toISOString());
+    const identity = await prisma.providerIdentityMap.findFirst({
+      where: {
+        companyId: ids.company,
+        entityType: "COMPANY",
+        externalId: locationId,
+      },
+    });
+    expect(identity?.internalId).toBe(ids.company);
   });
 
   it("does not let a second company claim an already-linked location", async () => {
@@ -188,6 +256,7 @@ describe("HighLevel Marketplace OAuth callback", () => {
       agencyId: null,
       userType: "Location",
     });
+    mockVerifiedLocation(locationId);
     const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=other-code&state=${row.state}`));
     expect(decodeURIComponent((response.headers.get("location") || "").replaceAll("+", " "))).toContain(
       "already linked"
@@ -201,5 +270,82 @@ describe("HighLevel Marketplace OAuth callback", () => {
     });
     expect(ownerAfter?.externalAccountId).toBe(locationId);
     expect(ownerAfter?.status).toBe("CONNECTED");
+  });
+
+  it("upgrades a same-company PIT connection to Marketplace OAuth", async () => {
+    const locationId = `loc_pit_upgrade_${Date.now()}`;
+    const connection = await upsertConnection({
+      companyId: ids.company,
+      providerKey: HIGHLEVEL_PROVIDER_KEY,
+      status: "CONNECTED",
+      accountLabel: "865 HVAC",
+      externalAccountId: locationId,
+      scopes: ["private_token"],
+      healthMessage: "Connected with a location Private Integration Token (testing / single-location).",
+    });
+    await saveConnectionTokens({
+      companyId: ids.company,
+      connectionId: connection.id,
+      tokens: { accessToken: "pit-placeholder", scopes: ["private_token"] },
+    });
+    const row = await stateFor(ids.company);
+    const accessToken = `oauth-upgrade-${Date.now()}`;
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockResolvedValue({
+      tokens: {
+        accessToken,
+        refreshToken: "oauth-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        scopes: ["locations.readonly"],
+      },
+      locationId,
+      agencyId: null,
+      userType: "Location",
+    });
+    mockVerifiedLocation(locationId, "865 HVAC");
+    const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=upgrade-code&state=${row.state}`));
+    expect(response.headers.get("location") || "").toContain("connected=1");
+    const after = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY },
+      include: { credentials: true },
+    });
+    expect(after?.id).toBe(connection.id);
+    expect(after?.externalAccountId).toBe(locationId);
+    expect(after?.status).toBe("CONNECTED");
+    expect(after?.scopes).toContain("locations.readonly");
+    expect(after?.scopes).not.toContain("private_token");
+    const decrypted = decryptProviderTokens({
+      ciphertext: Buffer.from(after!.credentials!.ciphertext),
+      iv: Buffer.from(after!.credentials!.iv),
+      authTag: Buffer.from(after!.credentials!.authTag),
+      keyVersion: after!.credentials!.keyVersion,
+    });
+    expect(decrypted.accessToken).toBe(accessToken);
+    expect(Buffer.from(after!.credentials!.ciphertext).toString("utf8")).not.toContain(accessToken);
+  });
+
+  it("does not mark CONNECTED when the location probe fails", async () => {
+    const row = await stateFor(ids.company);
+    const locationId = `loc_unverified_${Date.now()}`;
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockResolvedValue({
+      tokens: {
+        accessToken: "unverified-access",
+        refreshToken: "unverified-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        scopes: ["locations.readonly"],
+      },
+      locationId,
+      agencyId: null,
+      userType: "Location",
+    });
+    vi.spyOn(highlevelConnection, "probeHighLevelLocation").mockResolvedValue({
+      ok: false,
+      error: "HighLevel location probe failed.",
+    });
+    const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=unverified&state=${row.state}`));
+    expect(response.headers.get("location") || "").toContain("could+not+be+verified");
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY, externalAccountId: locationId },
+    });
+    expect(connection?.status).not.toBe("CONNECTED");
   });
 });

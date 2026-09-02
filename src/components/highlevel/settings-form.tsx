@@ -46,8 +46,9 @@ export function HighLevelSettingsForm({
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
         <h2 className="font-medium">Marketplace OAuth</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Production contractors connect their own HighLevel location through a Marketplace app. This is the
-          multi-tenant path.
+          Production contractors connect their own HighLevel location through a Marketplace app. Click Connect
+          HighLevel in this company first. A HighLevel Marketplace install link cannot create ContractorYou
+          authorization state.
           {sandboxOAuth
             ? " This Summit sandbox may authorize an existing location as TEST ONLY. It cannot take ownership of another company location."
             : ""}
