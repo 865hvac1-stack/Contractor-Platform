@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
+import { TrackingNumbersPanel } from "@/components/highlevel/tracking-numbers-panel";
 
 export default async function ChannelDetailPage({
   params,
@@ -181,12 +182,15 @@ export default async function ChannelDetailPage({
         </ActionForm>
       ) : null}
 
+      {providerKey === "tracking_numbers" ? (
+        <TrackingNumbersPanel companyId={ctx.company.id} canManage={canManage} />
+      ) : null}
+
       {(providerKey === "website_forms" ||
         providerKey === "landing_pages" ||
-        providerKey === "utm_tracking" ||
-        providerKey === "tracking_numbers") && (
+        providerKey === "utm_tracking") && (
         <p className="text-sm">
-          Manage hosted forms, pages, and numbers in{" "}
+          Manage hosted forms and pages in{" "}
           <Link href="/marketing/forms" className="underline">
             Website
           </Link>

@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { HIGHLEVEL_ED25519_PUBLIC_KEY, HIGHLEVEL_PROVIDER_KEY, HIGHLEVEL_RSA_PUBLIC_KEY } from "@/lib/highlevel/config";
 import { ingestHighLevelLead } from "@/lib/highlevel/leads";
 import { matchHighLevelContact, mapContactToCustomer } from "@/lib/highlevel/contacts";
+import { extractHighLevelRecordingHint } from "@/lib/highlevel/attachments";
 import { upsertConversationMessage } from "@/lib/highlevel/conversations";
 
 export function verifyHighLevelWebhookSignature(input: {
@@ -136,6 +137,7 @@ export async function processHighLevelWebhook(
       contactId: text(data.contactId) || null,
     });
   } else if (type.includes("message") || type.includes("conversation") || type.includes("inbound") || type.includes("outbound")) {
+    const recording = extractHighLevelRecordingHint(data.attachments);
     await upsertConversationMessage(prisma, {
       companyId: input.companyId,
       conversationId: text(data.conversationId) || text(data.conversation_id) || externalId,
@@ -143,6 +145,8 @@ export async function processHighLevelWebhook(
       contactId: text(data.contactId) || null,
       contactName: text(data.full_name) || text(data.contactName) || null,
       phone: text(data.from) || text(data.phone) || null,
+      fromNumber: text(data.from) || null,
+      toNumber: text(data.to) || null,
       body: text(data.body) || text(data.message) || null,
       channel: text(data.messageType) || text(data.type) || "SMS",
       direction: type.includes("outbound") ? "outbound" : text(data.direction) || "inbound",
@@ -151,6 +155,8 @@ export async function processHighLevelWebhook(
       status: text(data.status) || text(data.callStatus) || null,
       callDuration: typeof data.callDuration === "number" ? data.callDuration : null,
       callStatus: text(data.callStatus) || null,
+      attachments: data.attachments,
+      recordingUrl: recording.hasRecording ? "available" : null,
     });
   }
 

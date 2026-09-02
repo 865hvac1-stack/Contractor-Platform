@@ -13,7 +13,7 @@ const CAPABILITIES: { key: string; label: string; scopes: string[]; verified?: b
   { key: "contacts", label: "Contacts", scopes: ["contacts.readonly", "contacts.write"] },
   { key: "conversations", label: "Conversations", scopes: ["conversations.readonly"] },
   { key: "sms", label: "SMS", scopes: ["conversations/message.write", "conversations.write"] },
-  { key: "phone", label: "Phone", scopes: ["conversations.readonly"] },
+  { key: "phone", label: "Phone", scopes: ["phonenumbers.read", "conversations.readonly"] },
   { key: "email", label: "Email", scopes: ["conversations/message.write"] },
   { key: "opportunities", label: "Opportunities / Leads", scopes: ["opportunities.readonly"] },
   { key: "calendars", label: "Calendars", scopes: ["calendars.readonly"] },

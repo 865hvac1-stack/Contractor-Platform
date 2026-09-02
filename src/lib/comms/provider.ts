@@ -19,14 +19,22 @@ export async function sendCompanyCommunication(input: {
   body: string;
   customerId?: string | null;
   leadId?: string | null;
+  confirmExternalSend?: boolean;
 }): Promise<SmsSendResult & { provider: "highlevel" | "twilio" | "none" | "demo" }> {
   const blocked = await demoOutboundBlock(input.companyId);
-  if (blocked.blocked) {
+  const provider = await resolveCommunicationProvider(input.companyId);
+  if (blocked.blocked && !(input.confirmExternalSend && provider === "highlevel")) {
     return { ok: false, configured: true, provider: "demo", error: blocked.message };
   }
-  const provider = await resolveCommunicationProvider(input.companyId);
   if (provider === "highlevel") {
-    const result = await sendViaHighLevel(input);
+    const result = await sendViaHighLevel({
+      companyId: input.companyId,
+      to: input.to,
+      body: input.body,
+      customerId: input.customerId,
+      leadId: input.leadId,
+      confirmExternalSend: input.confirmExternalSend,
+    });
     return { ...result, provider };
   }
   if (provider === "twilio") {

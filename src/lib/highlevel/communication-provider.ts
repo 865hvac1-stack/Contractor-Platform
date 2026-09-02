@@ -3,6 +3,7 @@ import type { SmsSendResult } from "@/lib/communications/sms";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
 import { getIdentityMap, upsertIdentityMap } from "@/lib/highlevel/identity";
 import { sendHighLevelSms, upsertHighLevelContact } from "@/lib/highlevel/client";
+import { resolveApprovedSenderNumber } from "@/lib/highlevel/phone-numbers";
 
 export async function sendViaHighLevel(input: {
   companyId: string;
@@ -10,10 +11,11 @@ export async function sendViaHighLevel(input: {
   body: string;
   customerId?: string | null;
   leadId?: string | null;
+  confirmExternalSend?: boolean;
 }): Promise<SmsSendResult> {
   const { demoOutboundBlock } = await import("@/lib/demo/guard");
   const blocked = await demoOutboundBlock(input.companyId);
-  if (blocked.blocked) {
+  if (blocked.blocked && !input.confirmExternalSend) {
     return { ok: false, configured: true, error: blocked.message };
   }
   const access = await loadHighLevelAccess(prisma, input.companyId);
@@ -70,10 +72,20 @@ export async function sendViaHighLevel(input: {
     if (!contactId) {
       return { ok: false, configured: true, error: "HighLevel did not return a contact for this phone number." };
     }
+    const sender = await resolveApprovedSenderNumber(prisma, input.companyId);
+    if (!sender) {
+      return {
+        ok: false,
+        configured: true,
+        error: "Set an approved HighLevel sender number in Marketing → Channels → Tracking Numbers before sending SMS.",
+      };
+    }
     const sent = await sendHighLevelSms({
       accessToken: access.accessToken,
       contactId,
       body: input.body,
+      fromNumber: sender.phoneNumber,
+      toNumber: input.to,
     });
     return { ok: true, providerId: sent.messageId ?? sent.id ?? sent.conversationId ?? null };
   } catch (error) {

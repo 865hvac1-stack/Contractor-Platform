@@ -2,6 +2,10 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { mapContactToCustomer, resolveHighLevelParticipant } from "@/lib/highlevel/contacts";
 import { upsertIdentityMap } from "@/lib/highlevel/identity";
+import { extractHighLevelRecordingHint } from "@/lib/highlevel/attachments";
+import { findTrackingNumberByPhone } from "@/lib/highlevel/phone-numbers";
+import { ingestHighLevelLead } from "@/lib/highlevel/leads";
+import { recordAttribution } from "@/lib/attribution/engine";
 
 export async function upsertConversationThread(
   prisma: PrismaClient,
@@ -98,6 +102,9 @@ export async function upsertConversationMessage(
     callDuration?: number | null;
     callStatus?: string | null;
     recordingUrl?: string | null;
+    attachments?: unknown;
+    toNumber?: string | null;
+    fromNumber?: string | null;
   }
 ) {
   const match = await resolveHighLevelParticipant(prisma, {
@@ -186,7 +193,9 @@ export async function upsertConversationMessage(
         contactId: input.contactId,
         callDuration: input.callDuration,
         callStatus: input.callStatus,
-        recordingUrl: input.recordingUrl ?? null,
+        hasRecording: extractHighLevelRecordingHint(input.attachments, input.recordingUrl).hasRecording,
+        toNumber: input.toNumber ?? null,
+        fromNumber: input.fromNumber ?? input.phone ?? null,
       } as Prisma.InputJsonValue,
     },
     update: {
@@ -200,25 +209,55 @@ export async function upsertConversationMessage(
     const existingCall = await prisma.callRecord.findFirst({
       where: {
         companyId: input.companyId,
-        source: "highlevel",
         recordingRef: input.messageId,
       },
     });
     if (!existingCall) {
+      const tracking = await findTrackingNumberByPhone(prisma, input.companyId, input.toNumber);
+      let leadId = match.leadId;
+      if (!match.customerId && !leadId && (input.direction || "inbound").toLowerCase() === "inbound") {
+        const ingested = await ingestHighLevelLead(prisma, {
+          companyId: input.companyId,
+          externalId: input.contactId || input.messageId,
+          firstName: input.contactName?.split(" ")[0] || "Unknown",
+          lastName: input.contactName?.split(" ").slice(1).join(" ") || "Caller",
+          phone: input.fromNumber || input.phone || null,
+          source: tracking?.source && tracking.source !== "HIGHLEVEL" ? tracking.source : "Missed call",
+          campaignName: tracking?.campaign,
+          contactId: input.contactId,
+          receivedAt: occurredAt,
+          message: `Inbound ${kind.toLowerCase()} to ${input.toNumber || "HighLevel number"}`,
+        });
+        leadId = ingested.lead.id;
+      }
       await prisma.callRecord.create({
         data: {
           companyId: input.companyId,
           direction: (input.direction || "inbound").toLowerCase(),
-          caller: input.phone ?? input.contactName ?? null,
+          trackingNumber: tracking?.phoneNumber ?? input.toNumber ?? null,
+          source: tracking?.source ?? "highlevel",
+          campaign: tracking?.campaign ?? null,
+          caller: input.fromNumber ?? input.phone ?? input.contactName ?? null,
           customerId: match.customerId,
+          leadId,
           startedAt: occurredAt,
           durationSeconds: input.callDuration ?? null,
           answered: !missed,
           missed,
-          recordingRef: input.recordingUrl || input.messageId,
-          source: "highlevel",
+          recordingRef: input.messageId,
         },
       });
+      if (tracking && (match.customerId || leadId)) {
+        await recordAttribution({
+          companyId: input.companyId,
+          leadId,
+          customerId: match.customerId,
+          model: "PRIMARY_SOURCE",
+          source: tracking.source,
+          campaignId: tracking.campaign,
+          note: `Inbound ${kind.toLowerCase()} to tracking number ${tracking.phoneNumber}. Revenue is recorded later when a job is sold.`,
+        });
+      }
     }
   }
 

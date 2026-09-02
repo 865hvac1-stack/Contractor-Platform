@@ -81,6 +81,16 @@ describe("HighLevel persistence and conversation mapping", () => {
       data: { businessName: `HL Persist B ${stamp}`, industry: "PLUMBING", status: "ACTIVE" },
     });
     ids.companyA = companyA.id;
+    await prisma.trackingNumber.create({
+      data: {
+        companyId: companyA.id,
+        phoneNumber: "+18655550100",
+        source: "PHONE",
+        channel: "SMS_DEFAULT",
+        provider: HIGHLEVEL_PROVIDER_KEY,
+        status: "ACTIVE",
+      },
+    });
     ids.companyB = companyB.id;
     const customer = await prisma.customer.create({
       data: {

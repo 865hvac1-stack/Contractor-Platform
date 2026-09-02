@@ -15,6 +15,16 @@ import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 import { refuseDemoExternal } from "@/lib/demo/guard";
+import { assertHighLevelLocationAvailable } from "@/lib/highlevel/phone-numbers";
+import {
+  resolveApprovedSenderNumber,
+  searchHighLevelInventory,
+  syncHighLevelActiveNumbers,
+} from "@/lib/highlevel/phone-numbers";
+import { SMS_DEFAULT_CHANNEL } from "@/lib/highlevel/config";
+import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { purchaseHighLevelNumber } from "@/lib/highlevel/client";
+import { normalizePhoneDigits } from "@/lib/highlevel/identity";
 
 export async function connectHighLevelPrivateTokenAction(
   _prev: ActionResult | null,
@@ -22,8 +32,6 @@ export async function connectHighLevelPrivateTokenAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("marketing:manage");
-    const demo = await refuseDemoExternal(ctx.company.id);
-    if (demo) return demo;
     const submittedLocationId = String(formData.get("highlevelLocationId") || formData.get("locationId") || "").trim();
     const submittedToken = String(formData.get("highlevelPrivateToken") || formData.get("privateToken") || "").trim();
     const locationName = String(formData.get("locationName") || "").trim();
@@ -41,6 +49,8 @@ export async function connectHighLevelPrivateTokenAction(
     if (!resolvedLocationId) {
       return { ok: false, error: "HighLevel Location ID is required." };
     }
+    const locationLock = await assertHighLevelLocationAvailable(prisma, resolvedLocationId, ctx.company.id);
+    if (!locationLock.ok) return locationLock;
 
     let token = submittedToken;
     if (!token && existing) {
@@ -390,6 +400,7 @@ export async function sendInboxSmsAction(
     const customerId = String(formData.get("customerId") || "") || null;
     const leadId = String(formData.get("leadId") || "") || null;
     if (!to || !body) return { ok: false, error: "Phone and message are required." };
+    const confirmExternalSend = String(formData.get("confirmExternalSend") || "").trim().toUpperCase() === "SEND";
     const result = await sendCompanyCommunication({
       companyId: ctx.company.id,
       channel: "SMS",
@@ -397,6 +408,7 @@ export async function sendInboxSmsAction(
       body,
       customerId,
       leadId,
+      confirmExternalSend,
     });
     await writeAudit({
       companyId: ctx.company.id,
@@ -408,10 +420,156 @@ export async function sendInboxSmsAction(
     });
     revalidatePath("/marketing/communications");
     return result.ok
-      ? { ok: true, message: `Text sent through ${result.provider}.` }
+      ? { ok: true, message: `Text sent through ${result.provider} from the approved sender.` }
       : { ok: false, error: result.error };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     throw error;
+  }
+}
+
+export async function syncHighLevelNumbersAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const result = await syncHighLevelActiveNumbers(prisma, ctx.company.id);
+    if (!result.ok) return { ok: false, error: result.error };
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.numbers_synced",
+      entityType: "TrackingNumber",
+      entityId: ctx.company.id,
+      metadata: { synced: result.synced, locationId: result.locationId },
+    });
+    revalidatePath("/marketing/channels/tracking_numbers");
+    revalidatePath("/marketing/forms");
+    revalidatePath("/settings/highlevel");
+    return {
+      ok: true,
+      message:
+        result.synced > 0
+          ? `Imported ${result.synced} HighLevel number${result.synced === 1 ? "" : "s"}. Map a source and set the SMS sender before texting.`
+          : "HighLevel returned no active numbers for this location.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Number sync failed." };
+  }
+}
+
+export async function mapTrackingNumberSourceAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const id = String(formData.get("trackingNumberId") || "").trim();
+    const source = String(formData.get("source") || "").trim();
+    const campaign = String(formData.get("campaign") || "").trim() || null;
+    if (!id || !source) return { ok: false, error: "Select a number and a source." };
+    const row = await prisma.trackingNumber.findFirst({ where: { id, companyId: ctx.company.id } });
+    if (!row) return { ok: false, error: "Tracking number not found." };
+    await prisma.trackingNumber.update({
+      where: { id: row.id },
+      data: { source, campaign },
+    });
+    revalidatePath("/marketing/channels/tracking_numbers");
+    revalidatePath("/marketing/forms");
+    return { ok: true, message: `${row.phoneNumber} mapped to ${source}.` };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+export async function setDefaultSmsSenderAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const id = String(formData.get("trackingNumberId") || "").trim();
+    const row = await prisma.trackingNumber.findFirst({ where: { id, companyId: ctx.company.id } });
+    if (!row) return { ok: false, error: "Tracking number not found." };
+    await prisma.trackingNumber.updateMany({
+      where: { companyId: ctx.company.id, channel: SMS_DEFAULT_CHANNEL },
+      data: { channel: null },
+    });
+    await prisma.trackingNumber.update({
+      where: { id: row.id },
+      data: { channel: SMS_DEFAULT_CHANNEL, provider: HIGHLEVEL_PROVIDER_KEY, status: "ACTIVE" },
+    });
+    const sender = await resolveApprovedSenderNumber(prisma, ctx.company.id);
+    revalidatePath("/marketing/channels/tracking_numbers");
+    return { ok: true, message: `Approved SMS sender is ${sender?.phoneNumber ?? row.phoneNumber}.` };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+export async function searchHighLevelAvailableNumbersAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const areaCode = String(formData.get("areaCode") || "").trim();
+    const result = await searchHighLevelInventory(prisma, ctx.company.id, { countryCode: "US", areaCode });
+    if (!result.ok) return { ok: false, error: result.error };
+    return {
+      ok: true,
+      message:
+        result.numbers.length > 0
+          ? `Found ${result.numbers.length} available number${result.numbers.length === 1 ? "" : "s"}. Purchase is billable and requires typing PURCHASE.`
+          : "No available numbers matched that search.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Number search failed." };
+  }
+}
+
+export async function purchaseHighLevelNumberAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
+    const confirm = String(formData.get("confirmPurchase") || "").trim();
+    const phoneNumber = String(formData.get("phoneNumber") || "").trim();
+    if (confirm !== "PURCHASE") {
+      return { ok: false, error: "Type PURCHASE to buy this HighLevel number. This is a billable provider action." };
+    }
+    if (!normalizePhoneDigits(phoneNumber)) return { ok: false, error: "Enter the exact number to purchase." };
+    const access = await loadHighLevelAccess(prisma, ctx.company.id);
+    if (!access) return { ok: false, error: "HighLevel is not connected." };
+    const purchased = await purchaseHighLevelNumber({
+      accessToken: access.accessToken,
+      locationId: access.locationId,
+      phoneNumber,
+    });
+    await syncHighLevelActiveNumbers(prisma, ctx.company.id);
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.number_purchased",
+      entityType: "TrackingNumber",
+      entityId: ctx.company.id,
+      metadata: { phoneNumber, locationId: access.locationId },
+    });
+    revalidatePath("/marketing/channels/tracking_numbers");
+    return {
+      ok: true,
+      message: `Purchased ${purchased.data?.number || purchased.data?.phoneNumber || phoneNumber} for this HighLevel location.`,
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Number purchase failed." };
   }
 }

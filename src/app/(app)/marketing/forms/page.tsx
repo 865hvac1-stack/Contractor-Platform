@@ -115,8 +115,8 @@ export default async function WebsiteMarketingPage() {
       <section className="space-y-3 rounded-2xl border bg-white p-5">
         <h2 className="font-semibold">Tracking numbers</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Map a number to a source. ContractorYou will not provision a real Twilio number until
-          credentials exist.
+          Manual fallback mapping. Preferred path: Marketing → Channels → Tracking Numbers after a
+          HighLevel location sync.
         </p>
         {canManage ? (
           <ActionForm action={createTrackingNumberAction} className="grid gap-3 sm:grid-cols-3">

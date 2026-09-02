@@ -355,13 +355,13 @@ export function OfficeRecentCustomersSection({ customers }: { customers: OfficeR
                         </a>
                       ) : null}
                       {customer.phone ? (
-                        <a
-                          href={`sms:${customer.phone.replace(/[^\d+]/g, "")}`}
+                        <Link
+                          href={`/marketing/communications?compose=1&customerId=${customer.id}&to=${encodeURIComponent(customer.phone)}`}
                           className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 text-xs font-medium text-[var(--cy-navy)] transition-colors duration-200 hover:border-[var(--cy-navy)]/20"
                         >
                           <MessageSquare className="size-3.5" aria-hidden />
                           Text
-                        </a>
+                        </Link>
                       ) : null}
                       {customer.membership ? (
                         <Link

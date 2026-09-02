@@ -4,9 +4,11 @@ export const HIGHLEVEL_API_BASE = "https://services.leadconnectorhq.com";
 export const HIGHLEVEL_AUTHORIZE_URL = "https://marketplace.gohighlevel.com/oauth/chooselocation";
 export const HIGHLEVEL_API_VERSION = "2021-07-28";
 export const HIGHLEVEL_CONVERSATIONS_API_VERSION = "2021-04-15";
+export const HIGHLEVEL_PHONE_API_VERSION = "v3";
 
 export const HIGHLEVEL_SCOPES = [
   "locations.readonly",
+  "locations.write",
   "contacts.readonly",
   "contacts.write",
   "conversations.readonly",
@@ -16,11 +18,17 @@ export const HIGHLEVEL_SCOPES = [
   "opportunities.readonly",
   "calendars.readonly",
   "workflows.readonly",
+  "phonenumbers.read",
+  "phonenumbers.write",
+  "numberpools.read",
   "socialplanner/account.readonly",
   "socialplanner/account.write",
   "socialplanner/post.readonly",
   "socialplanner/post.write",
 ] as const;
+
+export const SMS_DEFAULT_CHANNEL = "SMS_DEFAULT";
+export const HL_DEFAULT_CHANNEL = "HL_DEFAULT";
 
 export const HIGHLEVEL_MANAGED_CHANNELS = new Set([
   "business_phone",

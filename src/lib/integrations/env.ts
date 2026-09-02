@@ -121,16 +121,14 @@ export function getProviderEnv(providerKey: string): ProviderEnvStatus {
     case "utm_tracking":
       return { providerKey, configured: true, missing: [], notes: [] };
     case "tracking_numbers": {
-      const missing: string[] = [];
-      if (!present("TWILIO_ACCOUNT_SID")) missing.push("TWILIO_ACCOUNT_SID");
-      if (!present("TWILIO_AUTH_TOKEN")) missing.push("TWILIO_AUTH_TOKEN");
       return {
         providerKey,
         configured: true,
-        missing,
-        notes: missing.length
-          ? ["You can map numbers to sources now. Live call capture waits on a phone provider."]
-          : [],
+        missing: [],
+        notes: [
+          "Preferred path: connect HighLevel, then sync LC Phone active numbers.",
+          "Map each number to a source such as GOOGLE_LSA. Incoming CALL events inherit that source.",
+        ],
       };
     }
     case "stripe_connect": {

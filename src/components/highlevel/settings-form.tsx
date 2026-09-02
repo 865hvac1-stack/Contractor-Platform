@@ -13,6 +13,7 @@ import {
   refreshHighLevelConnectionAction,
   refreshHighLevelSocialAccountsAction,
   syncHighLevelCommunicationsAction,
+  syncHighLevelNumbersAction,
 } from "@/server/actions/highlevel";
 import { cn } from "@/lib/utils";
 
@@ -166,6 +167,11 @@ export function HighLevelSettingsForm({
             <ActionForm action={syncHighLevelCommunicationsAction}>
               <Button type="submit" variant="outline">
                 Sync communications
+              </Button>
+            </ActionForm>
+            <ActionForm action={syncHighLevelNumbersAction}>
+              <Button type="submit" variant="outline">
+                Sync phone numbers
               </Button>
             </ActionForm>
             <ActionForm action={refreshHighLevelSocialAccountsAction}>

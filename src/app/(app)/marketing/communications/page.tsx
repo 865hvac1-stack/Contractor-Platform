@@ -7,6 +7,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/status-badge";
 import { customerLabel } from "@/lib/tech/today";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
+import { isDemoCompany } from "@/lib/demo/guard";
 
 const COMM_FILTERS = [
   { id: "inbox", label: "Inbox" },
@@ -17,10 +19,13 @@ const COMM_FILTERS = [
 export default async function CommunicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; compose?: string; customerId?: string; to?: string }>;
 }) {
   const ctx = await requirePermission("marketing:view");
-  const filter = (await searchParams).filter?.trim() || "inbox";
+  const params = await searchParams;
+  const filter = params.filter?.trim() || "inbox";
+  const composeCustomerId = params.customerId?.trim() || "";
+  const composeTo = params.to?.trim() || "";
   const dayStart = startOfDay(new Date());
   const dayEnd = endOfDay(new Date());
   const connection = await prisma.integrationConnection.findFirst({
@@ -52,6 +57,14 @@ export default async function CommunicationsPage({
           take: 80,
         })
       : [];
+  const composeCustomer = composeCustomerId
+    ? await prisma.customer.findFirst({
+        where: { id: composeCustomerId, companyId: ctx.company.id },
+        select: { id: true, phone: true, firstName: true, lastName: true, businessName: true },
+      })
+    : null;
+  const smsTo = composeTo || composeCustomer?.phone || "";
+  const demoCompany = await isDemoCompany(ctx.company.id);
 
   return (
     <div className="space-y-6">
@@ -84,6 +97,25 @@ export default async function CommunicationsPage({
         ))}
       </div>
 
+      {smsTo ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Company text
+          </p>
+          <h2 className="mt-1 font-semibold text-[var(--cy-navy)]">
+            {composeCustomer ? customerLabel(composeCustomer) : smsTo}
+          </h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Sends through HighLevel from the approved sender number. Not a personal device SMS.
+          </p>
+          <CompanySmsForm
+            to={smsTo}
+            customerId={composeCustomer?.id}
+            requireLiveConfirm={demoCompany}
+          />
+        </section>
+      ) : null}
+
       {!connected ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
           HighLevel is not connected. Settings → HighLevel. Direct Twilio is not required.
@@ -108,8 +140,10 @@ export default async function CommunicationsPage({
                       <p className="font-medium">{call.caller || "Unknown caller"}</p>
                     )}
                     <p className="text-sm text-[var(--muted-foreground)]">
-                      {call.missed ? "Missed" : call.answered ? "Answered" : call.direction} ·{" "}
-                      {call.startedAt.toLocaleString()}
+                      {call.missed ? "Missed" : call.answered ? "Answered" : call.direction}
+                      {call.source ? ` · ${call.source}` : ""}
+                      {call.trackingNumber ? ` · ${call.trackingNumber}` : ""}
+                      {call.recordingRef ? " · Recording on file" : ""} · {call.startedAt.toLocaleString()}
                     </p>
                   </div>
                   {call.customer ? (

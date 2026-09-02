@@ -14,6 +14,7 @@ import {
 import { normalizeHighLevelChannel, normalizeHighLevelDirection } from "@/lib/highlevel/channels";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
 import { upsertConversationMessage, upsertConversationThread } from "@/lib/highlevel/conversations";
+import { extractHighLevelRecordingHint } from "@/lib/highlevel/attachments";
 
 export type ConversationOutcomeBucket = "mapped" | "provider_only" | "unmatched" | "skipped" | "failed";
 
@@ -300,7 +301,7 @@ async function storeMessage(
   if (!messageId) {
     throw new Error("HighLevel message did not include an id.");
   }
-  const recordingUrl = message.attachments?.find((item) => item.url)?.url || message.meta?.recordingUrl || null;
+  const recordingHint = extractHighLevelRecordingHint(message.attachments, message.meta?.recordingUrl);
   return upsertConversationMessage(prisma, {
     companyId: conversation.companyId,
     conversationId: highLevelConversationId({ id: message.conversationId, conversationId: highLevelConversationId(conversation.conversation) }) || conversation.conversation.id || "",
@@ -318,6 +319,7 @@ async function storeMessage(
     unread: (conversation.conversation.unreadCount ?? 0) > 0,
     callDuration: message.meta?.callDuration ?? null,
     callStatus: message.meta?.callStatus ?? message.status ?? null,
-    recordingUrl,
+    recordingUrl: recordingHint.hasRecording ? "available" : null,
+    attachments: message.attachments,
   });
 }

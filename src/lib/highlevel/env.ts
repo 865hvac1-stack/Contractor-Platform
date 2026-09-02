@@ -41,7 +41,9 @@ export function highlevelOAuthNotes() {
       "Marketplace OAuth is the production multi-tenant path.",
       `Redirect URI: ${highlevelRedirectUri()}`,
       `Webhook URL: ${highlevelWebhookUrl()}`,
-      "A location Private Integration Token can connect 865 HVAC for testing without Marketplace approval.",
+      "Marketplace OAuth (agency install → location token) is the long-term multi-tenant path.",
+      "A location Private Integration Token is acceptable for controlled development and 865 HVAC testing only.",
+      "Subscribe to InboundMessage / OutboundMessage so CALL events include from, to, and optional recording attachments.",
     ],
   };
 }

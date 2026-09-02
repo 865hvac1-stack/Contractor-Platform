@@ -1,4 +1,9 @@
-import { HIGHLEVEL_API_BASE, HIGHLEVEL_API_VERSION, HIGHLEVEL_CONVERSATIONS_API_VERSION } from "@/lib/highlevel/config";
+import {
+  HIGHLEVEL_API_BASE,
+  HIGHLEVEL_API_VERSION,
+  HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  HIGHLEVEL_PHONE_API_VERSION,
+} from "@/lib/highlevel/config";
 
 export type HighLevelContact = {
   id: string;
@@ -114,15 +119,136 @@ export async function sendHighLevelSms(input: {
   accessToken: string;
   contactId: string;
   body: string;
+  fromNumber: string;
+  toNumber?: string;
 }) {
   return highlevelRequest<{ conversationId?: string; messageId?: string; id?: string }>({
     accessToken: input.accessToken,
     path: "/conversations/messages",
     method: "POST",
+    version: HIGHLEVEL_CONVERSATIONS_API_VERSION,
     body: {
       type: "SMS",
       contactId: input.contactId,
       message: input.body,
+      fromNumber: input.fromNumber,
+      ...(input.toNumber ? { toNumber: input.toNumber } : {}),
+    },
+  });
+}
+
+export type HighLevelPhoneNumber = {
+  phoneNumber?: string;
+  friendlyName?: string;
+  countryCode?: string;
+  isDefaultNumber?: boolean;
+  sid?: string;
+};
+
+export type HighLevelAvailableNumber = {
+  phoneNumber?: string;
+  friendlyName?: string;
+  isoCountry?: string;
+  fingerprintId?: string;
+};
+
+export async function listHighLevelActiveNumbers(input: {
+  accessToken: string;
+  locationId: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  return highlevelRequest<{
+    status?: string;
+    data?: { numbers?: HighLevelPhoneNumber[]; total?: number; page?: number; pageSize?: number; isUnderLc?: boolean };
+    numbers?: HighLevelPhoneNumber[];
+    message?: string;
+  }>({
+    accessToken: input.accessToken,
+    path: `/phone-system/numbers/location/${input.locationId}`,
+    version: HIGHLEVEL_PHONE_API_VERSION,
+    query: {
+      page: input.page != null ? String(input.page) : "0",
+      pageSize: String(input.pageSize ?? 100),
+    },
+  });
+}
+
+export async function listHighLevelAvailableNumbers(input: {
+  accessToken: string;
+  locationId: string;
+  countryCode: string;
+  numberTypes?: string;
+  firstPart?: string;
+  lastPart?: string;
+  anywhere?: string;
+  smsEnabled?: boolean;
+  voiceEnabled?: boolean;
+}) {
+  return highlevelRequest<{
+    status?: string;
+    data?: { numbers?: HighLevelAvailableNumber[]; fingerprintId?: string };
+    numbers?: HighLevelAvailableNumber[];
+    fingerprintId?: string;
+    message?: string;
+  }>({
+    accessToken: input.accessToken,
+    path: `/phone-system/numbers/location/${input.locationId}/available`,
+    version: HIGHLEVEL_PHONE_API_VERSION,
+    query: {
+      countryCode: input.countryCode,
+      numberTypes: input.numberTypes ?? "local",
+      firstPart: input.firstPart,
+      lastPart: input.lastPart,
+      anywhere: input.anywhere,
+      smsEnabled: input.smsEnabled === false ? "false" : "true",
+      mmsEnabled: "false",
+      voiceEnabled: input.voiceEnabled === false ? "false" : "true",
+    },
+  });
+}
+
+export async function listHighLevelNumberPools(input: { accessToken: string; locationId: string }) {
+  return highlevelRequest<{ status?: string; data?: unknown; message?: string }>({
+    accessToken: input.accessToken,
+    path: "/phone-system/number-pools",
+    version: HIGHLEVEL_PHONE_API_VERSION,
+    query: { locationId: input.locationId },
+  });
+}
+
+export async function purchaseHighLevelNumber(input: {
+  accessToken: string;
+  locationId: string;
+  phoneNumber: string;
+}) {
+  return highlevelRequest<{
+    status?: string;
+    data?: { number?: string; phoneNumber?: string; locationId?: string; id?: string };
+    message?: string;
+  }>({
+    accessToken: input.accessToken,
+    path: `/phone-system/numbers/location/${input.locationId}/purchase`,
+    method: "POST",
+    version: HIGHLEVEL_PHONE_API_VERSION,
+    body: { phoneNumber: input.phoneNumber },
+  });
+}
+
+export async function createHighLevelLocation(input: {
+  accessToken: string;
+  name: string;
+  phone?: string;
+  companyName?: string;
+}) {
+  return highlevelRequest<{ location?: HighLevelLocation; id?: string; message?: string }>({
+    accessToken: input.accessToken,
+    path: "/locations/",
+    method: "POST",
+    body: {
+      name: input.name,
+      phone: input.phone,
+      companyName: input.companyName ?? input.name,
     },
   });
 }
@@ -210,7 +336,7 @@ export type HighLevelConversationMessage = {
   status?: string;
   dateAdded?: string | number;
   dateUpdated?: string | number;
-  attachments?: Array<{ url?: string; type?: string }>;
+  attachments?: Array<{ url?: string; type?: string } | string>;
   meta?: { recordingUrl?: string; callDuration?: number; callStatus?: string };
 };
 
