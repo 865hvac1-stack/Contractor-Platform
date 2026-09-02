@@ -159,7 +159,7 @@ Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into ea
 | TikTok | `{APP_URL}/api/integrations/tiktok/callback` |
 | LinkedIn | `{APP_URL}/api/integrations/linkedin/callback` |
 | QuickBooks Online | `{APP_URL}/api/integrations/quickbooks/callback` |
-| HighLevel Marketplace | `{APP_URL}/api/integrations/highlevel/callback` |
+| HighLevel Marketplace | `{APP_URL}/api/integrations/oauth/callback` |
 | HighLevel webhooks | `{APP_URL}/api/webhooks/highlevel` |
 
 Production HighLevel inbound webhook (POST): `https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel`
@@ -191,7 +191,7 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
 | `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback` |
 | `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` | Marketplace OAuth (production multi-tenant). Not required to paste a location Private Integration Token for 865 HVAC testing. |
-| `HIGHLEVEL_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/highlevel/callback` |
+| `HIGHLEVEL_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/oauth/callback`. Overrides containing `highlevel` are ignored. |
 
 Never commit real values. Platform Admin → Integrations shows **presence only**.
 

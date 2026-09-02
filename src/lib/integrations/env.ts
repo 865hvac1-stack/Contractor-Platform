@@ -14,7 +14,13 @@ export function appUrl() {
   return (process.env.APP_URL || "http://127.0.0.1:43123").replace(/\/$/, "");
 }
 
+/** Neutral Marketplace OAuth callback. HighLevel rejects redirect URIs containing "highlevel". */
+export const MARKETPLACE_OAUTH_CALLBACK_PATH = "/api/integrations/oauth/callback";
+
 export function oauthCallbackUrl(family: "google" | "meta" | "tiktok" | "linkedin" | "quickbooks" | "highlevel") {
+  if (family === "highlevel") {
+    return `${appUrl()}${MARKETPLACE_OAUTH_CALLBACK_PATH}`;
+  }
   return `${appUrl()}/api/integrations/${family}/callback`;
 }
 

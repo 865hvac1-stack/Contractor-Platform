@@ -1,4 +1,4 @@
-import { appUrl } from "@/lib/integrations/env";
+import { appUrl, oauthCallbackUrl } from "@/lib/integrations/env";
 import { HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
 
 export function highlevelOAuthConfigured() {
@@ -14,10 +14,11 @@ export function highlevelClientSecret() {
 }
 
 export function highlevelRedirectUri() {
-  return (
-    process.env.HIGHLEVEL_REDIRECT_URI?.trim() ||
-    `${appUrl()}/api/integrations/highlevel/callback`
-  );
+  const override = process.env.HIGHLEVEL_REDIRECT_URI?.trim();
+  if (override && !/highlevel/i.test(override)) {
+    return override.replace(/\/$/, "");
+  }
+  return oauthCallbackUrl("highlevel");
 }
 
 export function highlevelWebhookUrl() {

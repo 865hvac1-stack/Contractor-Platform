@@ -1,6 +1,5 @@
 import { handleHighLevelMarketplaceCallback } from "@/lib/highlevel/oauth-callback";
 
-/** Compatibility wrapper. Marketplace OAuth now uses /api/integrations/oauth/callback. */
 export async function GET(request: Request) {
   return handleHighLevelMarketplaceCallback(request);
 }
