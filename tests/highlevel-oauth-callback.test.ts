@@ -14,6 +14,8 @@ import {
 import { MARKETPLACE_OAUTH_CALLBACK_PATH, oauthCallbackUrl } from "@/lib/integrations/env";
 import { handleHighLevelMarketplaceCallback } from "@/lib/highlevel/oauth-callback";
 import { GET as marketplaceOAuthCallback } from "@/app/api/integrations/oauth/callback/route";
+import { HighLevelOAuthExchangeError } from "@/lib/highlevel/oauth";
+import { HIGHLEVEL_OAUTH_MARKERS } from "@/lib/highlevel/oauth-diagnostics";
 import { consumeOAuthState, consumeOAuthStateDetailed, createOAuthState } from "@/lib/integrations/oauth/state";
 import { decryptProviderTokens } from "@/lib/integrations/crypto";
 import * as highlevelConnection from "@/lib/highlevel/connection";
@@ -128,6 +130,18 @@ describe("HighLevel Marketplace OAuth callback", () => {
     return new Request(`https://contractor-platform-production-c444.up.railway.app/api/integrations/oauth/callback?${query}`);
   }
 
+  function diagnosticRows(spy: ReturnType<typeof vi.spyOn>) {
+    return spy.mock.calls
+      .map((call) => {
+        try {
+          return JSON.parse(String(call[0])) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter((row): row is Record<string, unknown> => row?.event === "highlevel.oauth.diagnostic");
+  }
+
   function mockVerifiedLocation(locationId: string, name = "865 HVAC") {
     return vi.spyOn(highlevelConnection, "probeHighLevelLocation").mockResolvedValue({
       ok: true,
@@ -137,6 +151,7 @@ describe("HighLevel Marketplace OAuth callback", () => {
   }
 
   it("rejects missing HighLevel-install state without treating it as a silent connect", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const missing = await marketplaceOAuthCallback(callbackRequest("code=auth-code"));
     expect(missing.status).toBeGreaterThanOrEqual(300);
     const missingText = decodeURIComponent((missing.headers.get("location") || "").replaceAll("+", " "));
@@ -146,6 +161,14 @@ describe("HighLevel Marketplace OAuth callback", () => {
     expect(decodeURIComponent((unknown.headers.get("location") || "").replaceAll("+", " "))).toContain(
       "Marketplace install link cannot create ContractorYou authorization state"
     );
+    const markers = diagnosticRows(info).map((row) => row.marker);
+    expect(markers).toContain(HIGHLEVEL_OAUTH_MARKERS.CALLBACK_RECEIVED);
+    expect(markers).toContain(HIGHLEVEL_OAUTH_MARKERS.STATE_INVALID);
+    const serialized = JSON.stringify(diagnosticRows(info));
+    expect(serialized).not.toContain("auth-code");
+    expect(serialized).not.toContain("not-a-real-state");
+    expect(serialized).toContain('"hasCode":true');
+    expect(serialized).toContain('"hasState":true');
   });
 
   it("rejects expired and mismatched state and refuses reuse", async () => {
@@ -233,8 +256,25 @@ describe("HighLevel Marketplace OAuth callback", () => {
       userType: "Location",
     });
     mockVerifiedLocation(locationId);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=valid-code&state=${row.state}`));
     expect(response.headers.get("location") || "").toContain("connected=1");
+    const markers = diagnosticRows(info).map((row) => row.marker);
+    expect(markers).toEqual([
+      HIGHLEVEL_OAUTH_MARKERS.CALLBACK_RECEIVED,
+      HIGHLEVEL_OAUTH_MARKERS.STATE_VALID,
+      HIGHLEVEL_OAUTH_MARKERS.CODE_EXCHANGE_START,
+      HIGHLEVEL_OAUTH_MARKERS.CODE_EXCHANGE_SUCCESS,
+      HIGHLEVEL_OAUTH_MARKERS.LOCATION_RESOLVED,
+      HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED,
+    ]);
+    const serialized = JSON.stringify(diagnosticRows(info));
+    expect(serialized).toContain(ids.company);
+    expect(serialized).toContain(locationId);
+    expect(serialized).not.toContain("valid-code");
+    expect(serialized).not.toContain(row.state);
+    expect(serialized).not.toContain(accessToken);
+    expect(serialized).not.toContain(refreshToken);
     const connection = await prisma.integrationConnection.findFirst({
       where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY },
       include: { credentials: true },
@@ -375,5 +415,23 @@ describe("HighLevel Marketplace OAuth callback", () => {
       where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY, externalAccountId: locationId },
     });
     expect(connection?.status).not.toBe("CONNECTED");
+  });
+
+  it("logs CODE_EXCHANGE_FAILED with HTTP status and no authorization code", async () => {
+    const row = await stateFor(ids.company);
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockRejectedValue(
+      new HighLevelOAuthExchangeError("HighLevel did not return an access token.", 400)
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const response = await handleHighLevelMarketplaceCallback(
+      callbackRequest(`code=failed-exchange-code&state=${row.state}`)
+    );
+    expect(response.headers.get("location") || "").toContain("authorization+failed");
+    const failed = diagnosticRows(info).find((row) => row.marker === HIGHLEVEL_OAUTH_MARKERS.CODE_EXCHANGE_FAILED);
+    expect(failed?.httpStatus).toBe(400);
+    expect(failed?.errorClass).toBe("HighLevelOAuthExchangeError");
+    expect(failed?.companyId).toBe(ids.company);
+    expect(JSON.stringify(diagnosticRows(info))).not.toContain("failed-exchange-code");
+    expect(JSON.stringify(diagnosticRows(info))).not.toContain(row.state);
   });
 });

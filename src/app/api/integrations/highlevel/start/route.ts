@@ -7,10 +7,17 @@ import {
   highlevelOAuthConfigured,
   isHighLevelAppOrVersionId,
 } from "@/lib/highlevel/env";
-import { highlevelAuthorizeUrl } from "@/lib/highlevel/oauth";
+import { highlevelAuthorizeUrl, highlevelOAuthRedirectUri } from "@/lib/highlevel/oauth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { createOAuthState } from "@/lib/integrations/oauth/state";
 import { upsertConnection } from "@/lib/integrations/store";
+import {
+  HIGHLEVEL_OAUTH_MARKERS,
+  logHighLevelOAuthDiagnostic,
+  redirectUriMatchesProduction,
+} from "@/lib/highlevel/oauth-diagnostics";
+
+const START_ROUTE = "/api/integrations/highlevel/start";
 
 export async function GET() {
   try {
@@ -47,6 +54,15 @@ export async function GET() {
       sandbox,
       hasState: true,
       hasCode: false,
+    });
+    logHighLevelOAuthDiagnostic({
+      marker: HIGHLEVEL_OAUTH_MARKERS.START,
+      route: START_ROUTE,
+      companyId: ctx.company.id,
+      httpStatus: 302,
+      hasCode: false,
+      hasState: true,
+      redirectUriMatchesProduction: redirectUriMatchesProduction(highlevelOAuthRedirectUri()),
     });
     if (!sandbox) {
       await upsertConnection({

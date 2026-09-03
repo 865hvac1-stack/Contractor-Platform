@@ -19,17 +19,34 @@ export function highlevelAuthorizeBaseUrl() {
   return HIGHLEVEL_AUTHORIZE_URL;
 }
 
+/** Same Redirect URL as Marketplace Auth. Must match token-exchange redirect_uri. */
+export function highlevelOAuthRedirectUri() {
+  return highlevelRedirectUri();
+}
+
 export function highlevelAuthorizeUrl(state: string) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: highlevelClientId(),
-    redirect_uri: highlevelRedirectUri(),
+    redirect_uri: highlevelOAuthRedirectUri(),
     scope: highlevelRequestedScopes().join(" "),
     state,
   });
   const versionId = highlevelMarketplaceVersionId();
   if (versionId) params.set("version_id", versionId);
   return `${highlevelAuthorizeBaseUrl()}?${params.toString()}`;
+}
+
+export class HighLevelOAuthExchangeError extends Error {
+  readonly errorClass = "HighLevelOAuthExchangeError";
+
+  constructor(
+    message: string,
+    readonly httpStatus: number
+  ) {
+    super(message);
+    this.name = "HighLevelOAuthExchangeError";
+  }
 }
 
 type TokenResponse = {
@@ -48,11 +65,12 @@ export async function exchangeHighLevelCode(code: string): Promise<{
   locationId: string | null;
   agencyId: string | null;
   userType: string | null;
+  httpStatus?: number;
 }> {
   return requestHighLevelToken({
     grant_type: "authorization_code",
     code,
-    redirect_uri: highlevelRedirectUri(),
+    redirect_uri: highlevelOAuthRedirectUri(),
   });
 }
 
@@ -78,7 +96,7 @@ async function requestHighLevelToken(body: Record<string, string>) {
   });
   const data = (await response.json().catch(() => ({}))) as TokenResponse;
   if (!response.ok || !data.access_token) {
-    throw new Error("HighLevel did not return an access token.");
+    throw new HighLevelOAuthExchangeError("HighLevel did not return an access token.", response.status);
   }
   const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : undefined;
   return {
@@ -91,6 +109,7 @@ async function requestHighLevelToken(body: Record<string, string>) {
     locationId: data.locationId ?? null,
     agencyId: data.companyId ?? null,
     userType: data.userType ?? null,
+    httpStatus: response.status,
   };
 }
 
