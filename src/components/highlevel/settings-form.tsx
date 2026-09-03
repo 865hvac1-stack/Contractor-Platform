@@ -11,6 +11,7 @@ import {
   disconnectHighLevelAction,
   previewHighLevelSyncAction,
   refreshHighLevelConnectionAction,
+  diagnoseHighLevelConversationsAction,
   refreshHighLevelSocialAccountsAction,
   syncHighLevelCommunicationsAction,
   syncHighLevelNumbersAction,
@@ -186,6 +187,11 @@ export function HighLevelSettingsForm({
             <ActionForm action={syncHighLevelCommunicationsAction}>
               <Button type="submit" variant="outline">
                 Sync Communications
+              </Button>
+            </ActionForm>
+            <ActionForm action={diagnoseHighLevelConversationsAction}>
+              <Button type="submit" variant="outline">
+                Diagnose Conversations API
               </Button>
             </ActionForm>
             <ActionForm action={syncHighLevelNumbersAction}>

@@ -198,6 +198,46 @@ export async function inspectHighLevelInstalledLocations(accessToken: string) {
   });
 }
 
+export async function inspectHighLevelConversationsSearch(input: {
+  accessToken: string;
+  locationId: string;
+  version: string;
+}) {
+  return inspectHighLevelRequest<{
+    conversations?: unknown;
+    total?: number;
+    statusCode?: number;
+    message?: unknown;
+    error?: unknown;
+  }>({
+    accessToken: input.accessToken,
+    path: "/conversations/search",
+    version: input.version,
+    query: {
+      locationId: input.locationId,
+      status: "all",
+    },
+  });
+}
+
+export async function inspectHighLevelContactGet(input: {
+  accessToken: string;
+  contactId: string;
+  version: string;
+}) {
+  return inspectHighLevelRequest<{
+    contact?: { id?: string };
+    id?: string;
+    statusCode?: number;
+    message?: unknown;
+    error?: unknown;
+  }>({
+    accessToken: input.accessToken,
+    path: `/contacts/${input.contactId}`,
+    version: input.version,
+  });
+}
+
 export async function searchHighLevelContacts(input: {
   accessToken: string;
   locationId: string;

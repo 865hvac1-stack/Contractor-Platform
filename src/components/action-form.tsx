@@ -41,7 +41,7 @@ export function ActionForm({
         </div>
       ) : null}
       {state && state.ok && (state.message || successMessage) ? (
-        <p className="mt-3 text-sm text-emerald-700">{state.message || successMessage}</p>
+        <p className="mt-3 whitespace-pre-wrap text-sm text-emerald-700">{state.message || successMessage}</p>
       ) : null}
       {pending ? <p className="sr-only">Saving…</p> : null}
     </form>

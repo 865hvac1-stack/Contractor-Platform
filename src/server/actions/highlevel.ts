@@ -11,6 +11,7 @@ import { deleteConnectionCredentials, getValidAccessToken, saveConnectionTokens,
 import { loadHighLevelAccess, probeHighLevelLocation } from "@/lib/highlevel/connection";
 import { applyHighLevelContactSync, previewHighLevelContactSync } from "@/lib/highlevel/sync";
 import { formatCommunicationsSyncMessage, syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
+import { diagnoseHighLevelConversationsApi, formatConversationsDiagnostic } from "@/lib/highlevel/conversations-diagnostic";
 import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
@@ -279,6 +280,51 @@ export async function syncHighLevelCommunicationsAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: error instanceof Error ? error.message : "Communications sync failed." };
+  }
+}
+
+export async function diagnoseHighLevelConversationsAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
+    const result = await diagnoseHighLevelConversationsApi(prisma, ctx.company.id);
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+      select: { id: true },
+    });
+    if (connection) {
+      await prisma.integrationSync.create({
+        data: {
+          companyId: ctx.company.id,
+          connectionId: connection.id,
+          kind: "conversations_diagnostic",
+          status: "COMPLETED",
+          finishedAt: new Date(),
+          summary: result as never,
+        },
+      });
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.conversations_diagnosed",
+      entityType: "IntegrationConnection",
+      entityId: ctx.company.id,
+      metadata: {
+        authMode: result.authMode,
+        mappedContactTested: result.mappedContactTested,
+        probeCount: result.probes.length,
+      },
+    });
+    revalidatePath("/settings/highlevel");
+    return { ok: true, message: formatConversationsDiagnostic(result) };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "HighLevel API diagnostic failed." };
   }
 }
 
