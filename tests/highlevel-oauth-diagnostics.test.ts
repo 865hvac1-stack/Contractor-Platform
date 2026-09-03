@@ -87,13 +87,16 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
       "calendars.readonly",
       "workflows.readonly",
       "phonenumbers.read",
-      "numberpools.read",
       "socialplanner/account.readonly",
-      "socialplanner/account.write",
       "socialplanner/post.readonly",
       "socialplanner/post.write",
     ]);
-    expect([...HIGHLEVEL_OAUTH_EXCLUDED_SCOPES]).toEqual(["locations.write", "phonenumbers.write"]);
+    expect([...HIGHLEVEL_OAUTH_EXCLUDED_SCOPES]).toEqual([
+      "locations.write",
+      "phonenumbers.write",
+      "numberpools.read",
+      "socialplanner/account.write",
+    ]);
     expect([...HIGHLEVEL_SCOPES]).toEqual([
       "locations.readonly",
       "contacts.readonly",
@@ -106,9 +109,7 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
       "calendars.readonly",
       "workflows.readonly",
       "phonenumbers.read",
-      "numberpools.read",
       "socialplanner/account.readonly",
-      "socialplanner/account.write",
       "socialplanner/post.readonly",
       "socialplanner/post.write",
     ]);
@@ -130,16 +131,31 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
     expect(params.get("scope")?.split(" ")).toEqual(requested);
     expect(params.get("scope")).not.toContain("locations.write");
     expect(params.get("scope")).not.toContain("phonenumbers.write");
+    expect(params.get("scope")).not.toContain("numberpools.read");
+    expect(params.get("scope")).not.toContain("socialplanner/account.write");
+    expect(params.get("scope")).toContain("phonenumbers.read");
+    expect(params.get("scope")).toContain("socialplanner/account.readonly");
+    expect(params.get("scope")).toContain("socialplanner/post.readonly");
+    expect(params.get("scope")).toContain("socialplanner/post.write");
 
-    process.env.HIGHLEVEL_SCOPES = "locations.readonly locations.write phonenumbers.write phonenumbers.read";
-    expect(highlevelRequestedScopes()).toEqual(["locations.readonly", "phonenumbers.read"]);
+    process.env.HIGHLEVEL_SCOPES =
+      "locations.readonly locations.write phonenumbers.write phonenumbers.read numberpools.read socialplanner/account.write socialplanner/account.readonly";
+    expect(highlevelRequestedScopes()).toEqual([
+      "locations.readonly",
+      "phonenumbers.read",
+      "socialplanner/account.readonly",
+    ]);
 
     const leaked = sanitizeOAuthDiagnostic({
       marker: HIGHLEVEL_OAUTH_MARKERS.START,
       route: "/api/integrations/highlevel/start",
       requestedScopes: highlevelRequestedScopes(),
     });
-    expect(leaked.requestedScopes).toEqual(["locations.readonly", "phonenumbers.read"]);
+    expect(leaked.requestedScopes).toEqual([
+      "locations.readonly",
+      "phonenumbers.read",
+      "socialplanner/account.readonly",
+    ]);
     expect(JSON.stringify(leaked)).not.toMatch(/access_token|refresh_token|client_secret|"state":|"code":/i);
   });
 
