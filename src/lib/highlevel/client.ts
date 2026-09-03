@@ -2,6 +2,7 @@ import {
   HIGHLEVEL_API_BASE,
   HIGHLEVEL_API_VERSION,
   HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
   HIGHLEVEL_LOCATION_API_VERSION,
   HIGHLEVEL_PHONE_API_VERSION,
 } from "@/lib/highlevel/config";
@@ -34,6 +35,27 @@ export class HighLevelApiError extends Error {
   }
 }
 
+export function highLevelErrorMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = (data as { message?: unknown; error?: unknown }).message ?? (data as { error?: unknown }).error;
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (Array.isArray(raw)) {
+    const text = raw.filter((item): item is string => typeof item === "string").join(" ").trim();
+    return text || null;
+  }
+  return null;
+}
+
+export function isHighLevelLocationNotActiveError(message: unknown) {
+  const text = typeof message === "string" ? message : highLevelErrorMessage({ message }) ?? "";
+  return /location is not activ/i.test(text);
+}
+
+function shouldRetryConversationsVersion(path: string, version?: string) {
+  if (version !== HIGHLEVEL_CONVERSATIONS_API_VERSION && version !== "v3") return false;
+  return path.startsWith("/conversations") || path.startsWith("/contacts");
+}
+
 export async function highlevelRequest<T>(input: {
   accessToken: string;
   path: string;
@@ -56,12 +78,22 @@ export async function highlevelRequest<T>(input: {
     },
     body: input.body ? JSON.stringify(input.body) : undefined,
   });
-  const data = (await response.json().catch(() => ({}))) as T & { message?: string };
+  const data = (await response.json().catch(() => ({}))) as T & { message?: unknown };
   if (!response.ok) {
-    throw new HighLevelApiError(
-      typeof data.message === "string" ? data.message : `HighLevel request failed (${response.status}).`,
-      response.status
-    );
+    const message = highLevelErrorMessage(data) ?? `HighLevel request failed (${response.status}).`;
+    if (isHighLevelLocationNotActiveError(message) && shouldRetryConversationsVersion(input.path, input.version)) {
+      return highlevelRequest<T>({
+        ...input,
+        version: HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
+      });
+    }
+    if (isHighLevelLocationNotActiveError(message)) {
+      throw new HighLevelApiError(
+        `${message}. ContractorYou is still connected. Use Refresh, not Reconnect, unless Refresh fails.`,
+        response.status
+      );
+    }
+    throw new HighLevelApiError(message, response.status);
   }
   return data;
 }
