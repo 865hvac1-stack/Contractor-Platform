@@ -130,16 +130,16 @@ describe("HighLevel Marketplace OAuth callback", () => {
     return new Request(`https://contractor-platform-production-c444.up.railway.app/api/integrations/oauth/callback?${query}`);
   }
 
-  function diagnosticRows(spy: ReturnType<typeof vi.spyOn>) {
+  function diagnosticRows(spy: { mock: { calls: unknown[][] } }) {
     return spy.mock.calls
-      .map((call) => {
+      .map((call: unknown[]) => {
         try {
           return JSON.parse(String(call[0])) as Record<string, unknown>;
         } catch {
           return null;
         }
       })
-      .filter((row): row is Record<string, unknown> => row?.event === "highlevel.oauth.diagnostic");
+      .filter((row): row is Record<string, unknown> => Boolean(row && row.event === "highlevel.oauth.diagnostic"));
   }
 
   function mockVerifiedLocation(locationId: string, name = "865 HVAC") {
