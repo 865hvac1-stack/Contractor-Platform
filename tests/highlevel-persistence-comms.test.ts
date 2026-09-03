@@ -297,8 +297,8 @@ describe("HighLevel persistence and conversation mapping", () => {
     expect(first.skipped).toBe(1);
     expect(first.failed).toBe(0);
     expect(first.messagesImported).toBe(2);
-    expect(second.conversationsFound).toBe(4);
-    expect(second.messagesImported).toBe(2);
+    expect(second.conversationsFound).toBe(0);
+    expect(second.messagesImported).toBe(0);
     expect(sendSpy).not.toHaveBeenCalled();
 
     const threads = await prisma.communicationThread.findMany({
@@ -332,6 +332,9 @@ describe("HighLevel persistence and conversation mapping", () => {
   });
 
   it("keeps a thread when historical messages fail", async () => {
+    await prisma.integrationSync.deleteMany({
+      where: { companyId: ids.companyA, connectionId: ids.connectionA, kind: "communications" },
+    });
     const search = vi.spyOn(highlevelClient, "searchHighLevelConversations").mockImplementation(async (input) => {
       if (input.startAfterDate) return { conversations: [] };
       return {

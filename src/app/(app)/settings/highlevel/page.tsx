@@ -15,6 +15,15 @@ import { companyAllowsExternalIntegrationTesting } from "@/lib/demo/guard";
 function commsSummaryText(summary: unknown, fallback: string) {
   if (!summary || typeof summary !== "object") return fallback;
   const row = summary as {
+    conversationsScanned?: number;
+    conversationsImported?: number;
+    conversationsUpdated?: number;
+    smsImported?: number;
+    callsImported?: number;
+    unmatchedCommunications?: number;
+    duplicates?: number;
+    failures?: number;
+    checkpointTo?: string;
     conversationsFound?: number;
     mapped?: number;
     providerOnly?: number;
@@ -23,6 +32,18 @@ function commsSummaryText(summary: unknown, fallback: string) {
     failed?: number;
     messagesImported?: number;
   };
+  if (typeof row.conversationsScanned === "number") {
+    return [
+      `${row.conversationsScanned} scanned`,
+      `${row.conversationsImported ?? 0} new threads`,
+      `${row.conversationsUpdated ?? 0} updated threads`,
+      `${row.smsImported ?? 0} SMS`,
+      `${row.callsImported ?? 0} calls`,
+      `${row.unmatchedCommunications ?? 0} unmatched`,
+      `${row.duplicates ?? 0} duplicates`,
+      `${row.failures ?? 0} failures`,
+    ].join(" · ");
+  }
   if (typeof row.conversationsFound !== "number") return fallback;
   return [
     `${row.conversationsFound} found`,

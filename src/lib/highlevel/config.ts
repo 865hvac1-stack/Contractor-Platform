@@ -4,7 +4,8 @@ export const HIGHLEVEL_API_BASE = "https://services.leadconnectorhq.com";
 export const HIGHLEVEL_AUTHORIZE_URL = "https://marketplace.gohighlevel.com/oauth/chooselocation";
 export const HIGHLEVEL_AUTHORIZE_URL_WHITELABEL = "https://marketplace.leadconnectorhq.com/oauth/chooselocation";
 export const HIGHLEVEL_API_VERSION = "2021-07-28";
-export const HIGHLEVEL_CONVERSATIONS_API_VERSION = "2021-04-15";
+/** Official conversations docs list Version: v3. */
+export const HIGHLEVEL_CONVERSATIONS_API_VERSION = "v3";
 export const HIGHLEVEL_PHONE_API_VERSION = "v3";
 /** Official Get Location docs require Version v3. */
 export const HIGHLEVEL_LOCATION_API_VERSION = "v3";

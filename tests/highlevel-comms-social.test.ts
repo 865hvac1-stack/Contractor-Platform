@@ -127,7 +127,8 @@ describe("HighLevel communications and social refinement", () => {
     const second = await syncHighLevelCommunications(prisma, ids.companyA);
     expect(first.conversationsFound).toBe(1);
     expect(first.messagesImported).toBe(1);
-    expect(second.messagesImported).toBe(1);
+    expect(second.conversationsFound).toBe(0);
+    expect(second.messagesImported).toBe(0);
     const threads = await prisma.communicationThread.findMany({
       where: { companyId: ids.companyA, externalId: "conv_hist" },
     });

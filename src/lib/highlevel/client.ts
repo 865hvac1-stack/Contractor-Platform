@@ -405,16 +405,23 @@ export function parseHighLevelDate(raw: unknown): Date | undefined {
 export type HighLevelConversationMessage = {
   id?: string;
   messageId?: string;
+  altId?: string;
   conversationId?: string;
   contactId?: string;
+  locationId?: string;
   body?: string;
   message?: string;
   direction?: string;
-  type?: string;
+  type?: string | number;
   messageType?: string;
+  messageTypeString?: string;
   status?: string;
   dateAdded?: string | number;
   dateUpdated?: string | number;
+  from?: string;
+  to?: string;
+  callDuration?: number;
+  callStatus?: string;
   attachments?: Array<{ url?: string; type?: string } | string>;
   meta?: { recordingUrl?: string; callDuration?: number; callStatus?: string };
 };
@@ -424,6 +431,8 @@ export async function searchHighLevelConversations(input: {
   locationId: string;
   limit?: number;
   startAfterDate?: string;
+  sort?: "asc" | "desc";
+  status?: "all" | "read" | "unread" | "starred" | "recents";
 }) {
   return highlevelRequest<{
     conversations?: HighLevelConversation[] | { conversations?: HighLevelConversation[]; total?: number };
@@ -435,7 +444,9 @@ export async function searchHighLevelConversations(input: {
     query: {
       locationId: input.locationId,
       limit: String(input.limit ?? 20),
-      sort: "desc",
+      sort: input.sort ?? "desc",
+      status: input.status ?? "all",
+      sortBy: "last_message_date",
       startAfterDate: input.startAfterDate,
     },
   });

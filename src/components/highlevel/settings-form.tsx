@@ -185,7 +185,7 @@ export function HighLevelSettingsForm({
             </ActionForm>
             <ActionForm action={syncHighLevelCommunicationsAction}>
               <Button type="submit" variant="outline">
-                Sync communications
+                Sync Communications
               </Button>
             </ActionForm>
             <ActionForm action={syncHighLevelNumbersAction}>
