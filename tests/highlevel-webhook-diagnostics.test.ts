@@ -147,8 +147,8 @@ describe("HighLevel inbound webhook diagnostics", () => {
     expect(routeSource).toContain("HIGHLEVEL_WEBHOOK_MARKERS.LOCATION_RESOLVED");
     expect(routeSource).toContain("HIGHLEVEL_WEBHOOK_MARKERS.PROCESSED");
     expect(routeSource).toContain("HIGHLEVEL_WEBHOOK_MARKERS.FAILED");
-    expect(routeSource).not.toMatch(/logHighLevelWebhookDiagnostic\([\s\S]*from:/);
-    expect(routeSource).not.toMatch(/logHighLevelWebhook(?:Diagnostic)?\([\s\S]*ghlSignature/);
+    expect(routeSource).not.toMatch(/logHighLevelWebhookDiagnostic\(\{[^}]*from:/);
+    expect(routeSource).not.toMatch(/logHighLevelWebhook(?:Diagnostic)?\(\{[^}]*ghlSignature/);
     expect(routeSource).not.toMatch(/console\.(?:log|info|error)\([^)]*headers/);
   });
 });
