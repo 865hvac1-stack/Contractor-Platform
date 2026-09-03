@@ -164,7 +164,7 @@ Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into ea
 
 Production HighLevel inbound webhook (POST): `https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel`
 
-Railway log identifier: `highlevel.webhook` (JSON `event` field) plus searchable markers `HIGHLEVEL_WEBHOOK_RECEIVED`, `HIGHLEVEL_WEBHOOK_EVENT_TYPE`, `HIGHLEVEL_WEBHOOK_LOCATION_RESOLVED`, `HIGHLEVEL_WEBHOOK_PROCESSED`, and `HIGHLEVEL_WEBHOOK_FAILED`. Never logs tokens, API keys, authorization headers, signature values, phone numbers, or message bodies.
+Railway **Deploy Logs** (not HTTP logs) carry `highlevel.webhook` plus searchable markers `HIGHLEVEL_WEBHOOK_RECEIVED`, `HIGHLEVEL_WEBHOOK_EVENT_TYPE`, `HIGHLEVEL_WEBHOOK_LOCATION_RESOLVED`, `HIGHLEVEL_WEBHOOK_PROCESSED`, and `HIGHLEVEL_WEBHOOK_FAILED`. HTTP logs only show status codes. A 401 also sets `x-cy-webhook-reason` to `missing_signature` or `invalid_signature`. Official Marketplace auth is Ed25519 over the raw body via `X-GHL-Signature` (legacy RSA `X-WH-Signature` if that is the only header). ContractorYou does not require an Authorization header or a shared webhook secret. Never logs tokens, API keys, authorization headers, signature values, phone numbers, or message bodies.
 
 Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 

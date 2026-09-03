@@ -62,6 +62,11 @@ export type HighLevelWebhookDiagnosticFields = {
   channel?: string | null;
   direction?: string | null;
   hasSignature?: boolean;
+  hasXGhlSignature?: boolean;
+  hasXWhSignature?: boolean;
+  hasAuthorization?: boolean;
+  requestReachedRoute?: boolean;
+  layer?: "middleware" | "route" | null;
   bodyBytes?: number | null;
   locationMapped?: boolean;
   processed?: boolean;
@@ -103,6 +108,11 @@ export function sanitizeWebhookDiagnostic(
   if (fields.channel) out.channel = fields.channel;
   if (fields.direction) out.direction = fields.direction;
   if (fields.hasSignature !== undefined) out.hasSignature = fields.hasSignature;
+  if (fields.hasXGhlSignature !== undefined) out.hasXGhlSignature = fields.hasXGhlSignature;
+  if (fields.hasXWhSignature !== undefined) out.hasXWhSignature = fields.hasXWhSignature;
+  if (fields.hasAuthorization !== undefined) out.hasAuthorization = fields.hasAuthorization;
+  if (fields.requestReachedRoute !== undefined) out.requestReachedRoute = fields.requestReachedRoute;
+  if (fields.layer) out.layer = fields.layer;
   if (fields.bodyBytes != null) out.bodyBytes = fields.bodyBytes;
   if (fields.locationMapped !== undefined) out.locationMapped = fields.locationMapped;
   if (fields.processed !== undefined) out.processed = fields.processed;

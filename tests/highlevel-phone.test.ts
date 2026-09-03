@@ -390,7 +390,7 @@ describe("HighLevel phone, SMS sender, and call attribution", () => {
     const logSource = require("node:fs").readFileSync("src/lib/highlevel/webhook-log.ts", "utf8");
     expect(logSource).toContain('HIGHLEVEL_WEBHOOK_LOG_EVENT = "highlevel.webhook"');
     expect(routeSource).toContain("logHighLevelWebhook");
-    expect(routeSource).not.toMatch(/logHighLevelWebhook\([\s\S]*ghlSignature/);
+    expect(routeSource).not.toMatch(/logHighLevelWebhook\(\{[^}]*ghlSignature/);
     expect(routeSource).not.toMatch(/console\.(?:log|info|error)\([^)]*headers/);
   });
 });

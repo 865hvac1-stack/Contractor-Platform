@@ -8,30 +8,79 @@ import { upsertConversationMessage } from "@/lib/highlevel/conversations";
 import { normalizeHighLevelChannel } from "@/lib/highlevel/channels";
 import { parseHighLevelDate } from "@/lib/highlevel/client";
 
+export type HighLevelWebhookAuthReason =
+  | "verified"
+  | "missing_signature"
+  | "invalid_signature"
+  | "unsigned_allowed_non_production";
+
+export type HighLevelWebhookAuthResult = {
+  ok: boolean;
+  reason: HighLevelWebhookAuthReason;
+  algorithm: "ed25519" | "rsa-sha256" | null;
+};
+
+function usableSignature(value?: string | null) {
+  return Boolean(value && value !== "N/A");
+}
+
+/**
+ * Official Marketplace verification:
+ * https://marketplace.gohighlevel.com/docs/webhook/WebhookIntegrationGuide/
+ * Prefer X-GHL-Signature (Ed25519) over the raw UTF-8 body. Fall back to
+ * X-WH-Signature (RSA-SHA256) only when the GHL header is absent.
+ * No Authorization header, shared secret, or timestamp header is documented.
+ */
+export function evaluateHighLevelWebhookAuth(input: {
+  rawBody: string;
+  ghlSignature?: string | null;
+  legacySignature?: string | null;
+  requireSignature?: boolean;
+  /** Test-only override. Production always uses the official Marketplace public key. */
+  ed25519PublicKey?: string;
+  rsaPublicKey?: string;
+}): HighLevelWebhookAuthResult {
+  if (usableSignature(input.ghlSignature)) {
+    try {
+      const payloadBuffer = Buffer.from(input.rawBody, "utf8");
+      const signatureBuffer = Buffer.from(input.ghlSignature as string, "base64");
+      const ok = cryptoVerify(
+        null,
+        payloadBuffer,
+        input.ed25519PublicKey || HIGHLEVEL_ED25519_PUBLIC_KEY,
+        signatureBuffer,
+      );
+      return { ok, reason: ok ? "verified" : "invalid_signature", algorithm: "ed25519" };
+    } catch {
+      return { ok: false, reason: "invalid_signature", algorithm: "ed25519" };
+    }
+  }
+  if (usableSignature(input.legacySignature)) {
+    try {
+      const verifier = createVerify("SHA256");
+      verifier.update(input.rawBody);
+      const ok = verifier.verify(
+        input.rsaPublicKey || HIGHLEVEL_RSA_PUBLIC_KEY,
+        input.legacySignature as string,
+        "base64",
+      );
+      return { ok, reason: ok ? "verified" : "invalid_signature", algorithm: "rsa-sha256" };
+    } catch {
+      return { ok: false, reason: "invalid_signature", algorithm: "rsa-sha256" };
+    }
+  }
+  if (input.requireSignature) {
+    return { ok: false, reason: "missing_signature", algorithm: null };
+  }
+  return { ok: true, reason: "unsigned_allowed_non_production", algorithm: null };
+}
+
 export function verifyHighLevelWebhookSignature(input: {
   rawBody: string;
   ghlSignature?: string | null;
   legacySignature?: string | null;
 }) {
-  if (input.ghlSignature && input.ghlSignature !== "N/A") {
-    try {
-      const payloadBuffer = Buffer.from(input.rawBody, "utf8");
-      const signatureBuffer = Buffer.from(input.ghlSignature, "base64");
-      return cryptoVerify(null, payloadBuffer, HIGHLEVEL_ED25519_PUBLIC_KEY, signatureBuffer);
-    } catch {
-      return false;
-    }
-  }
-  if (input.legacySignature && input.legacySignature !== "N/A") {
-    try {
-      const verifier = createVerify("SHA256");
-      verifier.update(input.rawBody);
-      return verifier.verify(HIGHLEVEL_RSA_PUBLIC_KEY, input.legacySignature, "base64");
-    } catch {
-      return false;
-    }
-  }
-  return false;
+  return evaluateHighLevelWebhookAuth({ ...input, requireSignature: true }).ok;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
