@@ -198,6 +198,58 @@ export async function inspectHighLevelInstalledLocations(accessToken: string) {
   });
 }
 
+export async function inspectHighLevelInstalledLocationsForCompany(input: {
+  accessToken: string;
+  companyId: string;
+  appId: string;
+  locationId?: string;
+}) {
+  const attempts = [
+    {
+      path: "/oauth/installed-locations",
+      version: "v3",
+      query: {
+        companyId: input.companyId,
+        appId: input.appId,
+        isInstalled: "true",
+        locationId: input.locationId,
+        pageSize: "20",
+      },
+    },
+    {
+      path: "/oauth/installedLocations",
+      version: "2021-07-28",
+      query: {
+        companyId: input.companyId,
+        appId: input.appId,
+        skip: "0",
+        limit: "100",
+        onTrial: "false",
+        isInstalled: "true",
+        locationId: input.locationId,
+      },
+    },
+  ] as const;
+
+  let last = await inspectHighLevelRequest<{
+    locations?: Array<{ _id?: string; id?: string; locationId?: string }>;
+    installedLocations?: Array<{ _id?: string; id?: string; locationId?: string }>;
+  }>({
+    accessToken: input.accessToken,
+    path: attempts[0].path,
+    version: attempts[0].version,
+    query: attempts[0].query,
+  });
+  if (last.ok || last.status !== 404) return last;
+  last = await inspectHighLevelRequest({
+    accessToken: input.accessToken,
+    path: attempts[1].path,
+    version: attempts[1].version,
+    query: attempts[1].query,
+  });
+  return last;
+}
+
 export async function inspectHighLevelConversationsSearch(input: {
   accessToken: string;
   locationId: string;

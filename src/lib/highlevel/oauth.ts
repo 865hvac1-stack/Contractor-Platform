@@ -7,6 +7,7 @@ import {
   highlevelRequestedScopes,
 } from "@/lib/highlevel/env";
 import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
+import { inspectHighLevelTokenClaims } from "@/lib/highlevel/token-claims";
 
 export function highlevelAuthorizeBaseUrl() {
   const override = process.env.HIGHLEVEL_AUTHORIZE_URL?.trim();
@@ -58,15 +59,47 @@ type TokenResponse = {
   companyId?: string;
   userType?: string;
   userId?: string;
+  approvedLocations?: string[];
+  isBulkInstallation?: boolean;
+  approveAllLocations?: boolean;
+  installToFutureLocations?: boolean;
 };
 
-export async function exchangeHighLevelCode(code: string): Promise<{
+export type HighLevelTokenExchange = {
   tokens: ProviderTokenPayload;
   locationId: string | null;
   agencyId: string | null;
   userType: string | null;
   httpStatus?: number;
-}> {
+};
+
+function tokenErrorMessage(data: { message?: unknown; error?: unknown }) {
+  const raw = data.message ?? data.error;
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is string => typeof item === "string").join(" ").trim();
+  }
+  return "";
+}
+
+function payloadFromTokenResponse(data: TokenResponse): ProviderTokenPayload {
+  const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : undefined;
+  return {
+    accessToken: data.access_token as string,
+    refreshToken: data.refresh_token,
+    expiresAt,
+    scopes: data.scope?.split(/[,\s]+/).filter(Boolean) ?? highlevelRequestedScopes(),
+    userType: data.userType,
+    highlevelCompanyId: data.companyId,
+    locationId: data.locationId,
+    approvedLocations: Array.isArray(data.approvedLocations) ? data.approvedLocations.filter((id) => typeof id === "string") : undefined,
+    isBulkInstallation: data.isBulkInstallation,
+    approveAllLocations: data.approveAllLocations,
+    installToFutureLocations: data.installToFutureLocations,
+  };
+}
+
+export async function exchangeHighLevelCode(code: string): Promise<HighLevelTokenExchange> {
   return requestHighLevelToken({
     grant_type: "authorization_code",
     code,
@@ -74,16 +107,120 @@ export async function exchangeHighLevelCode(code: string): Promise<{
   });
 }
 
-export async function refreshHighLevelToken(refreshToken: string) {
+export async function refreshHighLevelToken(refreshToken: string, userType: "Location" | "Company" = "Location") {
   const result = await requestHighLevelToken({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    user_type: "Location",
+    user_type: userType,
   });
   return result.tokens;
 }
 
-async function requestHighLevelToken(body: Record<string, string>) {
+export async function exchangeCompanyTokenForLocation(input: {
+  companyAccessToken: string;
+  companyId: string;
+  locationId: string;
+}): Promise<{
+  ok: boolean;
+  tokens: ProviderTokenPayload;
+  httpStatus: number;
+  status: number;
+  error: string | null;
+}> {
+  const attempts: Array<{ path: string; version: string }> = [
+    { path: "/oauth/location-token", version: "v3" },
+    { path: "/oauth/locationToken", version: "2021-07-28" },
+  ];
+  let lastStatus = 0;
+  let lastError = "HighLevel location-token exchange failed.";
+  for (const attempt of attempts) {
+    const response = await fetch(`${HIGHLEVEL_API_BASE}${attempt.path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.companyAccessToken}`,
+        Version: attempt.version,
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        companyId: input.companyId,
+        locationId: input.locationId,
+      }),
+    });
+    const data = (await response.json().catch(() => ({}))) as TokenResponse & { message?: unknown; error?: unknown };
+    lastStatus = response.status;
+    if (response.ok && data.access_token) {
+      const tokens = payloadFromTokenResponse(data);
+      return {
+        ok: true,
+        tokens: { ...tokens, userType: tokens.userType || "Location" },
+        httpStatus: response.status,
+        status: response.status,
+        error: null,
+      };
+    }
+    lastError = tokenErrorMessage(data) || lastError;
+  }
+  return { ok: false, tokens: { accessToken: "" }, httpStatus: lastStatus, status: lastStatus, error: lastError };
+}
+
+export async function refreshHighLevelConnectionTokens(tokens: ProviderTokenPayload): Promise<ProviderTokenPayload> {
+  const claims = inspectHighLevelTokenClaims(tokens.agencyAccessToken || tokens.accessToken);
+  const originalType = (tokens.userType || claims.userType || "").toLowerCase();
+  const companyRefresh =
+    tokens.agencyRefreshToken ||
+    (originalType === "company" && !tokens.agencyAccessToken ? tokens.refreshToken : undefined);
+  const locationRefresh = tokens.agencyAccessToken
+    ? tokens.refreshToken
+    : originalType === "location" || !originalType
+      ? tokens.refreshToken
+      : undefined;
+
+  if (companyRefresh) {
+    const agency = await refreshHighLevelToken(companyRefresh, "Company");
+    const companyId = tokens.highlevelCompanyId || agency.highlevelCompanyId || claims.companyId;
+    const locationId = tokens.locationId || claims.locationId;
+    const next: ProviderTokenPayload = {
+      ...tokens,
+      agencyAccessToken: agency.accessToken,
+      agencyRefreshToken: agency.refreshToken || companyRefresh,
+      agencyExpiresAt: agency.expiresAt,
+      userType: "Company",
+      highlevelCompanyId: companyId || tokens.highlevelCompanyId,
+    };
+    if (companyId && locationId) {
+      const exchanged = await exchangeCompanyTokenForLocation({
+        companyAccessToken: agency.accessToken,
+        companyId,
+        locationId,
+      });
+      if (!exchanged.error && exchanged.tokens.accessToken) {
+        return {
+          ...next,
+          accessToken: exchanged.tokens.accessToken,
+          refreshToken: exchanged.tokens.refreshToken,
+          expiresAt: exchanged.tokens.expiresAt,
+          userType: "Location",
+          locationId,
+        };
+      }
+    }
+    return next;
+  }
+
+  if (!locationRefresh) return tokens;
+  const refreshed = await refreshHighLevelToken(locationRefresh, "Location");
+  return {
+    ...tokens,
+    accessToken: refreshed.accessToken,
+    refreshToken: refreshed.refreshToken || locationRefresh,
+    expiresAt: refreshed.expiresAt,
+    userType: tokens.userType || refreshed.userType || "Location",
+    locationId: tokens.locationId || refreshed.locationId || undefined,
+  };
+}
+
+async function requestHighLevelToken(body: Record<string, string>): Promise<HighLevelTokenExchange> {
   const params = new URLSearchParams({
     client_id: highlevelClientId(),
     client_secret: highlevelClientSecret(),
@@ -96,23 +233,11 @@ async function requestHighLevelToken(body: Record<string, string>) {
   });
   const data = (await response.json().catch(() => ({}))) as TokenResponse & { message?: unknown; error?: unknown };
   if (!response.ok || !data.access_token) {
-    const raw = data.message ?? data.error;
-    const message =
-      typeof raw === "string" && raw.trim()
-        ? raw.trim()
-        : Array.isArray(raw)
-          ? raw.filter((item): item is string => typeof item === "string").join(" ").trim()
-          : "";
-    throw new HighLevelOAuthExchangeError(message || "HighLevel did not return an access token.", response.status);
+    throw new HighLevelOAuthExchangeError(tokenErrorMessage(data) || "HighLevel did not return an access token.", response.status);
   }
-  const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : undefined;
+  const tokens = payloadFromTokenResponse(data);
   return {
-    tokens: {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt,
-      scopes: data.scope?.split(/[,\s]+/).filter(Boolean) ?? highlevelRequestedScopes(),
-    } satisfies ProviderTokenPayload,
+    tokens,
     locationId: data.locationId ?? null,
     agencyId: data.companyId ?? null,
     userType: data.userType ?? null,

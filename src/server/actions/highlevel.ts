@@ -9,9 +9,11 @@ import type { ActionResult } from "@/server/actions/auth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { deleteConnectionCredentials, getValidAccessToken, saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
 import { loadHighLevelAccess, probeHighLevelLocation } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken } from "@/lib/highlevel/location-token";
 import { applyHighLevelContactSync, previewHighLevelContactSync } from "@/lib/highlevel/sync";
 import { formatCommunicationsSyncMessage, syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
 import { diagnoseHighLevelConversationsApi, formatConversationsDiagnostic } from "@/lib/highlevel/conversations-diagnostic";
+import { diagnoseHighLevelTokenType, formatTokenTypeDiagnostic } from "@/lib/highlevel/token-type-diagnostic";
 import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
@@ -172,7 +174,7 @@ export async function refreshHighLevelConnectionAction(
     if (!access) return { ok: false, error: "HighLevel is not connected." };
     const probe = await probeHighLevelLocation(access.accessToken, access.locationId, {
       tokenLocationId: access.authMode === "oauth" ? access.locationId : null,
-      userType: access.authMode === "oauth" ? "Location" : null,
+      userType: access.tokenType === "company" ? "Company" : access.authMode === "oauth" ? "Location" : null,
     });
     await prisma.integrationConnection.update({
       where: { id: access.connection.id },
@@ -325,6 +327,51 @@ export async function diagnoseHighLevelConversationsAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: error instanceof Error ? error.message : "HighLevel API diagnostic failed." };
+  }
+}
+
+export async function diagnoseHighLevelTokenTypeAction(
+  _prev: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const demo = await refuseDemoExternal(ctx.company.id);
+    if (demo) return demo;
+    const result = await diagnoseHighLevelTokenType(prisma, ctx.company.id);
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
+      select: { id: true },
+    });
+    if (connection) {
+      await prisma.integrationSync.create({
+        data: {
+          companyId: ctx.company.id,
+          connectionId: connection.id,
+          kind: "token_type_diagnostic",
+          status: "COMPLETED",
+          finishedAt: new Date(),
+          summary: result as never,
+        },
+      });
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "highlevel.token_type_diagnosed",
+      entityType: "IntegrationConnection",
+      entityId: ctx.company.id,
+      metadata: {
+        tokenType: result.tokenType,
+        installed: result.installed,
+        locationTokenExchangeHttpStatus: result.locationTokenExchangeHttpStatus,
+      },
+    });
+    revalidatePath("/settings/highlevel");
+    return { ok: true, message: formatTokenTypeDiagnostic(result) };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "HighLevel token-type diagnostic failed." };
   }
 }
 
@@ -603,6 +650,7 @@ export async function purchaseHighLevelNumberAction(
     if (!normalizePhoneDigits(phoneNumber)) return { ok: false, error: "Enter the exact number to purchase." };
     const access = await loadHighLevelAccess(prisma, ctx.company.id);
     if (!access) return { ok: false, error: "HighLevel is not connected." };
+    assertHighLevelLocationToken(access);
     const purchased = await purchaseHighLevelNumber({
       accessToken: access.accessToken,
       locationId: access.locationId,

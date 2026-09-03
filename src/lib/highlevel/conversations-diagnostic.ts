@@ -6,6 +6,7 @@ import {
 } from "@/lib/highlevel/client";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { sanitizeHighLevelErrorMessage } from "@/lib/highlevel/sanitize-error";
 
 export const HIGHLEVEL_CONVERSATIONS_DIAGNOSTIC_VERSIONS = ["2021-04-15", "2021-07-28", "v3"] as const;
 
@@ -28,12 +29,7 @@ export type HighLevelConversationsDiagnostic = {
 };
 
 export function sanitizeHighLevelPublicError(message: string | null) {
-  if (!message) return null;
-  return message
-    .replace(/Bearer\s+\S+/gi, "[redacted]")
-    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, "[redacted]")
-    .replace(/\+?\d[\d\s().-]{8,}\d/g, "[redacted]")
-    .slice(0, 180);
+  return sanitizeHighLevelErrorMessage(message);
 }
 
 function errorCodeFromBody(data: unknown, httpStatus: number) {

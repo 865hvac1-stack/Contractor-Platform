@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { SmsSendResult } from "@/lib/communications/sms";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken } from "@/lib/highlevel/location-token";
 import { getIdentityMap, upsertIdentityMap } from "@/lib/highlevel/identity";
 import { sendHighLevelSms, upsertHighLevelContact } from "@/lib/highlevel/client";
 import { resolveApprovedSenderNumber } from "@/lib/highlevel/phone-numbers";
@@ -21,6 +22,15 @@ export async function sendViaHighLevel(input: {
   const access = await loadHighLevelAccess(prisma, input.companyId);
   if (!access) {
     return { ok: false, configured: false, error: "HighLevel is not connected for this company." };
+  }
+  try {
+    assertHighLevelLocationToken(access);
+  } catch (error) {
+    return {
+      ok: false,
+      configured: true,
+      error: error instanceof Error ? error.message : "Company token cannot be used for HighLevel Sub-Account APIs.",
+    };
   }
   if (!input.to.trim()) {
     return { ok: false, configured: true, error: "No customer phone number to text." };

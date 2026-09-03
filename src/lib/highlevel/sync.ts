@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { searchHighLevelContacts, type HighLevelContact } from "@/lib/highlevel/client";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken } from "@/lib/highlevel/location-token";
 import { matchHighLevelContact, mapContactToCustomer } from "@/lib/highlevel/contacts";
 import { ingestHighLevelLead } from "@/lib/highlevel/leads";
 
@@ -16,6 +17,7 @@ export type SyncPreviewRow = {
 export async function previewHighLevelContactSync(prisma: PrismaClient, companyId: string) {
   const access = await loadHighLevelAccess(prisma, companyId);
   if (!access) throw new Error("HighLevel is not connected.");
+  assertHighLevelLocationToken(access);
 
   const rows: SyncPreviewRow[] = [];
   let startAfterId: string | undefined;
@@ -76,6 +78,7 @@ export async function applyHighLevelContactSync(prisma: PrismaClient, companyId:
   let leadsCreated = 0;
   const access = await loadHighLevelAccess(prisma, companyId);
   if (!access) throw new Error("HighLevel is not connected.");
+  assertHighLevelLocationToken(access);
   let startAfterId: string | undefined;
   let pages = 0;
   while (pages < 20) {

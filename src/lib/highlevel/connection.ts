@@ -5,6 +5,7 @@ import {
   type HighLevelAuthMode,
 } from "@/lib/highlevel/config";
 import { getCompanyConnection, getValidAccessToken } from "@/lib/integrations/store";
+import { ensureHighLevelLocationAccess, type HighLevelTokenKind } from "@/lib/highlevel/location-token";
 import {
   inspectHighLevelContactsReachability,
   inspectHighLevelInstalledLocations,
@@ -55,6 +56,8 @@ export type HighLevelResolvedConnection =
       accessToken: string;
       authMode: HighLevelAuthMode;
       status: string;
+      tokenType: HighLevelTokenKind;
+      locationAccessError: string | null;
     }
   | {
       connected: false;
@@ -90,14 +93,23 @@ export async function resolveHighLevelConnection(
   if (!tokens?.accessToken || !locationId) {
     return { connected: false, reason: "HighLevel is not connected.", connection, locationId };
   }
+  const locationAccess = await ensureHighLevelLocationAccess({
+    prisma,
+    companyId,
+    connectionId: connection.id,
+    locationId,
+    tokens,
+  });
   return {
     connected: true,
     companyId,
     connection,
     locationId,
-    accessToken: tokens.accessToken,
+    accessToken: locationAccess.accessToken,
     authMode: highlevelAuthMode(connection.scopes),
     status: connection.status,
+    tokenType: locationAccess.tokenType,
+    locationAccessError: locationAccess.sanitizedError,
   };
 }
 
@@ -125,6 +137,8 @@ export async function loadHighLevelAccess(prisma: PrismaClient, companyId: strin
     accessToken: resolved.accessToken,
     locationId: resolved.locationId,
     authMode: resolved.authMode,
+    tokenType: resolved.tokenType,
+    locationAccessError: resolved.locationAccessError,
   };
 }
 

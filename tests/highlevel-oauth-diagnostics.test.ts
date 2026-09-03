@@ -202,7 +202,7 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
     await expect(exchangeHighLevelCode("bad-code-must-not-be-logged")).rejects.toMatchObject({
       name: "HighLevelOAuthExchangeError",
       httpStatus: 400,
-      message: "HighLevel did not return an access token.",
+      message: "invalid_grant",
     } satisfies Partial<HighLevelOAuthExchangeError>);
   });
 });

@@ -3,6 +3,7 @@ import { HighLevelApiError, listHighLevelSocialAccounts, createHighLevelSocialPo
 import { highlevelPlatformToChannel } from "@/lib/highlevel/channels";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken } from "@/lib/highlevel/location-token";
 import { demoOutboundBlock } from "@/lib/demo/guard";
 
 export type DiscoveredSocialAccount = {
@@ -15,6 +16,7 @@ export type DiscoveredSocialAccount = {
 export async function discoverHighLevelSocialAccounts(prisma: PrismaClient, companyId: string) {
   const access = await loadHighLevelAccess(prisma, companyId);
   if (!access) return { authorized: false as const, connected: false as const, accounts: [] as DiscoveredSocialAccount[], error: "HighLevel is not connected." };
+  assertHighLevelLocationToken(access);
 
   try {
     const payload = await listHighLevelSocialAccounts({
@@ -115,6 +117,7 @@ export async function publishThroughHighLevel(
   if (blocked.blocked) return { ok: false as const, error: blocked.message };
   const access = await loadHighLevelAccess(prisma, input.companyId);
   if (!access) return { ok: false as const, error: "HighLevel is not connected." };
+  assertHighLevelLocationToken(access);
   if (input.status !== "draft") {
     const invalid = validateNetworkPayload({ channels: input.channels, body: input.body, mediaUrl: input.mediaUrl });
     if (invalid) return { ok: false as const, error: invalid };

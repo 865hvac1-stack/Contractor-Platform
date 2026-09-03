@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { consumeOAuthStateDetailed } from "@/lib/integrations/oauth/state";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { exchangeHighLevelCode, HighLevelOAuthExchangeError, highlevelOAuthRedirectUri } from "@/lib/highlevel/oauth";
+import { materializeOAuthLocationTokens } from "@/lib/highlevel/location-token";
 import { saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
 import { writeAudit } from "@/lib/audit";
 import { appUrl } from "@/lib/integrations/env";
@@ -240,9 +241,10 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       Boolean(existing?.scopes.includes("private_token")) &&
       (existing?.externalAccountId === locationId || !existing?.externalAccountId);
 
-    const probe = await probeHighLevelLocation(exchanged.tokens.accessToken, locationId, {
-      tokenLocationId: exchanged.locationId,
-      userType: exchanged.userType,
+    const materialized = await materializeOAuthLocationTokens({ exchanged, locationId });
+    const probe = await probeHighLevelLocation(materialized.accessToken, locationId, {
+      tokenLocationId: materialized.tokens.locationId || exchanged.locationId,
+      userType: materialized.tokens.userType || exchanged.userType,
     });
     const connection = await upsertConnection({
       companyId: stored.row.companyId,
@@ -252,7 +254,7 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
         ? probe.location.name || existing?.accountLabel || "HighLevel location"
         : existing?.accountLabel || "HighLevel location",
       externalAccountId: locationId,
-      scopes: exchanged.tokens.scopes ?? [],
+      scopes: materialized.tokens.scopes ?? exchanged.tokens.scopes ?? [],
       healthMessage: probe.ok
         ? pitUpgrade
           ? "Marketplace OAuth upgraded the previous private-token connection."
@@ -263,7 +265,7 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
     await saveConnectionTokens({
       companyId: stored.row.companyId,
       connectionId: connection.id,
-      tokens: exchanged.tokens,
+      tokens: materialized.tokens,
     });
     logHighLevelOAuthDiagnostic({
       marker: HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED,
@@ -278,7 +280,12 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       entityType: "COMPANY",
       internalId: stored.row.companyId,
       externalId: locationId,
-      metadata: exchanged.agencyId ? { agencyId: exchanged.agencyId } : undefined,
+      metadata: {
+        ...(exchanged.agencyId || materialized.tokens.highlevelCompanyId
+          ? { agencyId: exchanged.agencyId || materialized.tokens.highlevelCompanyId || "" }
+          : {}),
+        ...(exchanged.userType ? { userType: exchanged.userType } : {}),
+      },
     });
     await writeAudit({
       companyId: stored.row.companyId,

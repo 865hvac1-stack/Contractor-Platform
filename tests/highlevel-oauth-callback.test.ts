@@ -19,6 +19,7 @@ import { HIGHLEVEL_OAUTH_MARKERS } from "@/lib/highlevel/oauth-diagnostics";
 import { consumeOAuthState, consumeOAuthStateDetailed, createOAuthState } from "@/lib/integrations/oauth/state";
 import { decryptProviderTokens } from "@/lib/integrations/crypto";
 import * as highlevelConnection from "@/lib/highlevel/connection";
+import * as highlevelClient from "@/lib/highlevel/client";
 import { upsertConnection, saveConnectionTokens } from "@/lib/integrations/store";
 
 const prisma = new PrismaClient();
@@ -255,6 +256,7 @@ describe("HighLevel Marketplace OAuth callback", () => {
       agencyId: "agency_1",
       userType: "Location",
     });
+    const companyExchange = vi.spyOn(highlevelOAuth, "exchangeCompanyTokenForLocation");
     mockVerifiedLocation(locationId);
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=valid-code&state=${row.state}`));
@@ -295,6 +297,7 @@ describe("HighLevel Marketplace OAuth callback", () => {
     expect(decrypted.accessToken).toBe(accessToken);
     expect(decrypted.refreshToken).toBe(refreshToken);
     expect(decrypted.expiresAt).toBe(expiresAt);
+    expect(companyExchange).not.toHaveBeenCalled();
     expect(connection!.credentials!.tokenExpiresAt?.toISOString()).toBe(new Date(expiresAt).toISOString());
     const identity = await prisma.providerIdentityMap.findFirst({
       where: {
@@ -304,6 +307,66 @@ describe("HighLevel Marketplace OAuth callback", () => {
       },
     });
     expect(identity?.internalId).toBe(ids.company);
+  });
+
+  it("exchanges a Company OAuth token for a Location token before storing", async () => {
+    const row = await stateFor(ids.company);
+    const locationId = `loc_company_${Date.now()}`;
+    const companyToken = `company-access-${Date.now()}`;
+    const locationToken = `location-access-${Date.now()}`;
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockResolvedValue({
+      tokens: {
+        accessToken: companyToken,
+        refreshToken: "company-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        scopes: ["locations.readonly"],
+        userType: "Company",
+        highlevelCompanyId: "agency_company_1",
+      },
+      locationId,
+      agencyId: "agency_company_1",
+      userType: "Company",
+    });
+    vi.spyOn(highlevelClient, "inspectHighLevelInstalledLocationsForCompany").mockResolvedValue({
+      ok: true,
+      status: 200,
+      keys: ["locations"],
+      data: { locations: [{ id: locationId }] },
+      errorMessage: null,
+    });
+    vi.spyOn(highlevelOAuth, "exchangeCompanyTokenForLocation").mockResolvedValue({
+      ok: true,
+      tokens: {
+        accessToken: locationToken,
+        refreshToken: "location-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        userType: "Location",
+        locationId,
+      },
+      httpStatus: 200,
+      status: 200,
+      error: null,
+    });
+    mockVerifiedLocation(locationId);
+    const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=company-code&state=${row.state}`));
+    expect(response.headers.get("location") || "").toContain("connected=1");
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY, externalAccountId: locationId },
+      include: { credentials: true },
+    });
+    const decrypted = decryptProviderTokens({
+      ciphertext: Buffer.from(connection!.credentials!.ciphertext),
+      iv: Buffer.from(connection!.credentials!.iv),
+      authTag: Buffer.from(connection!.credentials!.authTag),
+      keyVersion: connection!.credentials!.keyVersion,
+    });
+    expect(decrypted.accessToken).toBe(locationToken);
+    expect(decrypted.agencyAccessToken).toBe(companyToken);
+    expect(decrypted.userType).toBe("Location");
+    expect(decrypted.highlevelCompanyId).toBe("agency_company_1");
+    const ciphertext = Buffer.from(connection!.credentials!.ciphertext).toString("utf8");
+    expect(ciphertext).not.toContain(companyToken);
+    expect(ciphertext).not.toContain(locationToken);
   });
 
   it("does not let a second company claim an already-linked location", async () => {

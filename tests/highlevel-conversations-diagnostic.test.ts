@@ -61,6 +61,8 @@ describe("HighLevel conversations API diagnostic", () => {
       accessToken: "access-must-not-be-logged",
       locationId: "qPjPtcAUzdkBtYTJUUWB",
       authMode: "oauth",
+      tokenType: "location",
+      locationAccessError: null,
     });
     const prisma = {
       providerIdentityMap: { findFirst: async () => null },

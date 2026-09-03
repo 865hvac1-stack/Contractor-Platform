@@ -8,7 +8,7 @@ import {
 import { refreshGoogleToken } from "@/lib/integrations/oauth/google";
 import { refreshTikTokToken } from "@/lib/integrations/oauth/tiktok";
 import { refreshQuickBooksToken } from "@/lib/quickbooks/oauth";
-import { refreshHighLevelToken } from "@/lib/highlevel/oauth";
+import { refreshHighLevelConnectionTokens } from "@/lib/highlevel/oauth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { isHighLevelLocationNotActiveError } from "@/lib/highlevel/client";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
@@ -111,7 +111,7 @@ export async function getValidAccessToken(input: {
           : input.providerKey === QUICKBOOKS_PROVIDER_KEY
             ? await refreshQuickBooksToken(tokens.refreshToken, await loadQuickBooksAppCredentials(prisma, input.companyId))
             : input.providerKey === HIGHLEVEL_PROVIDER_KEY
-              ? await refreshHighLevelToken(tokens.refreshToken)
+              ? await refreshHighLevelConnectionTokens(tokens)
               : tokens;
     await saveConnectionTokens({
       companyId: input.companyId,

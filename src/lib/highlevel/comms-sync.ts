@@ -15,6 +15,7 @@ import {
 } from "@/lib/highlevel/client";
 import { normalizeHighLevelChannel, normalizeHighLevelDirection } from "@/lib/highlevel/channels";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken, ensureHighLevelLocationAccess } from "@/lib/highlevel/location-token";
 import { upsertConversationMessage, upsertConversationThread } from "@/lib/highlevel/conversations";
 import { extractHighLevelRecordingHint } from "@/lib/highlevel/attachments";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
@@ -56,6 +57,7 @@ function conversationDate(conversation: HighLevelConversation) {
 type SyncAccessState = {
   companyId: string;
   connectionId: string;
+  locationId: string;
   accessToken: string;
 };
 
@@ -96,7 +98,15 @@ async function callHighLevelWithResilience<T>(
           providerKey: HIGHLEVEL_PROVIDER_KEY,
         });
         if (refreshed?.accessToken) {
-          access.accessToken = refreshed.accessToken;
+          const ensured = await ensureHighLevelLocationAccess({
+            prisma,
+            companyId: access.companyId,
+            connectionId: access.connectionId,
+            locationId: access.locationId,
+            tokens: refreshed,
+          });
+          assertHighLevelLocationToken(ensured);
+          access.accessToken = ensured.accessToken;
           continue;
         }
       }
@@ -175,6 +185,7 @@ export function formatCommunicationsSyncMessage(result: CommunicationsSyncResult
 export async function syncHighLevelCommunications(prisma: PrismaClient, companyId: string): Promise<CommunicationsSyncResult> {
   const access = await loadHighLevelAccess(prisma, companyId);
   if (!access) throw new Error("HighLevel is not connected.");
+  assertHighLevelLocationToken(access);
   const lookbackDays = parseEnvInt("HIGHLEVEL_COMMS_LOOKBACK_DAYS", DEFAULT_LOOKBACK_DAYS);
   const maxConversationPages = parseEnvInt("HIGHLEVEL_COMMS_MAX_PAGES", MAX_CONVERSATION_PAGES);
   const maxMessagePages = parseEnvInt("HIGHLEVEL_COMMS_MAX_MESSAGE_PAGES", MAX_MESSAGE_PAGES);
@@ -239,6 +250,7 @@ export async function syncHighLevelCommunications(prisma: PrismaClient, companyI
   const accessState: SyncAccessState = {
     companyId,
     connectionId: access.connection.id,
+    locationId: access.locationId,
     accessToken: access.accessToken,
   };
   let startAfterDate: string | undefined = safeCheckpoint ? String(new Date(checkpointFrom).getTime()) : undefined;

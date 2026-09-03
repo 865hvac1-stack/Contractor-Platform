@@ -7,6 +7,7 @@ import {
   type HighLevelPhoneNumber,
 } from "@/lib/highlevel/client";
 import { loadHighLevelAccess } from "@/lib/highlevel/connection";
+import { assertHighLevelLocationToken } from "@/lib/highlevel/location-token";
 import { normalizePhoneDigits } from "@/lib/highlevel/identity";
 
 export type ParsedHighLevelNumber = {
@@ -105,6 +106,7 @@ export async function syncHighLevelActiveNumbers(prisma: PrismaClient, companyId
   if (!access) {
     return { ok: false as const, error: "HighLevel is not connected for this company.", synced: 0 };
   }
+  assertHighLevelLocationToken(access);
   const payload = await listHighLevelActiveNumbers({
     accessToken: access.accessToken,
     locationId: access.locationId,
@@ -155,6 +157,7 @@ export async function searchHighLevelInventory(
   if (!access) {
     return { ok: false as const, error: "HighLevel is not connected for this company.", numbers: [] as Array<{ phoneNumber: string; friendlyName: string | null }> };
   }
+  assertHighLevelLocationToken(access);
   const payload = await listHighLevelAvailableNumbers({
     accessToken: access.accessToken,
     locationId: access.locationId,

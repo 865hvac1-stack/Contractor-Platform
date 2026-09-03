@@ -75,7 +75,7 @@ describe("canonical Marketplace OAuth HighLevel connection", () => {
 
   it("keeps the Marketplace OAuth access token when refresh returns Location is not active", async () => {
     const spy = vi
-      .spyOn(highlevelOAuth, "refreshHighLevelToken")
+      .spyOn(highlevelOAuth, "refreshHighLevelConnectionTokens")
       .mockRejectedValue(new HighLevelOAuthExchangeError("Location is not active", 400));
     const tokens = await store.getValidAccessToken({
       companyId: ids.company,
@@ -90,7 +90,7 @@ describe("canonical Marketplace OAuth HighLevel connection", () => {
 
   it("resolves the same connected OAuth state for Settings and Sync Communications", async () => {
     const spy = vi
-      .spyOn(highlevelOAuth, "refreshHighLevelToken")
+      .spyOn(highlevelOAuth, "refreshHighLevelConnectionTokens")
       .mockRejectedValue(new HighLevelOAuthExchangeError("Location is not actived", 400));
     const resolved = await resolveHighLevelConnection(prisma, ids.company);
     const access = await loadHighLevelAccess(prisma, ids.company);

@@ -510,7 +510,7 @@ describe("HighLevel connection, mapping, leads, and webhooks", () => {
   });
 
   it("Q. reauthorization state is recorded when refresh fails", async () => {
-    const spy = vi.spyOn(highlevelOAuth, "refreshHighLevelToken").mockRejectedValue(new Error("expired"));
+    const spy = vi.spyOn(highlevelOAuth, "refreshHighLevelConnectionTokens").mockRejectedValue(new Error("expired"));
     const tokens = await getValidAccessToken({
       companyId: ids.companyA,
       connectionId: ids.connectionA,

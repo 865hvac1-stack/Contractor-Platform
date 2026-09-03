@@ -6,6 +6,7 @@ import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } fr
 import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
 import { highlevelAuthMode, resolveHighLevelConnection } from "@/lib/highlevel/connection";
 import { formatConversationsDiagnostic, type HighLevelConversationsDiagnostic } from "@/lib/highlevel/conversations-diagnostic";
+import { formatTokenTypeDiagnostic, type HighLevelTokenTypeDiagnostic } from "@/lib/highlevel/token-type-diagnostic";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,6 +98,12 @@ export default async function HighLevelSettingsPage({
   const lastConversationsDiagnostic = connection
     ? await prisma.integrationSync.findFirst({
         where: { companyId: ctx.company.id, connectionId: connection.id, kind: "conversations_diagnostic" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
+  const lastTokenTypeDiagnostic = connection
+    ? await prisma.integrationSync.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id, kind: "token_type_diagnostic" },
         orderBy: { startedAt: "desc" },
       })
     : null;
@@ -270,6 +277,11 @@ export default async function HighLevelSettingsPage({
             <p className="text-[var(--muted-foreground)]">{connection.healthMessage}</p>
           ) : null}
           {connection?.errorMessage ? <p className="text-rose-700">{connection.errorMessage}</p> : null}
+          {lastTokenTypeDiagnostic?.summary ? (
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
+              {formatTokenTypeDiagnostic(lastTokenTypeDiagnostic.summary as HighLevelTokenTypeDiagnostic)}
+            </pre>
+          ) : null}
           {lastConversationsDiagnostic?.summary ? (
             <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
               {formatConversationsDiagnostic(lastConversationsDiagnostic.summary as HighLevelConversationsDiagnostic)}

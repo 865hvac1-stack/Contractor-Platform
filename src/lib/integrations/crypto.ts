@@ -51,6 +51,16 @@ export type ProviderTokenPayload = {
   refreshToken?: string;
   expiresAt?: string;
   scopes?: string[];
+  userType?: string;
+  highlevelCompanyId?: string;
+  locationId?: string;
+  approvedLocations?: string[];
+  isBulkInstallation?: boolean;
+  approveAllLocations?: boolean;
+  installToFutureLocations?: boolean;
+  agencyAccessToken?: string;
+  agencyRefreshToken?: string;
+  agencyExpiresAt?: string;
 };
 
 export function encryptProviderTokens(payload: ProviderTokenPayload): EncryptedSecret {
