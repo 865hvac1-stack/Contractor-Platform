@@ -2,6 +2,7 @@ import {
   HIGHLEVEL_API_BASE,
   HIGHLEVEL_API_VERSION,
   HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  HIGHLEVEL_LOCATION_API_VERSION,
   HIGHLEVEL_PHONE_API_VERSION,
 } from "@/lib/highlevel/config";
 
@@ -65,13 +66,91 @@ export async function highlevelRequest<T>(input: {
   return data;
 }
 
+function jsonObjectKeys(data: unknown) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  return Object.keys(data).slice(0, 24);
+}
+
+export type HighLevelInspectedResponse<T> = {
+  status: number;
+  ok: boolean;
+  keys: string[];
+  data: T;
+  errorMessage: string | null;
+};
+
+async function inspectHighLevelRequest<T>(input: {
+  accessToken: string;
+  path: string;
+  query?: Record<string, string | undefined>;
+  version?: string;
+}): Promise<HighLevelInspectedResponse<T>> {
+  const url = new URL(`${HIGHLEVEL_API_BASE}${input.path}`);
+  for (const [key, value] of Object.entries(input.query ?? {})) {
+    if (value) url.searchParams.set(key, value);
+  }
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      Version: input.version ?? HIGHLEVEL_API_VERSION,
+      Accept: "application/json",
+    },
+  });
+  const data = (await response.json().catch(() => ({}))) as T & { message?: string };
+  return {
+    status: response.status,
+    ok: response.ok,
+    keys: jsonObjectKeys(data),
+    data,
+    errorMessage: response.ok
+      ? null
+      : typeof data.message === "string"
+        ? data.message
+        : `HighLevel request failed (${response.status}).`,
+  };
+}
+
+export function locationFromHighLevelPayload(data: { location?: HighLevelLocation } | HighLevelLocation | null | undefined) {
+  if (!data || typeof data !== "object") return null;
+  if ("location" in data && data.location && typeof data.location === "object") return data.location;
+  const row = data as HighLevelLocation;
+  return row.id ? row : null;
+}
+
 export async function fetchHighLevelLocation(accessToken: string, locationId: string) {
-  const data = await highlevelRequest<{ location?: HighLevelLocation } | HighLevelLocation>({
+  const inspected = await inspectHighLevelLocation(accessToken, locationId);
+  if (!inspected.ok || !inspected.location) {
+    throw new HighLevelApiError(inspected.errorMessage || "HighLevel location probe failed.", inspected.status);
+  }
+  return inspected.location;
+}
+
+export async function inspectHighLevelLocation(accessToken: string, locationId: string) {
+  const inspected = await inspectHighLevelRequest<{ location?: HighLevelLocation } | HighLevelLocation>({
     accessToken,
     path: `/locations/${locationId}`,
+    version: HIGHLEVEL_LOCATION_API_VERSION,
   });
-  if (data && typeof data === "object" && "location" in data && data.location) return data.location;
-  return data as HighLevelLocation;
+  return {
+    ...inspected,
+    location: inspected.ok ? locationFromHighLevelPayload(inspected.data) : null,
+  };
+}
+
+export async function inspectHighLevelContactsReachability(accessToken: string, locationId: string) {
+  return inspectHighLevelRequest<{ contacts?: HighLevelContact[] }>({
+    accessToken,
+    path: "/contacts/",
+    query: { locationId, limit: "1" },
+  });
+}
+
+export async function inspectHighLevelInstalledLocations(accessToken: string) {
+  return inspectHighLevelRequest<{ locations?: Array<{ _id?: string; id?: string }> }>({
+    accessToken,
+    path: "/oauth/installedLocations",
+  });
 }
 
 export async function searchHighLevelContacts(input: {

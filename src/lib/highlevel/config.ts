@@ -6,6 +6,9 @@ export const HIGHLEVEL_AUTHORIZE_URL_WHITELABEL = "https://marketplace.leadconne
 export const HIGHLEVEL_API_VERSION = "2021-07-28";
 export const HIGHLEVEL_CONVERSATIONS_API_VERSION = "2021-04-15";
 export const HIGHLEVEL_PHONE_API_VERSION = "v3";
+/** Official Get Location docs require Version v3. */
+export const HIGHLEVEL_LOCATION_API_VERSION = "v3";
+export const HIGHLEVEL_LOCATION_GET_ENDPOINT = "GET /locations/:locationId";
 
 /**
  * Official HighLevel OAuth scopes for Marketplace location (Sub-Account) install.

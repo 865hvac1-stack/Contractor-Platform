@@ -240,7 +240,10 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       Boolean(existing?.scopes.includes("private_token")) &&
       (existing?.externalAccountId === locationId || !existing?.externalAccountId);
 
-    const probe = await probeHighLevelLocation(exchanged.tokens.accessToken, locationId);
+    const probe = await probeHighLevelLocation(exchanged.tokens.accessToken, locationId, {
+      tokenLocationId: exchanged.locationId,
+      userType: exchanged.userType,
+    });
     const connection = await upsertConnection({
       companyId: stored.row.companyId,
       providerKey: HIGHLEVEL_PROVIDER_KEY,

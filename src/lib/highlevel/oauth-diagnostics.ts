@@ -16,6 +16,10 @@ export const HIGHLEVEL_OAUTH_MARKERS = {
   CODE_EXCHANGE_FAILED: "HIGHLEVEL_OAUTH_CODE_EXCHANGE_FAILED",
   LOCATION_RESOLVED: "HIGHLEVEL_OAUTH_LOCATION_RESOLVED",
   CONNECTION_SAVED: "HIGHLEVEL_OAUTH_CONNECTION_SAVED",
+  LOCATION_VERIFY_START: "HIGHLEVEL_LOCATION_VERIFY_START",
+  LOCATION_VERIFY_RESPONSE: "HIGHLEVEL_LOCATION_VERIFY_RESPONSE",
+  LOCATION_VERIFY_SUCCESS: "HIGHLEVEL_LOCATION_VERIFY_SUCCESS",
+  LOCATION_VERIFY_FAILED: "HIGHLEVEL_LOCATION_VERIFY_FAILED",
 } as const;
 
 export type HighLevelOAuthMarker =
@@ -56,6 +60,10 @@ export type HighLevelOAuthDiagnosticFields = {
   errorMessage?: string | null;
   reason?: string | null;
   requestedScopes?: string[];
+  endpoint?: string | null;
+  tokenType?: "location" | "company" | "unknown" | null;
+  responseKeys?: string[];
+  verified?: boolean;
 };
 
 function sanitizeErrorMessage(message: string | null | undefined): string | null {
@@ -90,6 +98,10 @@ export function sanitizeOAuthDiagnostic(
   if (fields.requestedScopes?.length) {
     out.requestedScopes = fields.requestedScopes.filter((scope) => typeof scope === "string" && scope.length > 0);
   }
+  if (fields.endpoint) out.endpoint = fields.endpoint;
+  if (fields.tokenType) out.tokenType = fields.tokenType;
+  if (fields.responseKeys?.length) out.responseKeys = fields.responseKeys;
+  if (fields.verified !== undefined) out.verified = fields.verified;
 
   for (const key of FORBIDDEN) {
     delete out[key];
