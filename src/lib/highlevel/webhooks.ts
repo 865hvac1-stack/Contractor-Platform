@@ -38,6 +38,23 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/**
+ * Marketplace sometimes wraps the documented event in payload / data / webhook.
+ * Merge one level so locationId and type still resolve. Official InboundMessage
+ * is flat and is unchanged by this.
+ */
+export function unwrapHighLevelWebhookBody(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  let obj = { ...(raw as Record<string, unknown>) };
+  for (const key of ["payload", "data", "webhook"] as const) {
+    const inner = obj[key];
+    if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+      obj = { ...obj, ...(inner as Record<string, unknown>) };
+    }
+  }
+  return obj;
+}
+
 function text(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
@@ -80,17 +97,21 @@ export type HighLevelInboundFields = {
 };
 
 export function parseHighLevelWebhook(payload: Record<string, unknown>) {
-  const data = asRecord(payload.data);
+  const unwrapped = unwrapHighLevelWebhookBody(payload);
+  const data = asRecord(unwrapped.data);
+  const extras = asRecord(unwrapped.extras);
   const location =
-    text(payload.locationId) ||
-    text(asRecord(payload.location).id) ||
+    text(unwrapped.locationId) ||
+    text(unwrapped.location_id) ||
+    text(asRecord(unwrapped.location).id) ||
     text(data.locationId) ||
-    text(asRecord(data.location).id);
+    text(asRecord(data.location).id) ||
+    text(extras.locationId);
   return {
-    type: text(payload.type) || text(payload.event) || "Unknown",
-    webhookId: text(payload.webhookId) || text(payload.id) || text(payload.messageId) || "",
+    type: text(unwrapped.type) || text(unwrapped.event) || "Unknown",
+    webhookId: text(unwrapped.webhookId) || text(unwrapped.id) || text(unwrapped.messageId) || "",
     locationId: location,
-    data: { ...payload, ...data },
+    data: { ...unwrapped, ...data },
   };
 }
 

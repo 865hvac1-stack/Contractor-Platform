@@ -222,7 +222,7 @@ describe("HighLevel phone, SMS sender, and call attribution", () => {
       from: "+18655550123",
       to: "+18655550999",
       idempotency: "new",
-    });
+    } as never);
     logHighLevelWebhook({
       stage: "processed",
       authorization: "Bearer secret-token",
@@ -238,6 +238,10 @@ describe("HighLevel phone, SMS sender, and call attribution", () => {
     expect(raw.toLowerCase()).not.toContain("bearer");
     expect(raw).not.toContain("secret-token");
     expect(raw).not.toContain("pit-should-not");
+    expect(raw).not.toContain("+18655550123");
+    expect(raw).not.toContain("+18655550999");
+    expect(parsed).not.toHaveProperty("from");
+    expect(parsed).not.toHaveProperty("to");
   });
 
   it("links a matched Summit-style caller to the existing customer and does not create another customer", async () => {

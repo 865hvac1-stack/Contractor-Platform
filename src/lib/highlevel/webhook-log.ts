@@ -24,8 +24,6 @@ export type HighLevelWebhookLog = {
   contactId?: string | null;
   channel?: string | null;
   direction?: string | null;
-  from?: string | null;
-  to?: string | null;
   trackingSource?: string | null;
   customerMatched?: boolean;
   leadCreated?: boolean;
@@ -38,12 +36,15 @@ export type HighLevelWebhookLog = {
   error?: string | null;
 };
 
-const FORBIDDEN_KEY = /authorization|token|secret|api[_-]?key|password|signature|credential|bearer|cookie/i;
+const FORBIDDEN_KEY =
+  /authorization|token|secret|api[_-]?key|password|signature|credential|bearer|cookie|from|to|phone|caller|body|message$/i;
+const PHONE_VALUE = /^\+?[\d().\-\s]{7,20}$/;
 
 function safeErrorMessage(value: unknown) {
   const text = value instanceof Error ? value.message : typeof value === "string" ? value : "Webhook processing failed.";
   return text
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\+?1?[\s().-]*\d[\d\s().-]{6,16}\d/g, "[redacted-phone]")
     .replace(/\b(pit|sk|whsec|tok)[-_A-Za-z0-9]+/gi, "[redacted]");
 }
 
@@ -58,6 +59,7 @@ export function logHighLevelWebhook(entry: Omit<HighLevelWebhookLog, "event" | "
   for (const [key, value] of Object.entries(merged)) {
     if (FORBIDDEN_KEY.test(key)) continue;
     if (value === undefined) continue;
+    if (typeof value === "string" && PHONE_VALUE.test(value.trim()) && key !== "locationId") continue;
     safe[key] = value;
   }
   console.info(JSON.stringify(safe));

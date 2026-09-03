@@ -75,7 +75,7 @@ export function highlevelOAuthNotes() {
       "A location Private Integration Token is acceptable for controlled development and 865 HVAC testing only.",
       "Subscribe to InboundMessage / OutboundMessage so CALL events include from, to, and optional recording attachments.",
       "Production webhook: POST https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel",
-      "Railway log identifier: highlevel.webhook",
+      "Railway log identifiers: highlevel.webhook and HIGHLEVEL_WEBHOOK_RECEIVED / EVENT_TYPE / LOCATION_RESOLVED / PROCESSED / FAILED",
     ],
   };
 }

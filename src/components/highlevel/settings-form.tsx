@@ -70,6 +70,17 @@ export function HighLevelSettingsForm({
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
+        <h2 className="font-medium">Inbound webhooks</h2>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Connecting HighLevel does not subscribe Marketplace webhooks. In Marketplace → your app → Advanced
+          Settings → Webhooks, turn on <strong>InboundMessage</strong> and <strong>OutboundMessage</strong> and
+          paste this URL on each event. Location-level HighLevel Settings → Webhooks is a different path.
+          Official inbound phone calls arrive as InboundMessage with messageType CALL.
+        </p>
+        <p className="break-all font-mono text-xs">{webhookUrl}</p>
+      </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-5 space-y-3">
         <h2 className="font-medium">Testing / single-location</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
           Paste the existing location Private Integration Token once. ContractorYou keeps the encrypted token

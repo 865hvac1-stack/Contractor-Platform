@@ -164,7 +164,7 @@ Set `APP_URL` to the public Railway URL (no trailing slash). Paste these into ea
 
 Production HighLevel inbound webhook (POST): `https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel`
 
-Railway log identifier: `highlevel.webhook` (JSON `event` field). Never logs tokens, API keys, authorization headers, or signature values.
+Railway log identifier: `highlevel.webhook` (JSON `event` field) plus searchable markers `HIGHLEVEL_WEBHOOK_RECEIVED`, `HIGHLEVEL_WEBHOOK_EVENT_TYPE`, `HIGHLEVEL_WEBHOOK_LOCATION_RESOLVED`, `HIGHLEVEL_WEBHOOK_PROCESSED`, and `HIGHLEVEL_WEBHOOK_FAILED`. Never logs tokens, API keys, authorization headers, signature values, phone numbers, or message bodies.
 
 Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 
@@ -206,7 +206,7 @@ Do **not** create a new HighLevel account or a second 865 HVAC location.
 5. Paste Location ID and token. ContractorYou encrypts the token server-side. It is never shown again and never sent to the browser.
 6. Click **Connect existing location**. Status should become Connected and the location name should appear.
 7. Click **Preview initial sync** before importing. Existing ContractorYou customers match by HighLevel contact ID, verified email, or normalized phone. Name-only never auto-merges. Unmatched contacts become **leads**, not duplicate customers.
-8. In the HighLevel Marketplace app (when you create one), set the webhook URL to `{APP_URL}/api/webhooks/highlevel` and subscribe to Contact, Opportunity, and Conversation/Message events that HighLevel actually offers. For inbound calls, subscribe to **InboundMessage** so CALL payloads include `from`, `to`, `callDuration`, `callStatus`, and optional recording attachments.
+8. In the HighLevel Marketplace app → Advanced Settings → Webhooks, turn on each event and paste `{APP_URL}/api/webhooks/highlevel` on that event. Webhook subscriptions can be changed on a LIVE version without a new draft. Connecting OAuth does **not** subscribe events. For inbound phone calls, subscribe to **InboundMessage** (required) and **OutboundMessage** (recommended). Official inbound call payload: `type: "InboundMessage"` and `messageType: "CALL"` (or `TYPE_CALL` / `messageTypeString: "TYPE_CALL"`). Voicemail is still InboundMessage with `status` / `callStatus` voicemail. Location-level HighLevel Settings → Webhooks is a different path from Marketplace app webhooks.
 
 Connecting HighLevel does **not** text customers, send review requests, create automations, or change historical jobs.
 
@@ -219,7 +219,7 @@ Do **not** reuse the 865 HVAC location, token, or phone numbers on Summit.
 1. Sign in as Summit. Settings → HighLevel → connect **Summit’s own** HighLevel location (Marketplace OAuth, or Summit’s own Private Integration Token). Location IDs cannot be linked to two ContractorYou companies.
 2. Marketing → Channels → Tracking numbers → **Sync HighLevel numbers**.
 3. Map the Summit test number to source **Google LSA Test**.
-4. In HighLevel, point the location webhook at `https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel` and subscribe to InboundMessage.
+4. In HighLevel Marketplace → app 1.0.0 → Advanced Settings → Webhooks, turn on InboundMessage and OutboundMessage and paste `https://contractor-platform-production-c444.up.railway.app/api/webhooks/highlevel` on each. Then place a real call. Search Railway Deploy Logs for `HIGHLEVEL_WEBHOOK_`. Settings → HighLevel **Last webhook** updates only after ContractorYou persists an IntegrationEvent for that location.
 5. Call the Summit test number from a real phone. Do not send SMS until that call appears in ContractorYou → Communications.
 
 The inbound call should show in **Communications** (Inbox and Today’s calls) and feed Customer Hub **Calls today** / missed metrics from the same `CallRecord` rows. Attribution stops at Google LSA Test → tracking number → call → lead/customer. Jobs, invoices, and revenue are not fabricated.
