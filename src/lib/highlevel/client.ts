@@ -51,9 +51,19 @@ export function isHighLevelLocationNotActiveError(message: unknown) {
   return /location is not activ/i.test(text);
 }
 
-function shouldRetryConversationsVersion(path: string, version?: string) {
-  if (version !== HIGHLEVEL_CONVERSATIONS_API_VERSION && version !== "v3") return false;
-  return path.startsWith("/conversations") || path.startsWith("/contacts");
+const CONVERSATION_API_VERSIONS = [
+  HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
+  HIGHLEVEL_API_VERSION,
+] as const;
+
+function nextConversationsVersion(path: string, version?: string) {
+  if (!path.startsWith("/conversations") && !path.startsWith("/contacts")) return null;
+  const current = version || HIGHLEVEL_CONVERSATIONS_API_VERSION;
+  const index = CONVERSATION_API_VERSIONS.indexOf(current as (typeof CONVERSATION_API_VERSIONS)[number]);
+  if (index >= 0 && index < CONVERSATION_API_VERSIONS.length - 1) return CONVERSATION_API_VERSIONS[index + 1];
+  if (current === "v3") return HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK;
+  return null;
 }
 
 export async function highlevelRequest<T>(input: {
@@ -81,10 +91,13 @@ export async function highlevelRequest<T>(input: {
   const data = (await response.json().catch(() => ({}))) as T & { message?: unknown };
   if (!response.ok) {
     const message = highLevelErrorMessage(data) ?? `HighLevel request failed (${response.status}).`;
-    if (isHighLevelLocationNotActiveError(message) && shouldRetryConversationsVersion(input.path, input.version)) {
+    const retryVersion = isHighLevelLocationNotActiveError(message)
+      ? nextConversationsVersion(input.path, input.version)
+      : null;
+    if (retryVersion) {
       return highlevelRequest<T>({
         ...input,
-        version: HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
+        version: retryVersion,
       });
     }
     if (isHighLevelLocationNotActiveError(message)) {

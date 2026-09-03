@@ -46,13 +46,64 @@ export async function recoverStaleHighLevelSyncing(
   return "CONNECTED";
 }
 
-export async function isHighLevelConnected(prisma: PrismaClient, companyId: string) {
+export type HighLevelResolvedConnection =
+  | {
+      connected: true;
+      companyId: string;
+      connection: NonNullable<Awaited<ReturnType<typeof getHighLevelConnection>>>;
+      locationId: string;
+      accessToken: string;
+      authMode: HighLevelAuthMode;
+      status: string;
+    }
+  | {
+      connected: false;
+      reason: string;
+      connection: Awaited<ReturnType<typeof getHighLevelConnection>>;
+      locationId: string | null;
+    };
+
+/**
+ * Canonical company-scoped HighLevel connection. Settings header and every
+ * HighLevel action must use this. Marketplace OAuth is active when encrypted
+ * tokens exist, a location id is mapped, and the company is not DISABLED.
+ * GET /locations `isActive` / "Location is not active" is not a disconnect.
+ */
+export async function resolveHighLevelConnection(
+  prisma: PrismaClient,
+  companyId: string
+): Promise<HighLevelResolvedConnection> {
   const connection = await getHighLevelConnection(prisma, companyId);
-  if (!connection) return false;
-  return highLevelConnectionUsable({
-    status: connection.status,
-    externalAccountId: connection.externalAccountId,
+  if (!connection) {
+    return { connected: false, reason: "HighLevel is not connected.", connection: null, locationId: null };
+  }
+  const locationId = sanitizeHighLevelLocationId(connection.externalAccountId);
+  if (!highLevelConnectionUsable({ status: connection.status, externalAccountId: locationId })) {
+    return { connected: false, reason: "HighLevel is not connected.", connection, locationId };
+  }
+  await recoverStaleHighLevelSyncing(prisma, connection);
+  const tokens = await getValidAccessToken({
+    companyId,
+    connectionId: connection.id,
+    providerKey: HIGHLEVEL_PROVIDER_KEY,
   });
+  if (!tokens?.accessToken || !locationId) {
+    return { connected: false, reason: "HighLevel is not connected.", connection, locationId };
+  }
+  return {
+    connected: true,
+    companyId,
+    connection,
+    locationId,
+    accessToken: tokens.accessToken,
+    authMode: highlevelAuthMode(connection.scopes),
+    status: connection.status,
+  };
+}
+
+export async function isHighLevelConnected(prisma: PrismaClient, companyId: string) {
+  const resolved = await resolveHighLevelConnection(prisma, companyId);
+  return resolved.connected;
 }
 
 export function highlevelAuthMode(scopes: string[]): HighLevelAuthMode {
@@ -67,22 +118,13 @@ export function highlevelTokenType(userType?: string | null): "location" | "comp
 }
 
 export async function loadHighLevelAccess(prisma: PrismaClient, companyId: string) {
-  const connection = await getHighLevelConnection(prisma, companyId);
-  if (!connection) return null;
-  const locationId = sanitizeHighLevelLocationId(connection.externalAccountId);
-  if (!highLevelConnectionUsable({ status: connection.status, externalAccountId: locationId })) return null;
-  await recoverStaleHighLevelSyncing(prisma, connection);
-  const tokens = await getValidAccessToken({
-    companyId,
-    connectionId: connection.id,
-    providerKey: HIGHLEVEL_PROVIDER_KEY,
-  });
-  if (!tokens?.accessToken || !locationId) return null;
+  const resolved = await resolveHighLevelConnection(prisma, companyId);
+  if (!resolved.connected) return null;
   return {
-    connection,
-    accessToken: tokens.accessToken,
-    locationId,
-    authMode: highlevelAuthMode(connection.scopes),
+    connection: resolved.connection,
+    accessToken: resolved.accessToken,
+    locationId: resolved.locationId,
+    authMode: resolved.authMode,
   };
 }
 

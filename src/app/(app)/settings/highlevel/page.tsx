@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
 import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
-import { highlevelAuthMode, highLevelConnectionUsable, recoverStaleHighLevelSyncing } from "@/lib/highlevel/connection";
+import { highlevelAuthMode, resolveHighLevelConnection } from "@/lib/highlevel/connection";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,9 +104,8 @@ export default async function HighLevelSettingsPage({
         select: { id: true },
       })
     : null;
-  const connectionStatus = connection
-    ? await recoverStaleHighLevelSyncing(prisma, connection)
-    : null;
+  const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
+  const connectionStatus = resolved.connected ? resolved.status : connection?.status ?? null;
   const publicConnection = publicHighLevelConnectionView({
     status: connectionStatus ?? connection?.status,
     externalAccountId: connection?.externalAccountId,
@@ -116,10 +115,7 @@ export default async function HighLevelSettingsPage({
     userEmail: ctx.user.email,
   });
   const oauth = highlevelOAuthNotes();
-  const isConnected = highLevelConnectionUsable({
-    status: connectionStatus ?? connection?.status,
-    externalAccountId: publicConnection.locationId,
-  });
+  const isConnected = resolved.connected;
   const wrongWorkspace =
     !isConnected &&
     (/865\s*hvac/i.test(ctx.company.businessName) || ctx.user.email.toLowerCase() === "owner@865hvac.local");

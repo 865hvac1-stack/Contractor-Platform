@@ -10,6 +10,7 @@ import { refreshTikTokToken } from "@/lib/integrations/oauth/tiktok";
 import { refreshQuickBooksToken } from "@/lib/quickbooks/oauth";
 import { refreshHighLevelToken } from "@/lib/highlevel/oauth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
+import { isHighLevelLocationNotActiveError } from "@/lib/highlevel/client";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import type { IntegrationStatus } from "@prisma/client";
@@ -118,7 +119,14 @@ export async function getValidAccessToken(input: {
       tokens: { ...tokens, ...refreshed },
     });
     return { ...tokens, ...refreshed };
-  } catch {
+  } catch (error) {
+    if (
+      input.providerKey === HIGHLEVEL_PROVIDER_KEY &&
+      tokens.accessToken &&
+      isHighLevelLocationNotActiveError(error instanceof Error ? error.message : "")
+    ) {
+      return tokens;
+    }
     await prisma.integrationConnection.update({
       where: { id: input.connectionId },
       data: {

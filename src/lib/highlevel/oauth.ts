@@ -94,9 +94,16 @@ async function requestHighLevelToken(body: Record<string, string>) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
   });
-  const data = (await response.json().catch(() => ({}))) as TokenResponse;
+  const data = (await response.json().catch(() => ({}))) as TokenResponse & { message?: unknown; error?: unknown };
   if (!response.ok || !data.access_token) {
-    throw new HighLevelOAuthExchangeError("HighLevel did not return an access token.", response.status);
+    const raw = data.message ?? data.error;
+    const message =
+      typeof raw === "string" && raw.trim()
+        ? raw.trim()
+        : Array.isArray(raw)
+          ? raw.filter((item): item is string => typeof item === "string").join(" ").trim()
+          : "";
+    throw new HighLevelOAuthExchangeError(message || "HighLevel did not return an access token.", response.status);
   }
   const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : undefined;
   return {

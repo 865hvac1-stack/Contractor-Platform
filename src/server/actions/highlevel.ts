@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/server/actions/auth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { deleteConnectionCredentials, getValidAccessToken, saveConnectionTokens, upsertConnection } from "@/lib/integrations/store";
-import { probeHighLevelLocation } from "@/lib/highlevel/connection";
+import { loadHighLevelAccess, probeHighLevelLocation } from "@/lib/highlevel/connection";
 import { applyHighLevelContactSync, previewHighLevelContactSync } from "@/lib/highlevel/sync";
 import { formatCommunicationsSyncMessage, syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
 import { discoverHighLevelSocialAccounts, publishThroughHighLevel } from "@/lib/highlevel/social";
@@ -22,7 +22,6 @@ import {
   syncHighLevelActiveNumbers,
 } from "@/lib/highlevel/phone-numbers";
 import { SMS_DEFAULT_CHANNEL } from "@/lib/highlevel/config";
-import { loadHighLevelAccess } from "@/lib/highlevel/connection";
 import { purchaseHighLevelNumber } from "@/lib/highlevel/client";
 import { normalizePhoneDigits } from "@/lib/highlevel/identity";
 
@@ -168,28 +167,18 @@ export async function refreshHighLevelConnectionAction(
     const ctx = await requirePermission("marketing:manage");
     const demo = await refuseDemoExternal(ctx.company.id);
     if (demo) return demo;
-    const connection = await prisma.integrationConnection.findFirst({
-      where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
-      include: { credentials: true },
+    const access = await loadHighLevelAccess(prisma, ctx.company.id);
+    if (!access) return { ok: false, error: "HighLevel is not connected." };
+    const probe = await probeHighLevelLocation(access.accessToken, access.locationId, {
+      tokenLocationId: access.authMode === "oauth" ? access.locationId : null,
+      userType: access.authMode === "oauth" ? "Location" : null,
     });
-    const storedLocationId = sanitizeHighLevelLocationId(connection?.externalAccountId);
-    if (!connection || !storedLocationId || !connection.credentials) {
-      return { ok: false, error: "HighLevel is not connected." };
-    }
-    const { decryptProviderTokens } = await import("@/lib/integrations/crypto");
-    const tokens = decryptProviderTokens({
-      ciphertext: Buffer.from(connection.credentials.ciphertext),
-      iv: Buffer.from(connection.credentials.iv),
-      authTag: Buffer.from(connection.credentials.authTag),
-      keyVersion: connection.credentials.keyVersion,
-    });
-    const probe = await probeHighLevelLocation(tokens.accessToken, storedLocationId);
     await prisma.integrationConnection.update({
-      where: { id: connection.id },
+      where: { id: access.connection.id },
       data: {
         lastHealthAt: new Date(),
         status: probe.ok ? "CONNECTED" : "REAUTH_REQUIRED",
-        accountLabel: probe.ok ? probe.location.name || connection.accountLabel : connection.accountLabel,
+        accountLabel: probe.ok ? probe.location.name || access.connection.accountLabel : access.connection.accountLabel,
         healthMessage: probe.ok ? "Location reachable." : probe.error,
         errorMessage: probe.ok ? null : probe.error,
       },

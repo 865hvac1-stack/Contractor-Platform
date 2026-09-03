@@ -4,7 +4,11 @@ import {
   isHighLevelLocationNotActiveError,
   searchHighLevelConversations,
 } from "@/lib/highlevel/client";
-import { HIGHLEVEL_CONVERSATIONS_API_VERSION, HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK } from "@/lib/highlevel/config";
+import {
+  HIGHLEVEL_API_VERSION,
+  HIGHLEVEL_CONVERSATIONS_API_VERSION,
+  HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
+} from "@/lib/highlevel/config";
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -63,6 +67,31 @@ describe("HighLevel conversations version fallback", () => {
       locationId: "qPjPtcAUzdkBtYTJUUWB",
     });
     expect(fetchMock.mock.calls[1][1].headers.Version).toBe(HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK);
+  });
+
+  it("retries conversations search a third time with 2021-07-28", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(400, { message: "Location is not active" }))
+      .mockResolvedValueOnce(jsonResponse(400, { message: "Location is not actived" }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          conversations: [{ id: "conv_2", locationId: "qPjPtcAUzdkBtYTJUUWB", lastMessageType: "TYPE_CALL" }],
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await searchHighLevelConversations({
+      accessToken: "access-must-not-be-logged",
+      locationId: "qPjPtcAUzdkBtYTJUUWB",
+    });
+    expect(result.conversations).toEqual([
+      { id: "conv_2", locationId: "qPjPtcAUzdkBtYTJUUWB", lastMessageType: "TYPE_CALL" },
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1].headers.Version)).toEqual([
+      HIGHLEVEL_CONVERSATIONS_API_VERSION,
+      HIGHLEVEL_CONVERSATIONS_API_VERSION_FALLBACK,
+      HIGHLEVEL_API_VERSION,
+    ]);
   });
 
   it("does not retry unrelated 400s", async () => {
