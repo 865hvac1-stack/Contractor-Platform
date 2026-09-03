@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HIGHLEVEL_API_BASE } from "@/lib/highlevel/config";
-import { highlevelRedirectUri } from "@/lib/highlevel/env";
+import { HIGHLEVEL_API_BASE, HIGHLEVEL_OAUTH_EXCLUDED_SCOPES, HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
+import { highlevelRedirectUri, highlevelRequestedScopes } from "@/lib/highlevel/env";
 import {
   exchangeHighLevelCode,
   highlevelAuthorizeUrl,
@@ -21,6 +21,7 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
   const previousRedirect = process.env.HIGHLEVEL_REDIRECT_URI;
   const previousClientId = process.env.HIGHLEVEL_CLIENT_ID;
   const previousSecret = process.env.HIGHLEVEL_CLIENT_SECRET;
+  const previousScopes = process.env.HIGHLEVEL_SCOPES;
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -33,6 +34,8 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
     else process.env.HIGHLEVEL_CLIENT_ID = previousClientId;
     if (previousSecret === undefined) delete process.env.HIGHLEVEL_CLIENT_SECRET;
     else process.env.HIGHLEVEL_CLIENT_SECRET = previousSecret;
+    if (previousScopes === undefined) delete process.env.HIGHLEVEL_SCOPES;
+    else process.env.HIGHLEVEL_SCOPES = previousScopes;
   });
 
   it("uses the exact production Marketplace Redirect URL for authorize and token exchange", async () => {
@@ -68,6 +71,76 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
     expect(body.get("redirect_uri")).toBe(PRODUCTION_OAUTH_CALLBACK_URI);
     expect(body.get("redirect_uri")).toBe(highlevelOAuthRedirectUri());
     expect(body.get("grant_type")).toBe("authorization_code");
+  });
+
+  it("requests only documented Sub-Account scopes and never logs secrets with those names", () => {
+    delete process.env.HIGHLEVEL_SCOPES;
+    const documentedSubAccountScopes = new Set([
+      "locations.readonly",
+      "contacts.readonly",
+      "contacts.write",
+      "conversations.readonly",
+      "conversations.write",
+      "conversations/message.readonly",
+      "conversations/message.write",
+      "opportunities.readonly",
+      "calendars.readonly",
+      "workflows.readonly",
+      "phonenumbers.read",
+      "numberpools.read",
+      "socialplanner/account.readonly",
+      "socialplanner/account.write",
+      "socialplanner/post.readonly",
+      "socialplanner/post.write",
+    ]);
+    expect([...HIGHLEVEL_OAUTH_EXCLUDED_SCOPES]).toEqual(["locations.write", "phonenumbers.write"]);
+    expect([...HIGHLEVEL_SCOPES]).toEqual([
+      "locations.readonly",
+      "contacts.readonly",
+      "contacts.write",
+      "conversations.readonly",
+      "conversations.write",
+      "conversations/message.readonly",
+      "conversations/message.write",
+      "opportunities.readonly",
+      "calendars.readonly",
+      "workflows.readonly",
+      "phonenumbers.read",
+      "numberpools.read",
+      "socialplanner/account.readonly",
+      "socialplanner/account.write",
+      "socialplanner/post.readonly",
+      "socialplanner/post.write",
+    ]);
+    for (const scope of HIGHLEVEL_SCOPES) {
+      expect(documentedSubAccountScopes.has(scope)).toBe(true);
+    }
+    const requested = highlevelRequestedScopes();
+    expect(requested).toEqual([...HIGHLEVEL_SCOPES]);
+    for (const excluded of HIGHLEVEL_OAUTH_EXCLUDED_SCOPES) {
+      expect(requested).not.toContain(excluded);
+    }
+
+    process.env.APP_URL = PRODUCTION_ORIGIN;
+    delete process.env.HIGHLEVEL_REDIRECT_URI;
+    process.env.HIGHLEVEL_CLIENT_ID = "6a978663f3f02a98d9623d0f-mtkpsg5u";
+    const authorize = highlevelAuthorizeUrl("state-fixture-not-logged");
+    const params = new URL(authorize).searchParams;
+    expect(params.get("redirect_uri")).toBe(PRODUCTION_OAUTH_CALLBACK_URI);
+    expect(params.get("scope")?.split(" ")).toEqual(requested);
+    expect(params.get("scope")).not.toContain("locations.write");
+    expect(params.get("scope")).not.toContain("phonenumbers.write");
+
+    process.env.HIGHLEVEL_SCOPES = "locations.readonly locations.write phonenumbers.write phonenumbers.read";
+    expect(highlevelRequestedScopes()).toEqual(["locations.readonly", "phonenumbers.read"]);
+
+    const leaked = sanitizeOAuthDiagnostic({
+      marker: HIGHLEVEL_OAUTH_MARKERS.START,
+      route: "/api/integrations/highlevel/start",
+      requestedScopes: highlevelRequestedScopes(),
+    });
+    expect(leaked.requestedScopes).toEqual(["locations.readonly", "phonenumbers.read"]);
+    expect(JSON.stringify(leaked)).not.toMatch(/access_token|refresh_token|client_secret|"state":|"code":/i);
   });
 
   it("never writes secrets into diagnostic payloads", () => {

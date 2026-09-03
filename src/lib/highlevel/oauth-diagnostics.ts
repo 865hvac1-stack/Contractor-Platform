@@ -55,6 +55,7 @@ export type HighLevelOAuthDiagnosticFields = {
   errorClass?: string | null;
   errorMessage?: string | null;
   reason?: string | null;
+  requestedScopes?: string[];
 };
 
 function sanitizeErrorMessage(message: string | null | undefined): string | null {
@@ -86,6 +87,9 @@ export function sanitizeOAuthDiagnostic(
   if (fields.errorClass) out.errorClass = fields.errorClass;
   if (fields.errorMessage) out.errorMessage = sanitizeErrorMessage(fields.errorMessage);
   if (fields.reason) out.reason = fields.reason;
+  if (fields.requestedScopes?.length) {
+    out.requestedScopes = fields.requestedScopes.filter((scope) => typeof scope === "string" && scope.length > 0);
+  }
 
   for (const key of FORBIDDEN) {
     delete out[key];

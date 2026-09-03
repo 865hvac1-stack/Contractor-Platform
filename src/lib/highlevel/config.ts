@@ -7,9 +7,16 @@ export const HIGHLEVEL_API_VERSION = "2021-07-28";
 export const HIGHLEVEL_CONVERSATIONS_API_VERSION = "2021-04-15";
 export const HIGHLEVEL_PHONE_API_VERSION = "v3";
 
+/**
+ * Official HighLevel OAuth scopes for Marketplace location (Sub-Account) install.
+ * Catalog: https://marketplace.gohighlevel.com/docs/Authorization/Scopes/
+ *
+ * Excluded after doc comparison:
+ * - locations.write — documented Access Type is Agency only; invalid on chooselocation
+ * - phonenumbers.write — not present in the official Scopes catalog
+ */
 export const HIGHLEVEL_SCOPES = [
   "locations.readonly",
-  "locations.write",
   "contacts.readonly",
   "contacts.write",
   "conversations.readonly",
@@ -20,13 +27,15 @@ export const HIGHLEVEL_SCOPES = [
   "calendars.readonly",
   "workflows.readonly",
   "phonenumbers.read",
-  "phonenumbers.write",
   "numberpools.read",
   "socialplanner/account.readonly",
   "socialplanner/account.write",
   "socialplanner/post.readonly",
   "socialplanner/post.write",
 ] as const;
+
+/** Scope names that must never be sent on Marketplace location OAuth. */
+export const HIGHLEVEL_OAUTH_EXCLUDED_SCOPES = ["locations.write", "phonenumbers.write"] as const;
 
 export const SMS_DEFAULT_CHANNEL = "SMS_DEFAULT";
 export const HL_DEFAULT_CHANNEL = "HL_DEFAULT";

@@ -1,5 +1,11 @@
 import { appUrl, oauthCallbackUrl } from "@/lib/integrations/env";
-import { HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
+import { HIGHLEVEL_OAUTH_EXCLUDED_SCOPES, HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
+
+const EXCLUDED_OAUTH_SCOPES = new Set<string>(HIGHLEVEL_OAUTH_EXCLUDED_SCOPES);
+
+function sanitizeRequestedScopes(scopes: string[]) {
+  return scopes.filter((scope) => scope && !EXCLUDED_OAUTH_SCOPES.has(scope));
+}
 
 export const HIGHLEVEL_CLIENT_ID_IS_APP_ID_MESSAGE =
   "HIGHLEVEL_CLIENT_ID is a Marketplace App/Version ID, not a Client Key. In HighLevel Marketplace → your app → Auth → Client Keys, copy the Client ID (it includes a hyphen) into Railway HIGHLEVEL_CLIENT_ID. Do not paste the App ID.";
@@ -49,8 +55,9 @@ export function highlevelWebhookUrl() {
 
 export function highlevelRequestedScopes() {
   const extra = process.env.HIGHLEVEL_SCOPES?.trim();
-  if (extra) return extra.split(/[,\s]+/).filter(Boolean);
-  return [...HIGHLEVEL_SCOPES];
+  const raw = extra ? extra.split(/[,\s]+/).filter(Boolean) : [...HIGHLEVEL_SCOPES];
+  const allowed = sanitizeRequestedScopes(raw);
+  return allowed.length > 0 ? allowed : [...HIGHLEVEL_SCOPES];
 }
 
 export function highlevelOAuthNotes() {

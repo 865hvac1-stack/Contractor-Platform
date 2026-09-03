@@ -5,6 +5,7 @@ import {
   HIGHLEVEL_CLIENT_ID_IS_APP_ID_MESSAGE,
   highlevelClientId,
   highlevelOAuthConfigured,
+  highlevelRequestedScopes,
   isHighLevelAppOrVersionId,
 } from "@/lib/highlevel/env";
 import { highlevelAuthorizeUrl, highlevelOAuthRedirectUri } from "@/lib/highlevel/oauth";
@@ -63,6 +64,7 @@ export async function GET() {
       hasCode: false,
       hasState: true,
       redirectUriMatchesProduction: redirectUriMatchesProduction(highlevelOAuthRedirectUri()),
+      requestedScopes: highlevelRequestedScopes(),
     });
     if (!sandbox) {
       await upsertConnection({
