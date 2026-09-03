@@ -491,6 +491,7 @@ export async function getHighLevelContact(input: { accessToken: string; contactI
   const data = await highlevelRequest<{ contact?: HighLevelContact } | HighLevelContact>({
     accessToken: input.accessToken,
     path: `/contacts/${input.contactId}`,
+    version: "v3",
   });
   if (data && typeof data === "object" && "contact" in data && data.contact) return data.contact;
   return data as HighLevelContact;
