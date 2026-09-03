@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
 import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
-import { highlevelAuthMode } from "@/lib/highlevel/connection";
+import { highlevelAuthMode, highLevelConnectionUsable, recoverStaleHighLevelSyncing } from "@/lib/highlevel/connection";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +56,8 @@ function commsSummaryText(summary: unknown, fallback: string) {
   ].join(" · ");
 }
 
+export const maxDuration = 300;
+
 export default async function HighLevelSettingsPage({
   searchParams,
 }: {
@@ -102,8 +104,11 @@ export default async function HighLevelSettingsPage({
         select: { id: true },
       })
     : null;
+  const connectionStatus = connection
+    ? await recoverStaleHighLevelSyncing(prisma, connection)
+    : null;
   const publicConnection = publicHighLevelConnectionView({
-    status: connection?.status,
+    status: connectionStatus ?? connection?.status,
     externalAccountId: connection?.externalAccountId,
     accountLabel: connection?.accountLabel,
     hasCredential: Boolean(credential),
@@ -111,7 +116,13 @@ export default async function HighLevelSettingsPage({
     userEmail: ctx.user.email,
   });
   const oauth = highlevelOAuthNotes();
-  const isConnected = connection?.status === "CONNECTED" && Boolean(publicConnection.locationId);
+  const isConnected = highLevelConnectionUsable({
+    status: connectionStatus ?? connection?.status,
+    externalAccountId: publicConnection.locationId,
+  });
+  const wrongWorkspace =
+    !isConnected &&
+    (/865\s*hvac/i.test(ctx.company.businessName) || ctx.user.email.toLowerCase() === "owner@865hvac.local");
   const verifiedKeys = [
     lastEvent || mapped ? "contacts" : null,
     lastCommsSync ? "conversations" : null,
@@ -141,6 +152,13 @@ export default async function HighLevelSettingsPage({
       {error ? (
         <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
           {decodeURIComponent(error.replaceAll("+", " "))}
+        </p>
+      ) : null}
+      {wrongWorkspace ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950" role="alert">
+          This 865 HVAC workspace has no HighLevel location. The Marketplace-connected company is a
+          different login. Do not click Connect HighLevel here — that can block the real location. Sign
+          out and use the account that already completed Marketplace OAuth.
         </p>
       ) : null}
       {connected ? (
@@ -183,7 +201,7 @@ export default async function HighLevelSettingsPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Connection</CardTitle>
-          <StatusBadge status={testGrant ? "TEST ONLY" : connection?.status ?? "NOT_CONNECTED"} />
+          <StatusBadge status={testGrant ? "TEST ONLY" : connectionStatus ?? connection?.status ?? "NOT_CONNECTED"} />
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <dl className="grid gap-3 sm:grid-cols-2">

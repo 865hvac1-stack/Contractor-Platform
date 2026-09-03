@@ -5,6 +5,12 @@ import * as highlevelClient from "@/lib/highlevel/client";
 import * as store from "@/lib/integrations/store";
 import { syncHighLevelCommunications } from "@/lib/highlevel/comms-sync";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
+import {
+  highLevelConnectionUsable,
+  isHighLevelConnected,
+  loadHighLevelAccess,
+  recoverStaleHighLevelSyncing,
+} from "@/lib/highlevel/connection";
 
 const prisma = new PrismaClient();
 
@@ -208,6 +214,9 @@ describe("HighLevel communications API sync fallback", () => {
       orderBy: { startedAt: "desc" },
     });
     expect(failedRun?.status).toBe("FAILED");
+    const afterFailure = await prisma.integrationConnection.findFirst({ where: { id: ids.connection } });
+    expect(afterFailure?.status).toBe("CONNECTED");
+    expect(await isHighLevelConnected(prisma, ids.company)).toBe(true);
 
     searchSpy.mockRestore();
     vi.restoreAllMocks();
@@ -250,5 +259,41 @@ describe("HighLevel communications API sync fallback", () => {
     expect(typeof summary.checkpointTo).toBe("string");
     searchSuccess.mockRestore();
     vi.restoreAllMocks();
+  });
+
+  it("keeps HighLevel usable while SYNCING and recovers a stale sync lock", async () => {
+    expect(
+      highLevelConnectionUsable({ status: "SYNCING", externalAccountId: "qPjPtcAUzdkBtYTJUUWB" })
+    ).toBe(true);
+    expect(
+      highLevelConnectionUsable({ status: "ERROR", externalAccountId: "qPjPtcAUzdkBtYTJUUWB" })
+    ).toBe(true);
+    expect(
+      highLevelConnectionUsable({ status: "DISABLED", externalAccountId: "qPjPtcAUzdkBtYTJUUWB" })
+    ).toBe(false);
+
+    await store.upsertConnection({
+      companyId: ids.company,
+      providerKey: HIGHLEVEL_PROVIDER_KEY,
+      status: "SYNCING",
+      externalAccountId: "qPjPtcAUzdkBtYTJUUWB",
+      accountLabel: "865 HVAC",
+      scopes: ["conversations.readonly"],
+    });
+    expect(await isHighLevelConnected(prisma, ids.company)).toBe(true);
+    expect(await loadHighLevelAccess(prisma, ids.company)).not.toBeNull();
+
+    await prisma.integrationConnection.update({
+      where: { id: ids.connection },
+      data: { status: "SYNCING", lastAttemptAt: new Date(Date.now() - 10 * 60 * 1000) },
+    });
+    const recovered = await recoverStaleHighLevelSyncing(prisma, {
+      id: ids.connection,
+      status: "SYNCING",
+      lastAttemptAt: new Date(Date.now() - 10 * 60 * 1000),
+    });
+    expect(recovered).toBe("CONNECTED");
+    const row = await prisma.integrationConnection.findFirst({ where: { id: ids.connection } });
+    expect(row?.status).toBe("CONNECTED");
   });
 });

@@ -14,13 +14,45 @@ import {
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 import { HIGHLEVEL_OAUTH_MARKERS, logHighLevelOAuthDiagnostic } from "@/lib/highlevel/oauth-diagnostics";
 
+const HIGHLEVEL_UNUSABLE_STATUSES = new Set(["DISABLED"]);
+const STALE_SYNCING_MS = 3 * 60 * 1000;
+
 export async function getHighLevelConnection(prisma: PrismaClient, companyId: string) {
   return getCompanyConnection(companyId, HIGHLEVEL_PROVIDER_KEY);
 }
 
+export function highLevelConnectionUsable(input: {
+  status?: string | null;
+  externalAccountId?: string | null;
+}) {
+  if (input.status && HIGHLEVEL_UNUSABLE_STATUSES.has(input.status)) return false;
+  return Boolean(sanitizeHighLevelLocationId(input.externalAccountId));
+}
+
+export async function recoverStaleHighLevelSyncing(
+  prisma: PrismaClient,
+  connection: { id: string; status: string; lastAttemptAt?: Date | null }
+) {
+  if (connection.status !== "SYNCING") return connection.status;
+  const started = connection.lastAttemptAt?.getTime() ?? 0;
+  if (started && Date.now() - started < STALE_SYNCING_MS) return connection.status;
+  await prisma.integrationConnection.update({
+    where: { id: connection.id },
+    data: {
+      status: "CONNECTED",
+      healthMessage: "Communications sync recovered. HighLevel is still connected.",
+    },
+  });
+  return "CONNECTED";
+}
+
 export async function isHighLevelConnected(prisma: PrismaClient, companyId: string) {
   const connection = await getHighLevelConnection(prisma, companyId);
-  return connection?.status === "CONNECTED" && Boolean(sanitizeHighLevelLocationId(connection.externalAccountId));
+  if (!connection) return false;
+  return highLevelConnectionUsable({
+    status: connection.status,
+    externalAccountId: connection.externalAccountId,
+  });
 }
 
 export function highlevelAuthMode(scopes: string[]): HighLevelAuthMode {
@@ -36,13 +68,15 @@ export function highlevelTokenType(userType?: string | null): "location" | "comp
 
 export async function loadHighLevelAccess(prisma: PrismaClient, companyId: string) {
   const connection = await getHighLevelConnection(prisma, companyId);
-  if (!connection || connection.status !== "CONNECTED") return null;
+  if (!connection) return null;
+  const locationId = sanitizeHighLevelLocationId(connection.externalAccountId);
+  if (!highLevelConnectionUsable({ status: connection.status, externalAccountId: locationId })) return null;
+  await recoverStaleHighLevelSyncing(prisma, connection);
   const tokens = await getValidAccessToken({
     companyId,
     connectionId: connection.id,
     providerKey: HIGHLEVEL_PROVIDER_KEY,
   });
-  const locationId = sanitizeHighLevelLocationId(connection.externalAccountId);
   if (!tokens?.accessToken || !locationId) return null;
   return {
     connection,

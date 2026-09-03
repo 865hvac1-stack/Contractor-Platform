@@ -374,8 +374,11 @@ export async function syncHighLevelCommunications(prisma: PrismaClient, companyI
     await prisma.integrationConnection.update({
       where: { id: access.connection.id },
       data: {
-        status: authFailure ? "REAUTH_REQUIRED" : "ERROR",
+        status: authFailure ? "REAUTH_REQUIRED" : "CONNECTED",
         lastAttemptAt: new Date(),
+        healthMessage: authFailure
+          ? "HighLevel asked for a reconnect. Tokens are still stored."
+          : "Communications sync failed. HighLevel is still connected.",
         errorMessage,
       },
     });
