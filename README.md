@@ -190,7 +190,7 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
 | `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback` |
-| `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` | Marketplace OAuth (production multi-tenant). Not required to paste a location Private Integration Token for 865 HVAC testing. |
+| `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` | Marketplace **Client Key** from Auth → Client Keys (`24hex-suffix`), not the App/Version ID. Not required for a location Private Integration Token. |
 | `HIGHLEVEL_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/oauth/callback`. Overrides containing `highlevel` are ignored. |
 
 Never commit real values. Platform Admin → Integrations shows **presence only**.

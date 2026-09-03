@@ -1,12 +1,34 @@
 import { appUrl, oauthCallbackUrl } from "@/lib/integrations/env";
 import { HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
 
+export const HIGHLEVEL_CLIENT_ID_IS_APP_ID_MESSAGE =
+  "HIGHLEVEL_CLIENT_ID is a Marketplace App/Version ID, not a Client Key. In HighLevel Marketplace → your app → Auth → Client Keys, copy the Client ID (it includes a hyphen) into Railway HIGHLEVEL_CLIENT_ID. Do not paste the App ID.";
+
 export function highlevelOAuthConfigured() {
   return Boolean(process.env.HIGHLEVEL_CLIENT_ID?.trim() && process.env.HIGHLEVEL_CLIENT_SECRET?.trim());
 }
 
 export function highlevelClientId() {
   return process.env.HIGHLEVEL_CLIENT_ID?.trim() || "";
+}
+
+/** Official Marketplace Client Key: `{24-hex app/version id}-{suffix}`. */
+export function isHighLevelClientKey(value: string) {
+  return /^[a-f0-9]{24}-[a-z0-9]+$/i.test(value.trim());
+}
+
+/** Raw Marketplace app/version ObjectId, not a Client Key. */
+export function isHighLevelAppOrVersionId(value: string) {
+  return /^[a-f0-9]{24}$/i.test(value.trim());
+}
+
+export function highlevelMarketplaceVersionId() {
+  const explicit = process.env.HIGHLEVEL_VERSION_ID?.trim();
+  if (explicit) return explicit;
+  const clientId = highlevelClientId();
+  const hyphen = clientId.indexOf("-");
+  if (hyphen === 24 && isHighLevelClientKey(clientId)) return clientId.slice(0, hyphen);
+  return "";
 }
 
 export function highlevelClientSecret() {

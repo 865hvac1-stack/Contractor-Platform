@@ -1,11 +1,23 @@
-import { HIGHLEVEL_API_BASE, HIGHLEVEL_AUTHORIZE_URL, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
+import { HIGHLEVEL_API_BASE, HIGHLEVEL_AUTHORIZE_URL, HIGHLEVEL_AUTHORIZE_URL_WHITELABEL, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import {
   highlevelClientId,
   highlevelClientSecret,
+  highlevelMarketplaceVersionId,
   highlevelRedirectUri,
   highlevelRequestedScopes,
 } from "@/lib/highlevel/env";
 import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
+
+export function highlevelAuthorizeBaseUrl() {
+  const override = process.env.HIGHLEVEL_AUTHORIZE_URL?.trim();
+  if (override && /^https:\/\/marketplace\.(gohighlevel|leadconnectorhq)\.com\/oauth\/chooselocation$/i.test(override)) {
+    return override.replace(/\/$/, "");
+  }
+  if (process.env.HIGHLEVEL_WHITELABEL_OAUTH === "true") {
+    return HIGHLEVEL_AUTHORIZE_URL_WHITELABEL;
+  }
+  return HIGHLEVEL_AUTHORIZE_URL;
+}
 
 export function highlevelAuthorizeUrl(state: string) {
   const params = new URLSearchParams({
@@ -15,7 +27,9 @@ export function highlevelAuthorizeUrl(state: string) {
     scope: highlevelRequestedScopes().join(" "),
     state,
   });
-  return `${HIGHLEVEL_AUTHORIZE_URL}?${params.toString()}`;
+  const versionId = highlevelMarketplaceVersionId();
+  if (versionId) params.set("version_id", versionId);
+  return `${highlevelAuthorizeBaseUrl()}?${params.toString()}`;
 }
 
 type TokenResponse = {

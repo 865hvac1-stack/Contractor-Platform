@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { AuthError } from "@/lib/auth";
 import { requirePermission } from "@/lib/tenant";
-import { highlevelOAuthConfigured } from "@/lib/highlevel/env";
+import {
+  HIGHLEVEL_CLIENT_ID_IS_APP_ID_MESSAGE,
+  highlevelClientId,
+  highlevelOAuthConfigured,
+  isHighLevelAppOrVersionId,
+} from "@/lib/highlevel/env";
 import { highlevelAuthorizeUrl } from "@/lib/highlevel/oauth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { createOAuthState } from "@/lib/integrations/oauth/state";
@@ -18,6 +23,14 @@ export async function GET() {
     }
     if (!highlevelOAuthConfigured()) {
       return NextResponse.redirect(new URL("/settings/highlevel?error=oauth_not_configured", process.env.APP_URL || "http://127.0.0.1:43123"));
+    }
+    if (isHighLevelAppOrVersionId(highlevelClientId())) {
+      return NextResponse.redirect(
+        new URL(
+          `/settings/highlevel?error=${encodeURIComponent(HIGHLEVEL_CLIENT_ID_IS_APP_ID_MESSAGE)}`,
+          process.env.APP_URL || "http://127.0.0.1:43123"
+        )
+      );
     }
     const state = await createOAuthState({
       companyId: ctx.company.id,

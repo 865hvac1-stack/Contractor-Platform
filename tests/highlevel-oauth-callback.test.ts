@@ -4,7 +4,13 @@ import bcrypt from "bcryptjs";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { highlevelAuthorizeUrl } from "@/lib/highlevel/oauth";
 import * as highlevelOAuth from "@/lib/highlevel/oauth";
-import { highlevelRedirectUri, highlevelWebhookUrl } from "@/lib/highlevel/env";
+import {
+  highlevelMarketplaceVersionId,
+  highlevelRedirectUri,
+  highlevelWebhookUrl,
+  isHighLevelAppOrVersionId,
+  isHighLevelClientKey,
+} from "@/lib/highlevel/env";
 import { MARKETPLACE_OAUTH_CALLBACK_PATH, oauthCallbackUrl } from "@/lib/integrations/env";
 import { handleHighLevelMarketplaceCallback } from "@/lib/highlevel/oauth-callback";
 import { GET as marketplaceOAuthCallback } from "@/app/api/integrations/oauth/callback/route";
@@ -20,6 +26,7 @@ describe("HighLevel Marketplace OAuth redirect URI", () => {
   const previousAppUrl = process.env.APP_URL;
   const previousRedirect = process.env.HIGHLEVEL_REDIRECT_URI;
   const previousClientId = process.env.HIGHLEVEL_CLIENT_ID;
+  const previousVersionId = process.env.HIGHLEVEL_VERSION_ID;
 
   afterEach(() => {
     if (previousAppUrl === undefined) delete process.env.APP_URL;
@@ -28,6 +35,8 @@ describe("HighLevel Marketplace OAuth redirect URI", () => {
     else process.env.HIGHLEVEL_REDIRECT_URI = previousRedirect;
     if (previousClientId === undefined) delete process.env.HIGHLEVEL_CLIENT_ID;
     else process.env.HIGHLEVEL_CLIENT_ID = previousClientId;
+    if (previousVersionId === undefined) delete process.env.HIGHLEVEL_VERSION_ID;
+    else process.env.HIGHLEVEL_VERSION_ID = previousVersionId;
   });
 
   it("uses the neutral Marketplace callback path, not a HighLevel-named path", () => {
@@ -48,6 +57,25 @@ describe("HighLevel Marketplace OAuth redirect URI", () => {
     process.env.APP_URL = PRODUCTION_ORIGIN;
     process.env.HIGHLEVEL_REDIRECT_URI = `${PRODUCTION_ORIGIN}/api/integrations/highlevel/callback`;
     expect(highlevelRedirectUri()).toBe(`${PRODUCTION_ORIGIN}/api/integrations/oauth/callback`);
+  });
+
+  it("treats a 24-hex Marketplace App/Version ID as invalid client_id", () => {
+    expect(isHighLevelAppOrVersionId("6a978663f3f02a98d9623d0f")).toBe(true);
+    expect(isHighLevelClientKey("6a978663f3f02a98d9623d0f")).toBe(false);
+    expect(isHighLevelClientKey("6a978663f3f02a98d9623d0f-ab12cd")).toBe(true);
+    expect(isHighLevelAppOrVersionId("6a978663f3f02a98d9623d0f-ab12cd")).toBe(false);
+  });
+
+  it("sends the Client Key as client_id and the app/version prefix as version_id", () => {
+    process.env.APP_URL = PRODUCTION_ORIGIN;
+    delete process.env.HIGHLEVEL_REDIRECT_URI;
+    delete process.env.HIGHLEVEL_VERSION_ID;
+    process.env.HIGHLEVEL_CLIENT_ID = "6a978663f3f02a98d9623d0f-ab12cd";
+    expect(highlevelMarketplaceVersionId()).toBe("6a978663f3f02a98d9623d0f");
+    const authorize = highlevelAuthorizeUrl("state-fixture");
+    expect(authorize).toContain("client_id=6a978663f3f02a98d9623d0f-ab12cd");
+    expect(authorize).toContain("version_id=6a978663f3f02a98d9623d0f");
+    expect(authorize.startsWith("https://marketplace.gohighlevel.com/oauth/chooselocation?")).toBe(true);
   });
 });
 
