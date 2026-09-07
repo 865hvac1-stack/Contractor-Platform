@@ -80,11 +80,11 @@ export function resolveWaitingFocusColumnId(
 export function applyWaitingFocus<T extends WaitingViewFilters>(
   filters: T,
   columns: WaitingFocusColumn[]
-): T {
+): T & WaitingViewFilters {
   const focus = filters.focus ?? null;
   if (!focus) return filters;
 
-  const next = { ...filters };
+  const next = { ...filters } as T & WaitingViewFilters;
   if (focus === "overdue") next.overdue = true;
   if (focus === "due") next.updateDue = true;
 
