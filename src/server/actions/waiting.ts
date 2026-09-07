@@ -202,6 +202,18 @@ export async function markPartArrivedAction(
     if (!existing) return { ok: false, error: "Waiting record not found." };
     const { ctx } = await requireWaitingMutation(existing.jobId);
     if (existing.companyId !== ctx.company.id) return { ok: false, error: "Waiting record not found." };
+    const alreadyReady =
+      Boolean(existing.actualArrivalAt) &&
+      (existing.column.kind === "READY" || existing.column.key === "READY_TO_SCHEDULE");
+    if (existing.state === "RESOLVED" || alreadyReady) {
+      revalidateWaiting(existing.jobId, existing.customerId);
+      return {
+        ok: true,
+        message: existing.state === "RESOLVED"
+          ? "This waiting record is already resolved. History is preserved."
+          : "Already on Ready to Schedule. No duplicate transition was created.",
+      };
+    }
     await markPartArrived({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
