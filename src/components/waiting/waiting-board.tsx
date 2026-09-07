@@ -2,6 +2,12 @@
 
 import { useMemo, useState } from "react";
 import type { WaitingCard } from "@/lib/waiting/types";
+import {
+  waitingFocusCountLabel,
+  waitingFocusEmptyMessage,
+  waitingFocusTitle,
+  type WaitingFocus,
+} from "@/lib/waiting/focus";
 import { WaitingJobCard } from "@/components/waiting/waiting-card";
 import { WaitingTransitionDialog } from "@/components/waiting/transition-dialog";
 import { WaitingDetailDrawer, type WaitingDetailPayload } from "@/components/waiting/detail-drawer";
@@ -35,7 +41,14 @@ export function WaitingBoard({
   jobs: WaitingJobOption[];
   details: WaitingDetailPayload[];
   initialRecordId?: string | null;
-  filters: { q?: string; column?: string; owner?: string; overdue?: boolean };
+  filters: {
+    q?: string;
+    column?: string;
+    owner?: string;
+    overdue?: boolean;
+    due?: boolean;
+    focus?: WaitingFocus | null;
+  };
 }) {
   const [mobileTab, setMobileTab] = useState(0);
   const [openId, setOpenId] = useState<string | null>(initialRecordId ?? null);
@@ -47,6 +60,8 @@ export function WaitingBoard({
   const readyColumn = columns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE");
   const mobileColumns =
     mobileTab === 0 ? columns : columns.filter((column) => MOBILE_TABS[mobileTab]?.match(column));
+  const focus = filters.focus ?? null;
+  const focused = Boolean(focus);
 
   return (
     <div className="space-y-3">
@@ -54,6 +69,8 @@ export function WaitingBoard({
         method="get"
         className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2 md:flex-row md:items-center md:gap-2 md:px-3 md:py-2"
       >
+        {focus ? <input type="hidden" name="focus" value={focus} /> : null}
+        {filters.due ? <input type="hidden" name="due" value="1" /> : null}
         <input
           name="q"
           defaultValue={filters.q ?? ""}
@@ -103,7 +120,45 @@ export function WaitingBoard({
         </button>
       </form>
 
-      <div className="md:hidden">
+      {focused ? (
+        <section className="space-y-3">
+          <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--cy-navy)]">
+                {waitingFocusTitle(focus)}
+              </h2>
+              <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
+                {waitingFocusCountLabel(focus, allCards.length)}
+              </p>
+            </div>
+            <a
+              href="/operations/waiting"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-[var(--cy-navy)] underline"
+            >
+              Clear Filter / View Full Board
+            </a>
+          </header>
+          {allCards.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[var(--border)] bg-white px-3 py-3 text-sm text-[var(--muted-foreground)]">
+              {waitingFocusEmptyMessage(focus)}
+            </p>
+          ) : (
+            <div className="grid gap-3 md:max-w-xl">
+              {allCards.map((card) => (
+                <WaitingJobCard
+                  key={card.id}
+                  card={card}
+                  timezone={timezone}
+                  onOpen={setOpenId}
+                  readyColumnId={readyColumn?.id}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      <div className={focused ? "hidden" : "md:hidden"}>
         <div className="flex gap-2 overflow-x-auto pb-2">
           {MOBILE_TABS.map((tab, index) => {
             const count =
@@ -150,7 +205,7 @@ export function WaitingBoard({
         </div>
       </div>
 
-      <div className="-mx-3 hidden min-h-[62vh] gap-3 overflow-x-auto px-3 pb-4 md:flex">
+      <div className={focused ? "hidden" : "-mx-3 hidden min-h-[62vh] gap-3 overflow-x-auto px-3 pb-4 md:flex"}>
         {columns.map((column) => {
           const ready = column.kind === "READY" || column.key === "READY_TO_SCHEDULE";
           return (

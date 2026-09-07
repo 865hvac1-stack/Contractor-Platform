@@ -121,8 +121,11 @@ export async function assignJobToTechnicianAction(input: {
         companyId: ctx.company.id,
         actorId: ctx.user.id,
         jobId: job.id,
+        scheduledStart: data.scheduledStart,
       });
       revalidatePath("/operations/waiting");
+      revalidatePath("/attention");
+      revalidatePath("/dashboard");
       revalidatePath("/actions");
     }
     revalidateDispatch(job.id);

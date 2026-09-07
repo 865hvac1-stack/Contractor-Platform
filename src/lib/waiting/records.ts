@@ -303,6 +303,8 @@ export async function resolveWaitingRecord(
     note?: string | null;
     notifyCustomer?: boolean;
     appointmentScheduled?: boolean;
+    appointmentJobId?: string | null;
+    scheduledStart?: Date | null;
   },
   db: PrismaClient = defaultPrisma
 ) {
@@ -333,6 +335,12 @@ export async function resolveWaitingRecord(
         resolved: true,
         notifyCustomer: Boolean(input.notifyCustomer),
         appointmentScheduled: Boolean(input.appointmentScheduled),
+        ...(input.appointmentScheduled
+          ? {
+              jobId: input.appointmentJobId ?? record.jobId,
+              scheduledStart: (input.scheduledStart ?? now).toISOString(),
+            }
+          : {}),
       },
       note: input.note ?? null,
     },
@@ -551,7 +559,7 @@ export async function markPartArrived(
 }
 
 export async function resolveWaitingRecordsForScheduledJob(
-  input: { companyId: string; actorId: string; jobId: string },
+  input: { companyId: string; actorId: string; jobId: string; scheduledStart?: Date | null },
   db: PrismaClient = defaultPrisma
 ) {
   const records = await db.waitingRecord.findMany({
@@ -568,6 +576,8 @@ export async function resolveWaitingRecordsForScheduledJob(
         note: "Appointment scheduled",
         notifyCustomer: false,
         appointmentScheduled: true,
+        appointmentJobId: input.jobId,
+        scheduledStart: input.scheduledStart ?? null,
       },
       db
     );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { WaitingCard } from "@/lib/waiting/types";
 import { formatWaitingDate, relativeWaitingDay } from "@/lib/waiting/format";
+import { isWaitingUpdateDueToday } from "@/lib/waiting/focus";
 import { PartArrivedDialog } from "@/components/waiting/part-arrived-dialog";
 import { SendUpdateDialog } from "@/components/waiting/send-update-dialog";
 import { UpdateFailedDialog } from "@/components/waiting/update-failed-dialog";
@@ -22,7 +23,7 @@ export function WaitingJobCard({
   readyColumnId?: string | null;
 }) {
   const ready = card.columnKind === "READY" || card.columnKey === "READY_TO_SCHEDULE";
-  const updateDue = isUpdateDue(card);
+  const updateDue = isWaitingUpdateDueToday(card);
   const daysLabel = card.daysWaiting === 1 ? "1 day" : `${card.daysWaiting} days`;
   const [partOpen, setPartOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -107,20 +108,20 @@ export function WaitingJobCard({
         <div className="mt-3 space-y-2">
           <Link
             href={`/jobs/${card.jobId}#schedule`}
-            className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[var(--cy-navy)] text-sm font-medium text-white"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[var(--cy-navy)] text-sm font-medium text-white"
           >
-            Schedule
+            Schedule Now
           </Link>
           <div className="flex gap-2">
             <Link
               href={`/jobs/${card.jobId}`}
-              className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--cy-navy)]"
+              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--cy-navy)]"
             >
               Open Job
             </Link>
             <Link
               href={`/customers/${card.customerId}`}
-              className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--cy-navy)]"
+              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--cy-navy)]"
             >
               Open Customer
             </Link>
@@ -131,7 +132,7 @@ export function WaitingJobCard({
           <button
             type="button"
             onClick={() => setPartOpen(true)}
-            className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[var(--cy-orange)] text-sm font-medium text-white"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[var(--cy-orange)] text-sm font-medium text-white"
           >
             Part Arrived
           </button>
@@ -178,12 +179,4 @@ export function WaitingJobCard({
       />
     </div>
   );
-}
-
-function isUpdateDue(card: WaitingCard) {
-  if (!card.communicationEnabled || !card.nextCustomerUpdateAt) return false;
-  const now = new Date();
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return card.nextCustomerUpdateAt <= end;
 }

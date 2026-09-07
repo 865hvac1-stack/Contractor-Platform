@@ -24,6 +24,25 @@ export async function detectWaitingAttention(companyId: string): Promise<Attenti
     const customerName = customerDisplayName(record.customer);
     const days = differenceInCalendarDays(now, record.enteredAt);
     const href = `/operations/waiting?record=${record.id}`;
+    const ready = record.column.kind === "READY" || record.column.key === "READY_TO_SCHEDULE";
+
+    if (ready) {
+      items.push({
+        id: `waiting-ready-${record.id}`,
+        type: "waiting_ready_to_schedule",
+        title: `READY TO SCHEDULE · ${customerName}`,
+        description: item ? `${item} has arrived.` : `${record.job.jobNumber} is ready to schedule.`,
+        severity: "warning",
+        href: `/jobs/${record.jobId}#schedule`,
+        entityType: "Job",
+        entityId: record.jobId,
+        createdAt: record.actualArrivalAt ?? record.updatedAt,
+        customerName,
+        recommendedAction: "Schedule",
+        category: "operations",
+      });
+      continue;
+    }
 
     if (record.expectedResolutionAt && record.expectedResolutionAt < now && record.column.kind !== "READY") {
       const partOverdue = record.column.key === "WAITING_ON_PART";
@@ -92,23 +111,6 @@ export async function detectWaitingAttention(companyId: string): Promise<Attenti
         createdAt: record.updatedAt,
         customerName,
         recommendedAction: "Review the provider failure and send the update.",
-        category: "operations",
-      });
-    }
-
-    if (record.column.kind === "READY" || record.column.key === "READY_TO_SCHEDULE") {
-      items.push({
-        id: `waiting-ready-${record.id}`,
-        type: "waiting_ready_to_schedule",
-        title: `READY TO SCHEDULE · ${customerName}`,
-        description: item ? `${item} has arrived.` : `${record.job.jobNumber} is ready to schedule.`,
-        severity: "warning",
-        href: `/jobs/${record.jobId}#schedule`,
-        entityType: "Job",
-        entityId: record.jobId,
-        createdAt: record.actualArrivalAt ?? record.updatedAt,
-        customerName,
-        recommendedAction: "Schedule Customer",
         category: "operations",
       });
     }

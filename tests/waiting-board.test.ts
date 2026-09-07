@@ -16,6 +16,16 @@ import {
 } from "@/lib/waiting/safety";
 import { buildWaitingTemplateVars, renderWaitingTemplate } from "@/lib/waiting/templates";
 import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
+import {
+  applyWaitingBoardView,
+  applyWaitingFocus,
+  isWaitingUpdateDueToday,
+  parseWaitingFocus,
+  waitingBoardHref,
+  waitingFocusCountLabel,
+  waitingFocusEmptyMessage,
+  waitingKpiHref,
+} from "@/lib/waiting/focus";
 import { toolsForQuestion } from "@/lib/intelligence/intent";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -315,6 +325,7 @@ describe("waiting board UI hierarchy", () => {
     expect(card).toContain("Part Arrived");
     expect(card).toContain("/jobs/");
     expect(card).toContain("#schedule");
+    expect(card).toContain("Schedule Now");
     expect(card).toContain("Open Job");
     expect(card).toContain("Open Customer");
     expect(card).toContain("PartArrivedDialog");
@@ -434,12 +445,97 @@ describe("waiting Action Center workflow copy", () => {
     const attention = readFileSync(resolve("src/lib/waiting/attention.ts"), "utf8");
     expect(attention).toContain("READY TO SCHEDULE");
     expect(attention).toContain("has arrived.");
-    expect(attention).toContain("Schedule Customer");
+    expect(attention).toContain('recommendedAction: "Schedule"');
     expect(attention).toContain("/jobs/${record.jobId}#schedule");
+    expect(attention).toContain("continue;");
     expect(attention).toContain("PART OVERDUE");
     expect(attention).toContain("Check Part Status");
     expect(attention).toContain("UPDATE FAILED");
     expect(attention).toContain("waiting-ready-${record.id}");
     expect(attention).toContain("waiting-send-failed-${record.id}");
+  });
+});
+
+describe("waiting KPI drill-down", () => {
+  const columns = [
+    { id: "col_part", key: "WAITING_ON_PART", kind: "WAITING" },
+    { id: "col_ready", key: "READY_TO_SCHEDULE", kind: "READY" },
+  ];
+
+  it("maps KPI focus to board filters and hrefs", () => {
+    expect(parseWaitingFocus("ready")).toBe("ready");
+    expect(parseWaitingFocus("nope")).toBeNull();
+    expect(waitingKpiHref("ready")).toBe("/operations/waiting?focus=ready");
+    expect(waitingKpiHref("parts", { owner: "u1" })).toBe("/operations/waiting?owner=u1&focus=parts");
+    expect(waitingBoardHref()).toBe("/operations/waiting");
+    expect(applyWaitingFocus({ focus: "ready" }, columns).columnId).toBe("col_ready");
+    expect(applyWaitingFocus({ focus: "parts" }, columns).columnId).toBe("col_part");
+    expect(applyWaitingFocus({ focus: "overdue" }, columns).overdue).toBe(true);
+    expect(applyWaitingFocus({ focus: "due" }, columns).updateDue).toBe(true);
+    expect(applyWaitingFocus({ focus: "ready", columnId: "col_part" }, columns).columnId).toBe("col_part");
+    expect(waitingFocusCountLabel("ready", 1)).toBe("1 job ready");
+    expect(waitingFocusEmptyMessage("ready")).toBe("No jobs are ready to schedule.");
+  });
+
+  it("filters the board into a focused Ready list without requiring the Kanban column", () => {
+    const now = new Date("2026-09-07T15:00:00.000Z");
+    const readyCard = {
+      id: "wr_ready",
+      columnId: "col_ready",
+      columnKey: "READY_TO_SCHEDULE",
+      columnKind: "READY",
+      overdue: false,
+      urgent: false,
+      automationEnabled: false,
+      nextCustomerUpdateAt: null,
+    } as never;
+    const partCard = {
+      id: "wr_part",
+      columnId: "col_part",
+      columnKey: "WAITING_ON_PART",
+      columnKind: "WAITING",
+      overdue: true,
+      urgent: false,
+      automationEnabled: true,
+      nextCustomerUpdateAt: new Date("2026-09-07T16:00:00.000Z"),
+    } as never;
+    const board = {
+      columns: [
+        { ...columns[0], cards: [partCard] },
+        { ...columns[1], cards: [readyCard] },
+      ],
+      cards: [partCard, readyCard],
+    };
+    const ready = applyWaitingBoardView(board, { focus: "ready" }, now);
+    expect(ready.cards.map((card) => card.id)).toEqual(["wr_ready"]);
+    const overdue = applyWaitingBoardView(board, { focus: "overdue" }, now);
+    expect(overdue.cards.map((card) => card.id)).toEqual(["wr_part"]);
+    const due = applyWaitingBoardView(board, { focus: "due" }, now);
+    expect(due.cards.map((card) => card.id)).toEqual(["wr_part"]);
+    expect(isWaitingUpdateDueToday(partCard, now)).toBe(true);
+    expect(isWaitingUpdateDueToday(readyCard, now)).toBe(false);
+  });
+
+  it("makes KPI cards and Ready cards operational shortcuts", () => {
+    const page = readFileSync(resolve("src/app/(app)/operations/waiting/page.tsx"), "utf8");
+    const board = readFileSync(resolve("src/components/waiting/waiting-board.tsx"), "utf8");
+    const card = readFileSync(resolve("src/components/waiting/waiting-card.tsx"), "utf8");
+    const jobPage = readFileSync(resolve("src/app/(app)/jobs/[id]/page.tsx"), "utf8");
+    expect(page).toContain('waitingKpiHref("ready"');
+    expect(page).toContain('waitingKpiHref("parts"');
+    expect(page).toContain('waitingKpiHref("overdue"');
+    expect(page).toContain('waitingKpiHref("due"');
+    expect(page).toContain("aria-current");
+    expect(page).toContain("focus-visible:outline");
+    expect(board).toContain("Clear Filter / View Full Board");
+    expect(board).toContain("waitingFocusEmptyMessage");
+    expect(board).toContain('focused ? "hidden"');
+    expect(card).toContain("Schedule Now");
+    expect(card).toContain("min-h-11");
+    expect(jobPage).toContain('id="schedule"');
+    expect(jobPage).toContain("is ready");
+    const records = readFileSync(resolve("src/lib/waiting/records.ts"), "utf8");
+    expect(records).toContain("appointmentJobId");
+    expect(records).toContain("scheduledStart");
   });
 });

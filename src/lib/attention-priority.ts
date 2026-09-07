@@ -119,7 +119,7 @@ const TYPE_ACTION: Record<string, string> = {
   waiting_update_failed: "Review the provider failure and send the update.",
   waiting_missing_expected_date: "Enter an expected date when known.",
   waiting_too_long: "Escalate or move this job forward.",
-  waiting_ready_to_schedule: "Schedule Customer",
+  waiting_ready_to_schedule: "Schedule",
   waiting_customer_replied: "Read the customer reply.",
   waiting_missing_owner: "Assign an office owner.",
   waiting_warranty_overdue: "Check the warranty claim.",

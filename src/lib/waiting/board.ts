@@ -6,6 +6,7 @@ import { daysWaitingSince } from "@/lib/waiting/schedule";
 import { processDueWaitingUpdates } from "@/lib/waiting/processor";
 import { syncCompanyWaitingReplies } from "@/lib/waiting/replies";
 import { itemNameFromMetadata, parseWaitingMetadata, type WaitingCard } from "@/lib/waiting/types";
+import { applyWaitingFocus, isWaitingUpdateDueToday, type WaitingFocus } from "@/lib/waiting/focus";
 
 export type WaitingBoardFilters = {
   q?: string;
@@ -17,6 +18,7 @@ export type WaitingBoardFilters = {
   priority?: string;
   serviceType?: string;
   minDays?: number;
+  focus?: WaitingFocus | null;
 };
 
 export async function loadWaitingBoard(
@@ -32,12 +34,13 @@ export async function loadWaitingBoard(
     where: { companyId, archivedAt: null },
     orderBy: { sortOrder: "asc" },
   });
+  const filtersWithFocus = applyWaitingFocus(filters, columns);
 
   const where: Prisma.WaitingRecordWhereInput = {
     companyId,
     state: "ACTIVE",
-    ...(filters.columnId ? { columnId: filters.columnId } : {}),
-    ...(filters.ownerId ? { assignedOwnerUserId: filters.ownerId } : {}),
+    ...(filtersWithFocus.columnId ? { columnId: filtersWithFocus.columnId } : {}),
+    ...(filtersWithFocus.ownerId ? { assignedOwnerUserId: filtersWithFocus.ownerId } : {}),
     ...(filters.priority ? { priority: filters.priority as WaitingCard["priority"] } : {}),
   };
 
@@ -90,10 +93,6 @@ export async function loadWaitingBoard(
   });
 
   const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
 
   const cards: WaitingCard[] = records
     .map((record) => {
@@ -148,11 +147,8 @@ export async function loadWaitingBoard(
       };
     })
     .filter((card) => {
-      if (filters.overdue && !card.overdue && !card.urgent) return false;
-      if (filters.updateDue) {
-        if (!card.nextCustomerUpdateAt) return false;
-        if (card.nextCustomerUpdateAt < startOfToday || card.nextCustomerUpdateAt > endOfToday) return false;
-      }
+      if (filtersWithFocus.overdue && !card.overdue && !card.urgent) return false;
+      if (filtersWithFocus.updateDue && !isWaitingUpdateDueToday(card, now)) return false;
       if (filters.minDays && card.daysWaiting < filters.minDays) return false;
       if (filters.q?.trim()) {
         const q = filters.q.trim().toLowerCase();

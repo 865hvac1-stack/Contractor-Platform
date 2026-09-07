@@ -308,12 +308,14 @@ export async function scheduleJobAction(
       companyId: ctx.company.id,
       actorId: ctx.user.id,
       jobId: job.id,
+      scheduledStart,
     });
 
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath("/schedule");
     revalidatePath("/dashboard");
     revalidatePath("/operations/waiting");
+    revalidatePath("/attention");
     revalidatePath("/actions");
     return { ok: true };
   } catch (e) {

@@ -27,6 +27,7 @@ export function JobWaitingPanel({
     expectedResolutionAt: Date | null;
     columnKey: string;
     columnName: string;
+    columnKind?: string;
   } | null;
   columns: WaitingColumnOption[];
   owners: WaitingOwnerOption[];
@@ -65,6 +66,11 @@ export function JobWaitingPanel({
               >
                 Part arrived
               </Button>
+            ) : null}
+            {waiting.columnKind === "READY" || waiting.columnKey === "READY_TO_SCHEDULE" ? (
+              <Link href={`#schedule`} className={cn(buttonVariants(), "min-h-11")}>
+                Schedule Now
+              </Link>
             ) : null}
           </div>
           <PartArrivedDialog

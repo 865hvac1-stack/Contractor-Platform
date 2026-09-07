@@ -121,6 +121,7 @@ export default async function JobDetailPage({
                 expectedResolutionAt: activeWaiting.expectedResolutionAt,
                 columnKey: activeWaiting.column.key,
                 columnName: activeWaiting.column.name,
+                columnKind: activeWaiting.column.kind,
               }
             : null
         }
@@ -183,11 +184,21 @@ export default async function JobDetailPage({
             </Card>
           ) : null}
           {can(ctx.role, "jobs:manage") && !view.job.historical ? (
-            <Card id="schedule">
+            <Card id="schedule" className="scroll-mt-24">
               <CardHeader>
                 <CardTitle>Schedule</CardTitle>
               </CardHeader>
               <CardContent>
+                {activeWaiting &&
+                (activeWaiting.column.kind === "READY" || activeWaiting.column.key === "READY_TO_SCHEDULE") ? (
+                  <p className="mb-3 text-sm text-[var(--cy-navy)]">
+                    {itemNameFromMetadata(parseWaitingMetadata(activeWaiting.metadata), activeWaiting.reason)} is ready
+                    to schedule
+                    {view.customer.name ? ` for ${view.customer.name}` : ""}
+                    {view.technicians.assigned[0] ? ` · Assigned ${view.technicians.assigned[0].name}` : ""}
+                    .
+                  </p>
+                ) : null}
                 <p className="mb-4 text-sm text-[var(--muted-foreground)]">
                   Current: {formatDateTime(view.job.scheduledStart)}
                 </p>

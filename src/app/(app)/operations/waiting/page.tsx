@@ -1,8 +1,15 @@
+import Link from "next/link";
 import { jobAccessFilter, requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { loadWaitingBoard, loadWaitingDetail, loadWaitingDetails } from "@/lib/waiting/board";
 import { loadWaitingMetrics } from "@/lib/waiting/metrics";
+import {
+  applyWaitingBoardView,
+  isWaitingUpdateDueToday,
+  parseWaitingFocus,
+  waitingKpiHref,
+} from "@/lib/waiting/focus";
 import { formatMoney } from "@/lib/money";
 import { customerDisplayName } from "@/lib/actions/eligibility";
 import { WaitingBoard } from "@/components/waiting/waiting-board";
@@ -21,20 +28,19 @@ export default async function WaitingBoardPage({
     due?: string;
     record?: string;
     days?: string;
+    focus?: string;
   }>;
 }) {
   const ctx = await requirePermission("jobs:view");
   const params = await searchParams;
-  const [board, metrics, members] = await Promise.all([
+  const focus = parseWaitingFocus(params.focus);
+  const [rawBoard, metrics, members] = await Promise.all([
     loadWaitingBoard(
       ctx.company.id,
       {
         q: params.q,
-        columnId: params.column,
         ownerId: params.owner,
         technicianId: params.tech,
-        overdue: params.overdue === "1",
-        updateDue: params.due === "1",
         minDays: params.days ? Number(params.days) : undefined,
       },
       jobAccessFilter(ctx.role, ctx.user.id)
@@ -46,6 +52,13 @@ export default async function WaitingBoardPage({
     }),
   ]);
 
+  const board = applyWaitingBoardView(rawBoard, {
+    focus,
+    columnId: params.column,
+    overdue: params.overdue === "1",
+    updateDue: params.due === "1",
+  });
+
   const owners = members.map((row) => ({
     id: row.user.id,
     name: `${row.user.firstName} ${row.user.lastName}`.trim(),
@@ -53,15 +66,15 @@ export default async function WaitingBoardPage({
   const assignedOnly = can(ctx.role, "jobs:assigned_only");
   const scopedMetrics = assignedOnly
     ? {
-        currentlyWaiting: board.cards.length,
-        waitingOnParts: board.cards.filter((card) => card.columnKey === "WAITING_ON_PART").length,
-        readyToSchedule: board.cards.filter((card) => card.columnKind === "READY").length,
-        overdue: board.cards.filter((card) => card.overdue).length,
+        currentlyWaiting: rawBoard.cards.length,
+        waitingOnParts: rawBoard.cards.filter((card) => card.columnKey === "WAITING_ON_PART").length,
+        readyToSchedule: rawBoard.cards.filter((card) => card.columnKind === "READY").length,
+        overdue: rawBoard.cards.filter((card) => card.overdue).length,
         averageDaysWaiting:
-          board.cards.length === 0
+          rawBoard.cards.length === 0
             ? null
-            : Math.round((board.cards.reduce((sum, card) => sum + card.daysWaiting, 0) / board.cards.length) * 10) / 10,
-        updatesDueToday: board.cards.filter((card) => card.nextCustomerUpdateAt).length,
+            : Math.round((rawBoard.cards.reduce((sum, card) => sum + card.daysWaiting, 0) / rawBoard.cards.length) * 10) / 10,
+        updatesDueToday: rawBoard.cards.filter((card) => isWaitingUpdateDueToday(card)).length,
         revenueTiedUpCents: 0,
         revenueTiedUpAvailable: false,
       }
@@ -85,6 +98,7 @@ export default async function WaitingBoardPage({
   const ids = board.cards.map((card) => card.id);
   if (params.record && !ids.includes(params.record)) ids.push(params.record);
   const details: WaitingDetailPayload[] = (await loadWaitingDetails(ctx.company.id, ids)).map(serializeDetail);
+  const kpiContext = { q: params.q, owner: params.owner, tech: params.tech };
 
   return (
     <div className="space-y-3">
@@ -98,12 +112,46 @@ export default async function WaitingBoardPage({
       <JobsSubnav />
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-        <Metric label="Currently waiting" value={String(scopedMetrics.currentlyWaiting)} />
-        <Metric label="Waiting on parts" value={String(scopedMetrics.waitingOnParts)} />
-        <Metric label="Ready to schedule" value={String(scopedMetrics.readyToSchedule)} />
-        <Metric label="Overdue" value={String(scopedMetrics.overdue)} warn={scopedMetrics.overdue > 0} />
-        <Metric label="Average days waiting" value={scopedMetrics.averageDaysWaiting == null ? "—" : String(scopedMetrics.averageDaysWaiting)} />
-        <Metric label="Updates due today" value={String(scopedMetrics.updatesDueToday)} />
+        <Metric
+          label="Currently waiting"
+          value={String(scopedMetrics.currentlyWaiting)}
+          href={waitingKpiHref("waiting", kpiContext)}
+          active={focus === "waiting"}
+          count={scopedMetrics.currentlyWaiting}
+        />
+        <Metric
+          label="Waiting on parts"
+          value={String(scopedMetrics.waitingOnParts)}
+          href={waitingKpiHref("parts", kpiContext)}
+          active={focus === "parts"}
+          count={scopedMetrics.waitingOnParts}
+        />
+        <Metric
+          label="Ready to schedule"
+          value={String(scopedMetrics.readyToSchedule)}
+          href={waitingKpiHref("ready", kpiContext)}
+          active={focus === "ready"}
+          count={scopedMetrics.readyToSchedule}
+        />
+        <Metric
+          label="Overdue"
+          value={String(scopedMetrics.overdue)}
+          warn={scopedMetrics.overdue > 0}
+          href={waitingKpiHref("overdue", kpiContext)}
+          active={focus === "overdue"}
+          count={scopedMetrics.overdue}
+        />
+        <Metric
+          label="Average days waiting"
+          value={scopedMetrics.averageDaysWaiting == null ? "—" : String(scopedMetrics.averageDaysWaiting)}
+        />
+        <Metric
+          label="Updates due today"
+          value={String(scopedMetrics.updatesDueToday)}
+          href={waitingKpiHref("due", kpiContext)}
+          active={focus === "due"}
+          count={scopedMetrics.updatesDueToday}
+        />
         <Metric
           label="Revenue tied up"
           value={
@@ -134,17 +182,60 @@ export default async function WaitingBoardPage({
           column: params.column,
           owner: params.owner,
           overdue: params.overdue === "1",
+          due: params.due === "1",
+          focus,
         }}
       />
     </div>
   );
 }
 
-function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5">
+function Metric({
+  label,
+  value,
+  warn,
+  href,
+  active,
+  count,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+  href?: string;
+  active?: boolean;
+  count?: number;
+}) {
+  const actionable = Boolean(href);
+  const disabled = actionable && (count ?? 0) === 0;
+  const className = [
+    "rounded-xl border bg-white px-3 py-2.5 text-left",
+    warn ? "border-rose-200" : "border-[var(--border)]",
+    active ? "border-[var(--cy-orange)]/55 ring-1 ring-[var(--cy-orange)]/30" : "",
+    actionable && !disabled
+      ? "cursor-pointer hover:border-[var(--cy-orange)]/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cy-navy)]"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const body = (
+    <>
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
       <p className={`mt-0.5 truncate text-lg font-semibold ${warn ? "text-rose-700" : "text-[var(--cy-navy)]"}`}>{value}</p>
+    </>
+  );
+
+  if (href && !disabled) {
+    return (
+      <Link href={href} className={className} aria-current={active ? "page" : undefined}>
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={className} aria-disabled={disabled || undefined}>
+      {body}
     </div>
   );
 }
