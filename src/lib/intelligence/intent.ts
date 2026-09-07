@@ -10,6 +10,13 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
     tools.add("getJobSummary");
     tools.add("getPlaybookStatus");
   }
+  if (
+    /waiting|wait(?:ing)? on part|ready to schedule|overdue parts?|parts? are overdue|who (?:has )?been waiting|updates today|tied up|vendors?/.test(
+      q
+    )
+  ) {
+    tools.add("getWaitingBoard");
+  }
   if (/attention|focus|today|need/.test(q)) {
     tools.add("getTopInsights");
     tools.add("getTodaySchedule");
@@ -78,13 +85,6 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
   if (/business health|health only|why is (my|our) health|why is (my|our) business/.test(q)) {
     tools.add("getBusinessHealth");
     tools.add("getOperatingNotes");
-  }
-  if (
-    /waiting|wait(?:ing)? on part|ready to schedule|overdue part|who (?:has )?been waiting|updates today|tied up|vendor/.test(
-      q
-    )
-  ) {
-    tools.add("getWaitingBoard");
   }
   if (/how are we|this month|this week|summary|happening/.test(q)) tools.add("getBusinessSummary");
   if (/drive|route|unassigned|fit another|dispatch|late/.test(q)) {
