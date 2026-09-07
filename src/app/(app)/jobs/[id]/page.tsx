@@ -183,7 +183,7 @@ export default async function JobDetailPage({
             </Card>
           ) : null}
           {can(ctx.role, "jobs:manage") && !view.job.historical ? (
-            <Card>
+            <Card id="schedule">
               <CardHeader>
                 <CardTitle>Schedule</CardTitle>
               </CardHeader>

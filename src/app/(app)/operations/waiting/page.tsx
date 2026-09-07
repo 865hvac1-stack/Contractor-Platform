@@ -86,17 +86,16 @@ export default async function WaitingBoardPage({
   const details: WaitingDetailPayload[] = (await loadWaitingDetails(ctx.company.id, ids)).map(serializeDetail);
 
   return (
-    <div className="space-y-5">
-      <header>
+    <div className="space-y-3">
+      <header className="flex flex-col gap-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">Operations</p>
-        <h1 className="mt-1 font-display text-3xl tracking-tight text-[var(--cy-navy)]">Waiting Board</h1>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--muted-foreground)]">
-          The office shouldn&apos;t have to remember who needs an update. ContractorYou remembers — then texts,
-          follows up, and tells you who can be scheduled.
+        <h1 className="font-display text-2xl tracking-tight text-[var(--cy-navy)] md:text-3xl">Waiting Board</h1>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          The office shouldn&apos;t have to remember who needs an update. ContractorYou remembers.
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
         <Metric label="Currently waiting" value={String(scopedMetrics.currentlyWaiting)} />
         <Metric label="Waiting on parts" value={String(scopedMetrics.waitingOnParts)} />
         <Metric label="Ready to schedule" value={String(scopedMetrics.readyToSchedule)} />
@@ -110,38 +109,6 @@ export default async function WaitingBoardPage({
           }
         />
       </div>
-
-      <form className="grid gap-2 rounded-2xl border border-[var(--border)] bg-white p-3 md:grid-cols-6">
-        <input
-          name="q"
-          defaultValue={params.q ?? ""}
-          placeholder="Customer, job, phone, part, PO"
-          className="h-10 rounded-lg border border-[var(--border)] px-3 text-sm md:col-span-2"
-        />
-        <select name="column" defaultValue={params.column ?? ""} className="h-10 rounded-lg border border-[var(--border)] px-3 text-sm">
-          <option value="">All statuses</option>
-          {board.columns.map((column) => (
-            <option key={column.id} value={column.id}>
-              {column.name}
-            </option>
-          ))}
-        </select>
-        <select name="owner" defaultValue={params.owner ?? ""} className="h-10 rounded-lg border border-[var(--border)] px-3 text-sm">
-          <option value="">All owners</option>
-          {owners.map((owner) => (
-            <option key={owner.id} value={owner.id}>
-              {owner.name}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="overdue" value="1" defaultChecked={params.overdue === "1"} />
-          Overdue
-        </label>
-        <button type="submit" className="h-10 rounded-lg bg-[var(--cy-navy)] text-sm font-medium text-white">
-          Filter
-        </button>
-      </form>
 
       <WaitingBoard
         columns={board.columns.map((column) => ({
@@ -160,6 +127,12 @@ export default async function WaitingBoardPage({
         }))}
         details={details}
         initialRecordId={params.record}
+        filters={{
+          q: params.q,
+          column: params.column,
+          owner: params.owner,
+          overdue: params.overdue === "1",
+        }}
       />
     </div>
   );
@@ -167,9 +140,9 @@ export default async function WaitingBoardPage({
 
 function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${warn ? "text-rose-700" : "text-[var(--cy-navy)]"}`}>{value}</p>
+    <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</p>
+      <p className={`mt-0.5 truncate text-lg font-semibold ${warn ? "text-rose-700" : "text-[var(--cy-navy)]"}`}>{value}</p>
     </div>
   );
 }

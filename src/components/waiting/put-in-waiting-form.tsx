@@ -25,6 +25,8 @@ export function PutInWaitingForm({
   defaultJobId,
   defaultColumnKey,
   compact,
+  onSuccess,
+  onCancel,
 }: {
   columns: WaitingColumnOption[];
   owners: WaitingOwnerOption[];
@@ -32,6 +34,8 @@ export function PutInWaitingForm({
   defaultJobId?: string;
   defaultColumnKey?: string;
   compact?: boolean;
+  onSuccess?: () => void;
+  onCancel?: () => void;
 }) {
   const initial = columns.find((column) => column.key === defaultColumnKey) ?? columns[0];
   const [columnId, setColumnId] = useState(initial?.id ?? "");
@@ -39,7 +43,7 @@ export function PutInWaitingForm({
   const key = column?.key ?? "";
 
   return (
-    <ActionForm action={putJobInWaitingAction} className="space-y-3">
+    <ActionForm action={putJobInWaitingAction} className="space-y-3" onSuccess={onSuccess}>
       {defaultJobId ? (
         <input type="hidden" name="jobId" value={defaultJobId} />
       ) : (
@@ -75,7 +79,7 @@ export function PutInWaitingForm({
       <Field label="What are we waiting for?">
         <Input name="waitingFor" placeholder={placeholderFor(key)} />
       </Field>
-      {key === "WAITING_ON_PART" || !compact ? (
+      {key === "WAITING_ON_PART" || (!compact && !key) ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Part / item">
             <Input name="partName" placeholder="Blower motor" />
@@ -173,9 +177,16 @@ export function PutInWaitingForm({
       <Field label="Notes">
         <Textarea name="notes" rows={2} placeholder="Internal only" />
       </Field>
-      <Button type="submit" className="h-11 w-full bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90">
-        Put in waiting
-      </Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        {onCancel ? (
+          <Button type="button" variant="outline" className="h-11 sm:min-w-24" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+        <Button type="submit" className="h-11 bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90 sm:min-w-40">
+          Put in Waiting
+        </Button>
+      </div>
     </ActionForm>
   );
 }

@@ -253,3 +253,33 @@ describe("waiting production wiring", () => {
     expect(settings).toContain("/settings/waiting");
   });
 });
+
+describe("waiting board UI hierarchy", () => {
+  it("keeps the board as the hero and opens Put in Waiting from a drawer", () => {
+    const page = readFileSync(resolve("src/app/(app)/operations/waiting/page.tsx"), "utf8");
+    const board = readFileSync(resolve("src/components/waiting/waiting-board.tsx"), "utf8");
+    const drawer = readFileSync(resolve("src/components/waiting/add-waiting-drawer.tsx"), "utf8");
+    const form = readFileSync(resolve("src/components/waiting/put-in-waiting-form.tsx"), "utf8");
+    expect(page).not.toContain("<PutInWaitingForm");
+    expect(board).toContain("+ Add Waiting Job");
+    expect(board).toContain("AddWaitingJobDrawer");
+    expect(board).toContain("min-w-[280px]");
+    expect(board).toContain("READY_TO_SCHEDULE");
+    expect(board).toContain("All");
+    expect(drawer).toContain("Put Job in Waiting");
+    expect(drawer).toContain("PutInWaitingForm");
+    expect(form).toContain("putJobInWaitingAction");
+    expect(form).toContain("Put in Waiting");
+  });
+
+  it("keeps drag-and-drop as a real transition and Ready to Schedule as a first-class action", () => {
+    const board = readFileSync(resolve("src/components/waiting/waiting-board.tsx"), "utf8");
+    const card = readFileSync(resolve("src/components/waiting/waiting-card.tsx"), "utf8");
+    expect(board).toContain("text/waiting-record");
+    expect(board).toContain("WaitingTransitionDialog");
+    expect(card).toContain("Part Arrived");
+    expect(card).toContain("/jobs/");
+    expect(card).toContain("#schedule");
+    expect(card).toContain("markPartArrivedAction");
+  });
+});

@@ -1,100 +1,123 @@
 "use client";
 
+import Link from "next/link";
 import type { WaitingCard } from "@/lib/waiting/types";
-import { formatWaitingDate, relativeWaitingDay, waitingSinceLabel } from "@/lib/waiting/format";
+import { formatWaitingDate, relativeWaitingDay } from "@/lib/waiting/format";
+import { ActionForm } from "@/components/action-form";
+import { markPartArrivedAction } from "@/server/actions/waiting";
 
 export function WaitingJobCard({
   card,
   timezone,
   onOpen,
   draggable,
+  readyColumnId,
 }: {
   card: WaitingCard;
   timezone: string;
   onOpen: (id: string) => void;
   draggable?: boolean;
+  readyColumnId?: string | null;
 }) {
+  const ready = card.columnKind === "READY" || card.columnKey === "READY_TO_SCHEDULE";
+  const updateDue = isUpdateDue(card);
+  const daysLabel = card.daysWaiting === 1 ? "1 day" : `${card.daysWaiting} days`;
+
   return (
-    <button
-      type="button"
+    <div
       draggable={draggable}
       onDragStart={(event) => {
         event.dataTransfer.setData("text/waiting-record", card.id);
         event.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => onOpen(card.id)}
-      className="w-full rounded-2xl border border-[var(--border)] bg-white p-3 text-left shadow-sm transition hover:border-[var(--cy-orange)]/50"
+      className={`rounded-2xl border bg-white p-3 text-left shadow-sm transition hover:border-[var(--cy-orange)]/50 ${
+        ready ? "border-[var(--cy-orange)]/45" : "border-[var(--border)]"
+      }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-[var(--cy-navy)]">{card.customerName}</p>
-          <p className="text-xs text-[var(--muted-foreground)]">{card.jobNumber}</p>
+      <button type="button" onClick={() => onOpen(card.id)} className="w-full text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-[var(--cy-navy)]">{card.customerName}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">{card.jobNumber}</p>
+          </div>
+          {card.priority === "HIGH" || card.priority === "URGENT" ? (
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+              High priority
+            </span>
+          ) : null}
         </div>
-        <PriorityDot priority={card.priority} overdue={card.overdue || card.urgent} />
-      </div>
-      {card.address ? <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">{card.address}</p> : null}
-      <p className="mt-2 text-sm font-medium">{card.waitingFor || card.reason}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-[var(--muted-foreground)]">
-        <div>{waitingSinceLabel(card.enteredAt)}</div>
-        <div>
+        <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+          {card.columnName} · {daysLabel}
+        </p>
+        <p className="mt-1 text-sm font-medium text-[var(--cy-navy)]">{card.waitingFor || card.reason}</p>
+        <p className="mt-2 text-xs text-[var(--muted-foreground)]">
           {card.expectedResolutionAt
             ? `Expected ${formatWaitingDate(card.expectedResolutionAt, timezone)}`
             : "No expected date"}
+        </p>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Last update: {relativeWaitingDay(card.lastCustomerUpdateAt)}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {ready ? (
+            <span className="rounded-full bg-[var(--cy-orange)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--cy-orange)]">
+              Ready to schedule
+            </span>
+          ) : null}
+          {card.overdue || card.urgent ? (
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+              Overdue
+            </span>
+          ) : null}
+          {updateDue ? (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              Update due today
+            </span>
+          ) : null}
+          {card.customerReplied ? (
+            <span className="rounded-full bg-[var(--cy-navy)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              Customer replied
+            </span>
+          ) : null}
+          {card.communicationStatus === "FAILED" ? (
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800">
+              Update failed
+            </span>
+          ) : null}
         </div>
-        <div>Last update: {relativeWaitingDay(card.lastCustomerUpdateAt)}</div>
-        <div>
-          Next:{" "}
-          {card.communicationEnabled && card.nextCustomerUpdateAt
-            ? relativeWaitingDay(card.nextCustomerUpdateAt)
-            : "—"}
-        </div>
-      </dl>
-      <div className="mt-2 flex flex-wrap gap-1">
-        {card.overdue || card.urgent ? (
-          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
-            Overdue
-          </span>
-        ) : card.warning ? (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-            Watch
-          </span>
+        {card.ownerName || card.technicianName ? (
+          <p className="mt-2 truncate text-[11px] text-[var(--muted-foreground)]">
+            Assigned: {card.ownerName || card.technicianName}
+          </p>
         ) : null}
-        {card.customerReplied ? (
-          <span className="rounded-full bg-[var(--cy-navy)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-            Customer replied
-          </span>
-        ) : null}
-        {card.communicationStatus === "FAILED" ? (
-          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-800">
-            Update failed
-          </span>
-        ) : card.communicationEnabled ? (
-          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
-            Updates on
-          </span>
-        ) : (
-          <span className="rounded-full bg-[var(--cy-gray)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-            Manual
-          </span>
-        )}
-        {card.technicianName ? (
-          <span className="truncate text-[10px] text-[var(--muted-foreground)]">Tech {card.technicianName}</span>
-        ) : null}
-        {card.ownerName ? (
-          <span className="truncate text-[10px] text-[var(--muted-foreground)]">Office {card.ownerName}</span>
-        ) : null}
-      </div>
-    </button>
+      </button>
+      {ready ? (
+        <Link
+          href={`/jobs/${card.jobId}#schedule`}
+          className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-[var(--cy-navy)] text-sm font-medium text-white"
+        >
+          Schedule
+        </Link>
+      ) : card.columnKey === "WAITING_ON_PART" && readyColumnId ? (
+        <ActionForm action={markPartArrivedAction} className="mt-3">
+          <input type="hidden" name="recordId" value={card.id} />
+          <input type="hidden" name="toColumnId" value={readyColumnId} />
+          <button
+            type="submit"
+            className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-[var(--cy-orange)] text-sm font-medium text-white"
+          >
+            Part Arrived
+          </button>
+        </ActionForm>
+      ) : null}
+    </div>
   );
 }
 
-function PriorityDot({ priority, overdue }: { priority: string; overdue: boolean }) {
-  const color = overdue
-    ? "bg-rose-500"
-    : priority === "URGENT"
-      ? "bg-rose-500"
-      : priority === "HIGH"
-        ? "bg-[var(--cy-orange)]"
-        : "bg-slate-300";
-  return <span className={`mt-1 inline-block size-2.5 rounded-full ${color}`} title={priority} />;
+function isUpdateDue(card: WaitingCard) {
+  if (!card.communicationEnabled || !card.nextCustomerUpdateAt) return false;
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return card.nextCustomerUpdateAt <= end;
 }

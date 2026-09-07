@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/server/actions/auth";
 
@@ -11,17 +11,23 @@ export function ActionForm({
   children,
   className,
   successMessage,
+  onSuccess,
 }: {
   action: Action;
   children: React.ReactNode;
   className?: string;
   successMessage?: string;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(action, null);
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
 
   useEffect(() => {
-    if (state?.ok) router.refresh();
+    if (!state?.ok) return;
+    router.refresh();
+    onSuccessRef.current?.();
   }, [state, router]);
 
   return (
