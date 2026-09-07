@@ -26,6 +26,11 @@ export const OFFICE_FOLLOW_UP_TYPES = new Set([
   "invoice_awaiting_payment",
   "invoice_overdue",
   "job_missing_technician",
+  "waiting_expected_date_passed",
+  "waiting_update_failed",
+  "waiting_ready_to_schedule",
+  "waiting_customer_replied",
+  "waiting_warranty_overdue",
 ]);
 export type AttentionSort = "priority" | "dollars" | "age" | "newest";
 
@@ -56,6 +61,14 @@ const TYPE_BASE: Record<string, number> = {
   membership_needs_review: 14,
   receipt_missing_category: 8,
   expense_not_assigned_to_job: 8,
+  waiting_expected_date_passed: 40,
+  waiting_update_failed: 44,
+  waiting_missing_expected_date: 14,
+  waiting_too_long: 34,
+  waiting_ready_to_schedule: 30,
+  waiting_customer_replied: 32,
+  waiting_missing_owner: 12,
+  waiting_warranty_overdue: 28,
 };
 
 const TYPE_CATEGORY: Record<string, AttentionCategory> = {
@@ -75,6 +88,14 @@ const TYPE_CATEGORY: Record<string, AttentionCategory> = {
   compensation_needs_approval: "team",
   receipt_missing_category: "operations",
   expense_not_assigned_to_job: "operations",
+  waiting_expected_date_passed: "operations",
+  waiting_update_failed: "operations",
+  waiting_missing_expected_date: "operations",
+  waiting_too_long: "operations",
+  waiting_ready_to_schedule: "operations",
+  waiting_customer_replied: "customers",
+  waiting_missing_owner: "operations",
+  waiting_warranty_overdue: "operations",
 };
 
 const TYPE_ACTION: Record<string, string> = {
@@ -94,6 +115,14 @@ const TYPE_ACTION: Record<string, string> = {
   compensation_needs_approval: "Review pending incentives.",
   receipt_missing_category: "Review the receipt.",
   expense_not_assigned_to_job: "Assign the expense to a job.",
+  waiting_expected_date_passed: "Check part or vendor status.",
+  waiting_update_failed: "Fix the failed customer update.",
+  waiting_missing_expected_date: "Enter an expected date when known.",
+  waiting_too_long: "Escalate or move this job forward.",
+  waiting_ready_to_schedule: "Schedule the customer.",
+  waiting_customer_replied: "Read the customer reply.",
+  waiting_missing_owner: "Assign an office owner.",
+  waiting_warranty_overdue: "Check the warranty claim.",
 };
 
 const PRIORITY_ORDER: Record<AttentionPriority, number> = {

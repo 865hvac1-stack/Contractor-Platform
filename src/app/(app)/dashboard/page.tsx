@@ -11,6 +11,7 @@ import { AttentionSummary } from "@/components/attention-feed";
 import { HealthHero } from "@/components/health-hero";
 import { MetricRing } from "@/components/metric-ring";
 import { RevenueChart } from "@/components/revenue-chart";
+import { loadWaitingMetrics } from "@/lib/waiting/metrics";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
     redirect(landingPath(ctx.role));
   }
   const data = await getCommandCenterData(ctx.company.id);
+  const waiting = await loadWaitingMetrics(ctx.company.id);
   const greeting = greetingForHour(new Date().getHours());
   const canSeeTeam = can(ctx.role, "performance:view_team");
   const canAsk = can(ctx.role, "intelligence:view");
@@ -59,6 +61,8 @@ export default async function DashboardPage() {
     { label: "In progress", value: String(data.today.inProgressJobs), href: "/dispatch", show: data.today.inProgressJobs > 0 },
     { label: "Running late", value: String(data.today.runningBehind), href: "/dispatch", show: data.today.runningBehind > 0 },
     { label: "Memberships sold", value: String(data.today.membershipsSold), href: "/memberships", show: data.today.membershipsSold > 0 },
+    { label: "Waiting", value: String(waiting.currentlyWaiting), href: "/operations/waiting", show: waiting.currentlyWaiting > 0 },
+    { label: "Ready to schedule", value: String(waiting.readyToSchedule), href: "/operations/waiting", show: waiting.readyToSchedule > 0 },
   ].filter((item) => item.show);
 
   return (

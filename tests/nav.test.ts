@@ -35,6 +35,7 @@ describe("nav catalog", () => {
       "Customers",
       "Schedule",
       "Jobs",
+      "Waiting Board",
       "Playbooks",
       "Estimates",
       "Invoices",

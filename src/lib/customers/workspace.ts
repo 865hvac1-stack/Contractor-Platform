@@ -61,6 +61,7 @@ export async function getCustomer360(input: Customer360Options) {
     invoiceTotals,
     overdueTotals,
     collectedTotals,
+    waitingRecords,
   ] = await Promise.all([
     prisma.equipment.findMany({
       where: { companyId: input.companyId, customerId: customer.id, ...(selected ? { propertyId: selected.id } : {}) },
@@ -194,6 +195,12 @@ export async function getCustomer360(input: Customer360Options) {
           _sum: { amountCents: true },
         })
       : Promise.resolve({ _sum: { amountCents: 0 } }),
+    prisma.waitingRecord.findMany({
+      where: { companyId: input.companyId, customerId: customer.id },
+      include: { column: true, job: { select: { jobNumber: true } } },
+      orderBy: { enteredAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   const jobIds = new Set(recentJobs.map((job) => job.id));
@@ -330,6 +337,7 @@ export async function getCustomer360(input: Customer360Options) {
     notes,
     photos,
     calls,
+    waiting: waitingRecords,
   }).slice(0, 40);
 
   return {
@@ -418,6 +426,16 @@ export async function getCustomer360(input: Customer360Options) {
         },
     canSeeMoney,
     attention,
+    activeWaiting: waitingRecords
+      .filter((row) => row.state === "ACTIVE")
+      .map((row) => ({
+        id: row.id,
+        columnName: row.column.name,
+        waitingFor: row.reason,
+        enteredAt: row.enteredAt,
+        nextCustomerUpdateAt: row.nextCustomerUpdateAt,
+        jobNumber: row.job.jobNumber,
+      })),
     insights,
     equipment: equipmentCards,
     activeWork: {
@@ -548,6 +566,15 @@ function buildTimeline(input: {
   notes: { id: string; createdAt: Date }[];
   photos: { id: string; createdAt: Date; job: { jobNumber: string } }[];
   calls: { id: string; startedAt: Date; missed: boolean | null }[];
+  waiting?: Array<{
+    id: string;
+    enteredAt: Date;
+    resolvedAt: Date | null;
+    state: string;
+    reason: string;
+    column: { name: string };
+    job: { jobNumber: string };
+  }>;
 }) {
   const events: { id: string; at: Date; kind: string; title: string; href?: string }[] = [
     { id: "created", at: input.customer.createdAt, kind: "customer", title: "Customer created" },
@@ -613,6 +640,24 @@ function buildTimeline(input: {
       kind: "communications",
       title: call.missed ? "Missed call" : "Call recorded",
     });
+  }
+  for (const waiting of input.waiting ?? []) {
+    events.push({
+      id: `wait-${waiting.id}`,
+      at: waiting.enteredAt,
+      kind: "jobs",
+      title: `${waiting.column.name} · ${waiting.job.jobNumber}`,
+      href: `/operations/waiting?record=${waiting.id}`,
+    });
+    if (waiting.resolvedAt) {
+      events.push({
+        id: `wait-resolved-${waiting.id}`,
+        at: waiting.resolvedAt,
+        kind: "jobs",
+        title: `Waiting resolved · ${waiting.job.jobNumber}`,
+        href: `/operations/waiting?record=${waiting.id}`,
+      });
+    }
   }
   return events.sort((a, b) => b.at.getTime() - a.at.getTime());
 }

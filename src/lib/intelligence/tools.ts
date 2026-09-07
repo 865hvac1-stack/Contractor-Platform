@@ -85,6 +85,7 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getProcessingPayments: "invoices:view",
   getBusinessHealth: "intelligence:view",
   getOperatingNotes: "intelligence:view",
+  getWaitingBoard: "jobs:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -337,6 +338,12 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getOperatingNotes",
     description: "Authorized company operating notes for this tenant only.",
+    parameters: {},
+  },
+  {
+    name: "getWaitingBoard",
+    description:
+      "Verified Customer Waiting Board snapshot: longest waits, updates due, parts overdue, ready to schedule, vendor delays, and revenue tied up from real invoices or approved estimates only. Read-only. Does not change waiting state.",
     parameters: {},
   },
 ] as const;
@@ -1246,6 +1253,62 @@ export async function runIntelligenceTool(
           text: context ? formatOperatingNotesForModel(context) : "No operating notes on file.",
         },
         grounding: { sources: ["company_operating_notes"] },
+      };
+    }
+    case "getWaitingBoard": {
+      const { loadWaitingMetrics, vendorDelayRows } = await import("@/lib/waiting/metrics");
+      const { loadWaitingBoard } = await import("@/lib/waiting/board");
+      const { daysWaitingSince, formatWaitingDate } = await import("@/lib/waiting/schedule");
+      const metrics = await loadWaitingMetrics(ctx.companyId);
+      const board = await loadWaitingBoard(ctx.companyId);
+      const now = new Date();
+      const longest = [...board.cards].sort((a, b) => b.daysWaiting - a.daysWaiting).slice(0, 8);
+      const updatesDue = board.cards.filter(
+        (card) => card.nextCustomerUpdateAt && card.nextCustomerUpdateAt <= now && card.automationEnabled
+      );
+      const partsOverdue = board.cards.filter(
+        (card) => card.columnKey === "WAITING_ON_PART" && card.overdue
+      );
+      const ready = board.cards.filter((card) => card.columnKind === "READY" || card.columnKey === "READY_TO_SCHEDULE");
+      return {
+        ok: true,
+        data: {
+          metrics,
+          longestWait: longest.map((card) => ({
+            customer: card.customerName,
+            jobNumber: card.jobNumber,
+            status: card.columnName,
+            daysWaiting: card.daysWaiting,
+            waitingFor: card.waitingFor,
+          })),
+          updatesDueToday: updatesDue.map((card) => ({
+            customer: card.customerName,
+            jobNumber: card.jobNumber,
+            nextUpdate: formatWaitingDate(card.nextCustomerUpdateAt),
+          })),
+          partsOverdue: partsOverdue.map((card) => ({
+            customer: card.customerName,
+            jobNumber: card.jobNumber,
+            part: card.waitingFor,
+            expected: formatWaitingDate(card.expectedResolutionAt),
+            daysWaiting: daysWaitingSince(card.enteredAt, now),
+          })),
+          readyToSchedule: ready.map((card) => ({
+            customer: card.customerName,
+            jobNumber: card.jobNumber,
+            waitingFor: card.waitingFor,
+          })),
+          vendorDelays: vendorDelayRows(
+            board.cards.map((card) => ({
+              enteredAt: card.enteredAt,
+              metadata: card.metadata,
+              column: { key: card.columnKey },
+            }))
+          ),
+          revenueTiedUpCents: metrics.revenueTiedUpAvailable ? metrics.revenueTiedUpCents : null,
+          note: "Waiting Board answers use verified ContractorYou records only. Intelligence cannot change waiting state.",
+        },
+        grounding: { sources: ["waiting_records", "invoices", "estimates"] },
       };
     }
     default:

@@ -10,6 +10,7 @@ import { CustomerTimeline } from "@/components/customers/customer-timeline";
 import { formatMoney } from "@/lib/money";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
 import type { Customer360 } from "@/lib/customers/workspace";
+import { CustomerWaitingBanner } from "@/components/waiting/customer-waiting-banner";
 import type { CompanyRole } from "@prisma/client";
 
 function telHref(phone: string | null) {
@@ -131,6 +132,8 @@ export function Customer360View({
           </div>
         </div>
       </header>
+
+      <CustomerWaitingBanner items={workspace.activeWaiting} timezone="America/New_York" />
 
       {selectedProperty ? (
         <section className="overflow-hidden rounded-[28px] bg-[var(--cy-navy)] text-white">

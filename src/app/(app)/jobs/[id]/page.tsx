@@ -22,6 +22,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AskContractorYou } from "@/components/ask-contractoryou";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
+import { ensureWaitingSetup } from "@/lib/waiting/columns";
+import { loadActiveWaitingForJob } from "@/lib/waiting/board";
+import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
+import { JobWaitingPanel } from "@/components/waiting/job-waiting-panel";
 
 function toLocalInputValue(d: Date | null | undefined) {
   if (!d) return "";
@@ -67,6 +71,24 @@ export default async function JobDetailPage({
     view.job.status !== "COMPLETED" &&
     view.job.status !== "CANCELED";
   const canAddCost = can(ctx.role, "job_costs:manage");
+  const [{ columns: waitingColumns }, activeWaiting, officeMembers] = await Promise.all([
+    ensureWaitingSetup(ctx.company.id),
+    loadActiveWaitingForJob(ctx.company.id, view.job.id),
+    prisma.membership.findMany({
+      where: { companyId: ctx.company.id, status: "ACTIVE" },
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    }),
+  ]);
+  const waitingOwners = officeMembers.map((row) => ({
+    id: row.user.id,
+    name: `${row.user.firstName} ${row.user.lastName}`.trim(),
+  }));
+  const readyColumnId = waitingColumns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE")?.id;
+  const canPlaceWaiting =
+    (can(ctx.role, "jobs:manage") || view.technicians.assigned.some((row) => row.id === ctx.user.id)) &&
+    view.job.status !== "COMPLETED" &&
+    view.job.status !== "CANCELED";
+
   const membershipPlans =
     can(ctx.role, "memberships:manage") && !view.job.historical
       ? await prisma.membershipPlan.findMany({
@@ -85,6 +107,33 @@ export default async function JobDetailPage({
         canInvoice={can(ctx.role, "invoices:manage")}
         canViewMoney={can(ctx.role, "invoices:view")}
         canDelete={can(ctx.role, "jobs:manage")}
+      />
+
+      <JobWaitingPanel
+        jobId={view.job.id}
+        waiting={
+          activeWaiting
+            ? {
+                id: activeWaiting.id,
+                reason: activeWaiting.reason,
+                waitingFor: itemNameFromMetadata(parseWaitingMetadata(activeWaiting.metadata), "") || null,
+                enteredAt: activeWaiting.enteredAt,
+                expectedResolutionAt: activeWaiting.expectedResolutionAt,
+                columnKey: activeWaiting.column.key,
+                columnName: activeWaiting.column.name,
+              }
+            : null
+        }
+        columns={waitingColumns.map((column) => ({
+          id: column.id,
+          key: column.key,
+          name: column.name,
+          kind: column.kind,
+        }))}
+        owners={waitingOwners}
+        readyColumnId={readyColumnId}
+        timezone={ctx.company.timezone}
+        canPlace={canPlaceWaiting && !view.job.historical}
       />
 
       {can(ctx.role, "intelligence:view") ? (

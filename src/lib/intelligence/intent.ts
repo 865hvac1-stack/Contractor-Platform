@@ -79,6 +79,13 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
     tools.add("getBusinessHealth");
     tools.add("getOperatingNotes");
   }
+  if (
+    /waiting|wait(?:ing)? on part|ready to schedule|overdue part|who (?:has )?been waiting|updates today|tied up|vendor/.test(
+      q
+    )
+  ) {
+    tools.add("getWaitingBoard");
+  }
   if (/how are we|this month|this week|summary|happening/.test(q)) tools.add("getBusinessSummary");
   if (/drive|route|unassigned|fit another|dispatch|late/.test(q)) {
     tools.add("getDispatchWorkload");
@@ -124,9 +131,9 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
   if (workspace === "office") {
     return [
       "Which customers need follow-up?",
-      "Which estimates are still open?",
-      "Who has an unpaid invoice?",
-      "What should I do next for this customer?",
+      "Who has been waiting the longest?",
+      "Which customers need updates today?",
+      "Who is ready to schedule?",
     ];
   }
   if (workspace === "intelligence") {

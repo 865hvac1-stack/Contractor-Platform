@@ -143,6 +143,22 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
+      {can(ctx.role, "company:settings") ? (
+        <Link
+          href="/settings/waiting"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Operations
+          </p>
+          <h2 className="mt-2 font-medium">Waiting Board</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Default waiting statuses, customer update cadence, templates, and overdue thresholds. The board
+            remembers who needs an update so the office does not have to.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "playbooks:view") ? (
         <Link
           href="/settings/playbooks"

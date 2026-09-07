@@ -237,6 +237,20 @@ enum CompensationStatus {
   VOIDED
 }
 
+enum WaitingRecordState {
+  ACTIVE
+  RESOLVED
+}
+
+enum WaitingCadence {
+  DAILY
+  EVERY_2_DAYS
+  EVERY_3_DAYS
+  WEEKLY
+  CUSTOM
+  MANUAL
+}
+
 enum PaymentMethod {
   CASH
   CHECK
@@ -366,6 +380,8 @@ model User {
   compensationApprovals CompensationEvent[] @relation("CompensationApprover")
   jobPhotosUploaded JobPhoto[] @relation("JobPhotoUploader")
   customerNotesAuthored CustomerNote[] @relation("CustomerNoteAuthor")
+  waitingRecordsOwned WaitingRecord[] @relation("WaitingRecordOwner")
+  waitingTransitions WaitingTransition[]
   performanceGoals PerformanceGoal[]
   aiConversations AIConversation[]
   aiUsageEvents AIUsageEvent[]
@@ -547,6 +563,12 @@ model Company {
   routeEndKind String?
   providerTestGrantsAsTenant ProviderTestGrant[] @relation("ProviderTestGrantTenant")
   providerTestGrantsAsOwner  ProviderTestGrant[] @relation("ProviderTestGrantOwner")
+  waitingColumns WaitingColumn[]
+  waitingRecords WaitingRecord[]
+  waitingTransitions WaitingTransition[]
+  waitingTemplates WaitingTemplate[]
+  waitingCommunications WaitingCommunication[]
+  waitingBoardSetting WaitingBoardSetting?
 
   @@index([status])
   @@index([industry])
@@ -665,6 +687,7 @@ model Customer {
   customerMemberships CustomerMembership[]
   compensationEvents CompensationEvent[]
   customerNotes CustomerNote[]
+  waitingRecords WaitingRecord[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -725,6 +748,7 @@ model Property {
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
   customerNotes CustomerNote[]
+  waitingRecords WaitingRecord[]
 
   @@index([companyId])
   @@index([companyId, customerId])
@@ -880,6 +904,7 @@ model Job {
   customerMemberships CustomerMembership[]
   compensationEvents CompensationEvent[]
   photos JobPhoto[]
+  waitingRecords WaitingRecord[]
 
   @@unique([companyId, jobNumber])
   @@index([companyId])
@@ -2754,4 +2779,146 @@ model PerformanceGoal {
   user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([companyId, metricKey])
+}
+
+model WaitingColumn {
+  id          String    @id @default(cuid())
+  companyId   String
+  key         String
+  name        String
+  kind        String
+  sortOrder   Int       @default(0)
+  archivedAt  DateTime?
+  warningDays Int       @default(5)
+  urgentDays  Int       @default(10)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  records         WaitingRecord[]
+  templates       WaitingTemplate[]
+  fromTransitions WaitingTransition[]  @relation("WaitingTransitionFrom")
+  toTransitions   WaitingTransition[]  @relation("WaitingTransitionTo")
+
+  @@unique([companyId, key])
+  @@index([companyId, sortOrder])
+}
+
+model WaitingBoardSetting {
+  id                       String         @id @default(cuid())
+  companyId                String         @unique
+  automaticUpdatesEnabled  Boolean        @default(true)
+  defaultCadence           WaitingCadence @default(EVERY_3_DAYS)
+  defaultCustomCadenceDays Int?
+  businessHoursStart       Int            @default(10)
+  overdueAlertUserIds      String[]       @default([])
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model WaitingRecord {
+  id                     String             @id @default(cuid())
+  companyId              String
+  customerId             String
+  jobId                  String
+  propertyId             String?
+  columnId               String
+  state                  WaitingRecordState @default(ACTIVE)
+  reason                 String
+  notes                  String?            @db.Text
+  priority               JobPriority        @default(NORMAL)
+  metadata               Json?
+  assignedOwnerUserId    String?
+  enteredAt              DateTime           @default(now())
+  lastCustomerUpdateAt   DateTime?
+  nextCustomerUpdateAt   DateTime?
+  expectedResolutionAt   DateTime?
+  resolvedAt             DateTime?
+  actualArrivalAt        DateTime?
+  customerRepliedAt      DateTime?
+  communicationEnabled   Boolean            @default(true)
+  automationEnabled      Boolean            @default(true)
+  cadence                WaitingCadence     @default(EVERY_3_DAYS)
+  customCadenceDays      Int?
+  lastCommunicationStatus String?
+  lastCommunicationError String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer       Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job            Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  property       Property?               @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  column         WaitingColumn           @relation(fields: [columnId], references: [id], onDelete: Restrict)
+  assignedOwner  User?                   @relation("WaitingRecordOwner", fields: [assignedOwnerUserId], references: [id], onDelete: SetNull)
+  transitions    WaitingTransition[]
+  communications WaitingCommunication[]
+
+  @@index([companyId, state, columnId])
+  @@index([companyId, nextCustomerUpdateAt])
+  @@index([companyId, jobId])
+  @@index([companyId, customerId])
+  @@index([companyId, assignedOwnerUserId])
+}
+
+model WaitingTransition {
+  id           String   @id @default(cuid())
+  companyId    String
+  recordId     String
+  fromColumnId String?
+  toColumnId   String
+  actorId      String?
+  actions      Json?
+  note         String?
+  createdAt    DateTime @default(now())
+
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  record     WaitingRecord  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  fromColumn WaitingColumn? @relation("WaitingTransitionFrom", fields: [fromColumnId], references: [id], onDelete: SetNull)
+  toColumn   WaitingColumn  @relation("WaitingTransitionTo", fields: [toColumnId], references: [id], onDelete: Restrict)
+  actor      User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, recordId])
+}
+
+model WaitingTemplate {
+  id        String   @id @default(cuid())
+  companyId String
+  columnId  String?
+  kind      String
+  name      String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  column  WaitingColumn? @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, columnId, kind])
+  @@index([companyId, kind])
+}
+
+model WaitingCommunication {
+  id                String    @id @default(cuid())
+  companyId         String
+  recordId          String
+  kind              String
+  idempotencyKey    String
+  body              String    @db.Text
+  templateKind      String?
+  provider          String?
+  providerMessageId String?
+  attemptedAt       DateTime  @default(now())
+  sentAt            DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  createdAt         DateTime  @default(now())
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  record  WaitingRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, recordId, createdAt])
 }

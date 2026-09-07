@@ -33,6 +33,10 @@ import { stripeClientConfigured, stripePublishableKey } from "@/lib/payments/con
 import { appUrl } from "@/lib/payments/config";
 import { syncOpenStripePaymentsForInvoice } from "@/lib/payments/sync";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
+import { ensureWaitingSetup } from "@/lib/waiting/columns";
+import { loadActiveWaitingForJob } from "@/lib/waiting/board";
+import { JobWaitingPanel } from "@/components/waiting/job-waiting-panel";
+import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
 
 export default async function TechJobWorkspacePage({
   params,
@@ -133,6 +137,11 @@ export default async function TechJobWorkspacePage({
 
   const nextSection = next ? fieldSectionForStep(next) : remaining[0] ? fieldSectionForStep(remaining[0]) : null;
   const noteCount = Number(Boolean(full.internalNotes)) + Number(Boolean(full.customerNotes));
+  const [{ columns: waitingColumns }, activeWaiting] = await Promise.all([
+    ensureWaitingSetup(ctx.company.id),
+    loadActiveWaitingForJob(ctx.company.id, full.id),
+  ]);
+  const readyColumnId = waitingColumns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE")?.id;
 
   return (
     <div className="space-y-5">
@@ -217,6 +226,34 @@ export default async function TechJobWorkspacePage({
         </div>
         {phone ? <CompanySmsForm to={phone} customerId={full.customer.id} /> : null}
         <FieldStatusButtons jobId={full.id} status={full.status} />
+        <div className="mt-4">
+          <JobWaitingPanel
+            jobId={full.id}
+            waiting={
+              activeWaiting
+                ? {
+                    id: activeWaiting.id,
+                    reason: activeWaiting.reason,
+                    waitingFor: itemNameFromMetadata(parseWaitingMetadata(activeWaiting.metadata), "") || null,
+                    enteredAt: activeWaiting.enteredAt,
+                    expectedResolutionAt: activeWaiting.expectedResolutionAt,
+                    columnKey: activeWaiting.column.key,
+                    columnName: activeWaiting.column.name,
+                  }
+                : null
+            }
+            columns={waitingColumns.map((column) => ({
+              id: column.id,
+              key: column.key,
+              name: column.name,
+              kind: column.kind,
+            }))}
+            owners={[{ id: ctx.user.id, name: `${ctx.user.firstName} ${ctx.user.lastName}`.trim() }]}
+            readyColumnId={readyColumnId}
+            timezone={ctx.company.timezone}
+            canPlace={full.status !== "COMPLETED" && full.status !== "CANCELED"}
+          />
+        </div>
       </section>
 
       <WorkspaceSection

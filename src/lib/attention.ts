@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
+import { detectWaitingAttention } from "@/lib/waiting/attention";
 
 /**
  * Reusable Needs Attention architecture.
@@ -512,6 +513,8 @@ registerAttentionDetector(async (companyId) => {
     };
   });
 });
+
+registerAttentionDetector(detectWaitingAttention);
 
 function customerLabel(customer?: { firstName: string; lastName: string; businessName: string | null } | null) {
   if (!customer) return null;

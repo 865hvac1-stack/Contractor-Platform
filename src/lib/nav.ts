@@ -20,6 +20,7 @@ import {
   UserCog,
   CircleHelp,
   ListChecks,
+  Hourglass,
   type LucideIcon,
 } from "lucide-react";
 import type { CompanyRole } from "@prisma/client";
@@ -69,6 +70,7 @@ export const ACCORDION_SECTIONS: AccordionSection[] = [
       { href: "/customers", label: "Customers", icon: Users, permission: "customers:view" },
       { href: "/schedule", label: "Schedule", icon: CalendarDays, permission: "schedule:view" },
       { href: "/jobs", label: "Jobs", icon: Briefcase, permission: "jobs:view" },
+      { href: "/operations/waiting", label: "Waiting Board", icon: Hourglass, permission: "jobs:view" },
       { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen, permission: "playbooks:view" },
       { href: "/estimates", label: "Estimates", icon: FileText, permission: "estimates:view" },
       { href: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices:view" },
