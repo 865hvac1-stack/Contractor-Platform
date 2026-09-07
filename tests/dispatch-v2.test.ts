@@ -178,7 +178,7 @@ describe("dispatch V2 helpers", () => {
     expect(drawer).toContain("Open Job 360");
     expect(drawer).toContain("sticky bottom-0");
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
-    expect(shell).toContain("overflow-hidden");
+    expect(shell).not.toMatch(/<header[^>]*overflow-hidden/);
     expect(shell).toContain("AppNav");
     expect(shell).toContain("WorkspaceSwitcher");
     expect(shell).toContain("shrink-0");

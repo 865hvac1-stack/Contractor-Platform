@@ -110,6 +110,6 @@ describe("attention priority scoring", () => {
     const page = readFileSync(resolve(process.cwd(), "src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
     expect(page).toMatch(/getHomeSummary/);
-    expect(page).toMatch(/Needs you|Action Center/);
+    expect(page).toMatch(/NeedsYou|Action Center/);
   });
 });

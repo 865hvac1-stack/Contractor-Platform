@@ -195,7 +195,7 @@ describe("Command Center source", () => {
     const page = readFileSync(resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
     expect(page).toMatch(/getHomeSummary/);
-    expect(page).toMatch(/Needs you/);
+    expect(page).toMatch(/NeedsYou/);
     expect(page).toMatch(/variant="bar"/);
     const engine = readFileSync(resolve("src/lib/dashboard.ts"), "utf8");
     expect(engine).toContain("getCommandCenterData");
