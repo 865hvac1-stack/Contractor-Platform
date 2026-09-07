@@ -46,8 +46,8 @@ export function AskContractorYou({
 
   if (variant === "bar") {
     return (
-      <section className="rounded-2xl bg-[var(--cy-navy)] px-4 py-3 text-white md:px-5">
-        <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <section className="rounded-2xl bg-[var(--cy-navy)] px-4 py-4 text-white shadow-[0_12px_32px_rgba(11,18,32,0.12)] md:px-6 md:py-5">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
           {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
           {customerId ? <input type="hidden" name="customerId" value={customerId} /> : null}
@@ -64,9 +64,9 @@ export function AskContractorYou({
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={placeholder || "Ask anything about your business..."}
-            className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/8 px-3 text-sm text-white placeholder:text-white/40"
+            className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/8 px-3 text-sm text-white placeholder:text-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cy-orange)]"
           />
-          <Button type="submit" disabled={pending} className="h-10 shrink-0">
+          <Button type="submit" disabled={pending} className="h-11 shrink-0 bg-[var(--cy-orange)] px-5 text-white hover:bg-[var(--cy-orange-hover)]">
             {pending ? "Looking…" : "Ask"}
           </Button>
         </form>

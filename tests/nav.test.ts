@@ -137,9 +137,10 @@ describe("home and customers simplification", () => {
   it("keeps Home to today, needs you, ask, and one snapshot", () => {
     const page = readFileSync(resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).toContain("getHomeSummary");
-    expect(page).toContain("Needs you");
+    expect(page).toContain("NeedsYou");
     expect(page).toContain("AskContractorYou");
-    expect(page).toContain("View all in Action Center");
+    expect(page).toContain("CommandHero");
+    expect(page).toContain("BusinessSnapshot");
     expect(page).not.toContain("HealthHero");
     expect(page).not.toContain("MetricRing");
     expect(page).not.toContain("RevenueChart");

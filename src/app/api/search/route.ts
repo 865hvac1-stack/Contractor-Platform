@@ -7,17 +7,17 @@ export async function GET(request: Request) {
   try {
     const ctx = await requireTenant();
     const q = new URL(request.url).searchParams.get("q") ?? "";
-    const items = await globalSearch({
+    const result = await globalSearch({
       companyId: ctx.company.id,
       role: ctx.role,
       userId: ctx.user.id,
       query: q,
     });
-    return NextResponse.json({ items });
+    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    throw error;
+    return NextResponse.json({ error: "Search unavailable. Try again.", items: [], groups: [] }, { status: 500 });
   }
 }

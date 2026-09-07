@@ -93,6 +93,7 @@ registerAttentionDetector(async (companyId) => {
       jobId: null,
     },
     take: 25,
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
   // Also find approved estimates whose related job is unscheduled
   const approvedWithUnscheduledJob = await prisma.estimate.findMany({
@@ -105,6 +106,7 @@ registerAttentionDetector(async (companyId) => {
       ],
     },
     take: 25,
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
 
   const items: AttentionItem[] = [
@@ -118,17 +120,19 @@ registerAttentionDetector(async (companyId) => {
       entityType: "Estimate",
       entityId: e.id,
       createdAt: e.approvedAt ?? e.updatedAt,
+      customerName: customerLabel(e.customer),
     })),
     ...approvedWithUnscheduledJob.map((e) => ({
       id: `est-job-unscheduled-${e.id}`,
       type: "approved_estimate_not_scheduled",
       title: "Approved work not scheduled",
-      description: `${e.estimateNumber}`,
+      description: e.estimateNumber,
       severity: "warning" as const,
       href: e.jobId ? `/jobs/${e.jobId}` : `/estimates/${e.id}`,
       entityType: "Estimate",
       entityId: e.id,
       createdAt: e.approvedAt ?? e.updatedAt,
+      customerName: customerLabel(e.customer),
     })),
   ];
   return items;
@@ -142,17 +146,19 @@ registerAttentionDetector(async (companyId) => {
       invoices: { none: {} },
     },
     take: 25,
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
   return jobs.map((j) => ({
     id: `job-no-invoice-${j.id}`,
     type: "job_missing_invoice",
     title: "Completed job missing invoice",
-    description: j.jobNumber,
+    description: `${j.jobNumber}${j.customer ? ` · ${customerLabel(j.customer)}` : ""}`.trim(),
     severity: "warning" as const,
     href: `/jobs/${j.id}`,
     entityType: "Job",
     entityId: j.id,
     createdAt: j.completedAt ?? j.updatedAt,
+    customerName: customerLabel(j.customer),
   }));
 });
 
@@ -195,17 +201,19 @@ registerAttentionDetector(async (companyId) => {
       scheduledEnd: { lt: stale },
     },
     take: 25,
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
   });
   return jobs.map((j) => ({
     id: `job-incomplete-${j.id}`,
     type: "job_missing_completion",
     title: "Job may need completion",
-    description: j.jobNumber,
+    description: `${j.jobNumber}${j.customer ? ` · ${customerLabel(j.customer)}` : ""}`.trim(),
     severity: "info" as const,
     href: `/jobs/${j.id}`,
     entityType: "Job",
     entityId: j.id,
     createdAt: j.scheduledEnd ?? j.updatedAt,
+    customerName: customerLabel(j.customer),
   }));
 });
 
@@ -352,20 +360,31 @@ registerAttentionDetector(async (companyId) => {
       assignments: { none: {} },
     },
     take: 20,
+    include: {
+      customer: { select: { firstName: true, lastName: true, businessName: true } },
+      serviceType: { select: { name: true } },
+    },
   });
-  return jobs.map((job) => ({
-    id: `job-unassigned-${job.id}`,
-    type: "job_missing_technician",
-    title: "Scheduled job has no technician",
-    description: job.jobNumber,
-    severity: "warning" as const,
-    href: `/dispatch`,
-    entityType: "Job",
-    entityId: job.id,
-    createdAt: job.scheduledStart ?? job.updatedAt,
-    recommendedAction: "Assign a technician.",
-    category: "operations" as const,
-  }));
+  return jobs.map((job) => {
+    const when = job.scheduledStart
+      ? job.scheduledStart.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+      : null;
+    const context = [when, job.serviceType?.name || job.jobType].filter(Boolean).join(" · ");
+    return {
+      id: `job-unassigned-${job.id}`,
+      type: "job_missing_technician",
+      title: "Job needs technician",
+      description: context || job.jobNumber,
+      severity: "warning" as const,
+      href: `/dispatch`,
+      entityType: "Job",
+      entityId: job.id,
+      createdAt: job.scheduledStart ?? job.updatedAt,
+      customerName: customerLabel(job.customer),
+      recommendedAction: "Assign Technician",
+      category: "operations" as const,
+    };
+  });
 });
 
 registerAttentionDetector(async (companyId) => {

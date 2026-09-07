@@ -130,7 +130,7 @@ export function AppShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-[var(--border)] bg-white/95 px-3 backdrop-blur md:gap-3 md:px-6">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-white/95 px-3 backdrop-blur md:gap-3 md:px-6">
           <Button
             variant="ghost"
             size="icon"

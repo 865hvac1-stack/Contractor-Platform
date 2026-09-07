@@ -1,19 +1,21 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { jobAccessFilter } from "@/lib/tenant";
 import type { CompanyRole } from "@prisma/client";
 
-export function customerSearchWhere(companyId: string, raw: string) {
+export function customerSearchWhere(companyId: string, raw: string): Prisma.CustomerWhereInput {
   const query = raw.trim();
   if (!query) return { companyId };
   const digits = query.replace(/\D/g, "");
   const commaParts = query.split(",").map((part) => part.trim()).filter(Boolean);
   const tokens = query.replace(/,/g, " ").split(/\s+/).filter(Boolean);
-  const or: Record<string, unknown>[] = [
+  const or: Prisma.CustomerWhereInput[] = [
     { firstName: { contains: query, mode: "insensitive" } },
     { lastName: { contains: query, mode: "insensitive" } },
     { businessName: { contains: query, mode: "insensitive" } },
     { email: { contains: query, mode: "insensitive" } },
     { phone: { contains: query, mode: "insensitive" } },
+    { secondaryPhone: { contains: query, mode: "insensitive" } },
     {
       properties: {
         some: {
@@ -61,8 +63,20 @@ export function customerSearchWhere(companyId: string, raw: string) {
       ],
     });
   }
+  for (const token of tokens) {
+    if (token.length < 2) continue;
+    or.push({ firstName: { contains: token, mode: "insensitive" } });
+    or.push({ lastName: { contains: token, mode: "insensitive" } });
+    or.push({ businessName: { contains: token, mode: "insensitive" } });
+  }
   if (digits.length >= 3) {
     or.push({ phone: { contains: digits } });
+    or.push({ secondaryPhone: { contains: digits } });
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      or.push({ phone: { contains: last10 } });
+      or.push({ secondaryPhone: { contains: last10 } });
+    }
   }
   return { companyId, OR: or };
 }

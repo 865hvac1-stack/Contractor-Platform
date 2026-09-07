@@ -25,7 +25,18 @@ export function customerSearchWhere(companyId: string, q: string, view: Customer
           { businessName: { contains: q, mode: "insensitive" } },
           { email: { contains: q, mode: "insensitive" } },
           { phone: { contains: q, mode: "insensitive" } },
-          ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
+          { secondaryPhone: { contains: q, mode: "insensitive" } },
+          ...(digits.length >= 3 ? [{ phone: { contains: digits } }, { secondaryPhone: { contains: digits } }] : []),
+          ...(q.split(/\s+/).filter((token) => token.length >= 2).length >= 2
+            ? [
+                {
+                  AND: [
+                    { firstName: { contains: q.split(/\s+/)[0], mode: "insensitive" as const } },
+                    { lastName: { contains: q.split(/\s+/).slice(1).join(" "), mode: "insensitive" as const } },
+                  ],
+                },
+              ]
+            : []),
           {
             properties: {
               some: {
