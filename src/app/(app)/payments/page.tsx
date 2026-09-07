@@ -9,6 +9,7 @@ import { paymentLabel } from "@/lib/payments/provider";
 import { uxStatus } from "@/lib/payments/connect";
 import { stripeConfigured } from "@/lib/payments/config";
 import { EmptyState } from "@/components/empty-state";
+import { MoneySubnav } from "@/components/hub-subnav";
 
 export default async function PaymentsDashboardPage() {
   const ctx = await requirePermission("invoices:view");
@@ -46,6 +47,7 @@ export default async function PaymentsDashboardPage() {
           </Link>
         ) : null}
       </div>
+      <MoneySubnav />
 
       <p className="text-sm text-[var(--muted-foreground)]">
         ContractorYou Payments: {status.replaceAll("_", " ")}

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
+import { JobsSubnav } from "@/components/hub-subnav";
 
 function formatSchedule(start: Date | null, end: Date | null) {
   if (!start) return "Unscheduled";
@@ -43,7 +44,7 @@ const STATUSES = [
 export default async function JobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string; customerId?: string; when?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; view?: string; page?: string; customerId?: string; when?: string }>;
 }) {
   const ctx = await requirePermission("jobs:view");
   const access = jobAccessFilter(ctx.role, ctx.user.id);
@@ -54,6 +55,7 @@ export default async function JobsPage({
     access,
     q: query.q,
     status: query.status,
+    view: query.view,
     customerId: query.customerId,
     when: query.when,
   });
@@ -94,6 +96,7 @@ export default async function JobsPage({
           New job
         </Link>
       </div>
+      <JobsSubnav />
 
       <form className="flex flex-col gap-2 sm:flex-row" method="get">
         <Input
@@ -123,6 +126,7 @@ export default async function JobsPage({
           <option value="upcoming">Upcoming</option>
         </select>
         {query.customerId ? <input type="hidden" name="customerId" value={query.customerId} /> : null}
+        {query.view ? <input type="hidden" name="view" value={query.view} /> : null}
         <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
           Search
         </button>

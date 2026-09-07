@@ -194,10 +194,11 @@ describe("Command Center source", () => {
   it("does not hard-code demo KPI totals or hide the full attention list", () => {
     const page = readFileSync(resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
-    expect(page).toMatch(/getCommandCenterData/);
-    expect(page).toMatch(/DASHBOARD_ATTENTION_LIMIT|AttentionSummary/);
-    expect(page).toMatch(/HealthHero/);
+    expect(page).toMatch(/getHomeSummary/);
+    expect(page).toMatch(/Needs you/);
     expect(page).toMatch(/variant="bar"/);
+    const engine = readFileSync(resolve("src/lib/dashboard.ts"), "utf8");
+    expect(engine).toContain("getCommandCenterData");
     const feed = readFileSync(resolve("src/components/attention-feed.tsx"), "utf8");
     expect(feed).toContain("DASHBOARD_ATTENTION_LIMIT");
     expect(feed).toContain("View all");

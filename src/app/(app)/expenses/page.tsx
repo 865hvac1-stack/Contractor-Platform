@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MoneySubnav } from "@/components/hub-subnav";
 import {
   Table,
   TableBody,
@@ -36,6 +37,7 @@ export default async function ExpensesPage() {
           New expense
         </Link>
       </div>
+      <MoneySubnav />
 
       {expenses.length === 0 ? (
         <EmptyState

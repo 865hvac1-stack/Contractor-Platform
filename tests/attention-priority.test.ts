@@ -109,7 +109,7 @@ describe("attention priority scoring", () => {
   it("does not hard-code demo KPI totals in the Command Center", () => {
     const page = readFileSync(resolve(process.cwd(), "src/app/(app)/dashboard/page.tsx"), "utf8");
     expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
-    expect(page).toMatch(/getCommandCenterData/);
-    expect(page).toMatch(/AttentionSummary|DASHBOARD_ATTENTION_LIMIT/);
+    expect(page).toMatch(/getHomeSummary/);
+    expect(page).toMatch(/Needs you|Action Center/);
   });
 });

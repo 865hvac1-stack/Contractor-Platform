@@ -15,9 +15,9 @@ describe("role landing and workspace access", () => {
     expect(landingPath("COMPANY_OWNER")).toBe("/dashboard");
     expect(landingPath("ADMIN")).toBe("/dashboard");
     expect(landingPath("MANAGER")).toBe("/dashboard");
-    expect(landingPath("DISPATCHER")).toBe("/dispatch");
-    expect(landingPath("OFFICE")).toBe("/office");
-    expect(landingPath("SALES")).toBe("/office");
+    expect(landingPath("DISPATCHER")).toBe("/dashboard");
+    expect(landingPath("OFFICE")).toBe("/dashboard");
+    expect(landingPath("SALES")).toBe("/dashboard");
     expect(landingPath("TECHNICIAN")).toBe("/tech");
     expect(landingPath("INSTALLER")).toBe("/tech");
   });

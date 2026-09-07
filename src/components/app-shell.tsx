@@ -20,6 +20,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { DemoModeBadge } from "@/components/demo-mode-badge";
 import { AppNav } from "@/components/app-nav";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { isSettingsActive } from "@/lib/nav";
 import { accessibleWorkspaces, type WorkspaceId } from "@/lib/workspaces";
 
@@ -147,15 +148,14 @@ export function AppShell({
           {isDemo ? <span className="hidden md:inline-flex"><DemoModeBadge /></span> : null}
           <GlobalSearch />
 
-          <button
-            type="button"
-            disabled
-            title="Notifications coming soon"
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] md:inline-flex"
+          <Link
+            href="/attention"
+            title="Needs your attention"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] hover:bg-[var(--cy-gray)] md:inline-flex"
           >
             <Bell className="h-4 w-4" />
-            <span className="sr-only">Notifications coming soon</span>
-          </button>
+            <span className="sr-only">Notifications</span>
+          </Link>
           <button
             type="button"
             disabled
@@ -203,7 +203,7 @@ export function AppShell({
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 overflow-x-hidden">
+        <main className="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
           <div
             className={`mx-auto w-full px-4 ${
               pathname.startsWith("/dispatch")
@@ -214,6 +214,7 @@ export function AppShell({
             {children}
           </div>
         </main>
+        <MobileTabBar pathname={pathname} role={role} />
       </div>
     </div>
   );

@@ -38,13 +38,10 @@ export function accessibleWorkspaces(role: CompanyRole): WorkspaceId[] {
 
 export function landingPath(role: CompanyRole): string {
   if (isFieldRole(role)) return "/tech";
-  if (canAccessWorkspace(role, "command") && (role === "COMPANY_OWNER" || role === "ADMIN" || role === "MANAGER")) {
-    return "/dashboard";
-  }
+  if (can(role, "dashboard:view")) return "/dashboard";
   if (role === "DISPATCHER" && canAccessWorkspace(role, "dispatch")) return "/dispatch";
   if (canAccessWorkspace(role, "office")) return "/office";
   if (canAccessWorkspace(role, "dispatch")) return "/dispatch";
-  if (canAccessWorkspace(role, "command")) return "/dashboard";
   return "/dashboard";
 }
 

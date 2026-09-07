@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MoneySubnav } from "@/components/hub-subnav";
 import type { InvoiceStatus, Prisma } from "@prisma/client";
 import {
   Table,
@@ -55,6 +56,7 @@ export default async function InvoicesPage({
           New invoice
         </Link>
       </div>
+      <MoneySubnav />
 
       <div className="flex flex-wrap gap-2">
         {[

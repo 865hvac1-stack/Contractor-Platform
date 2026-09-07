@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { MoneySubnav } from "@/components/hub-subnav";
 import type { Prisma } from "@prisma/client";
 
 const TABS: { key: string; label: string; where: Prisma.ReceiptWhereInput }[] = [
@@ -52,6 +53,7 @@ export default async function ReceiptsPage({
           Add receipt
         </Link>
       </div>
+      <MoneySubnav />
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {TABS.map((item) => {

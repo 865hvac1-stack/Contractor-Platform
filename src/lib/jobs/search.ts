@@ -17,6 +17,7 @@ export const JOBS_PAGE_SIZE = 40;
 export type JobsListQuery = {
   q?: string;
   status?: string;
+  view?: string;
   customerId?: string;
   when?: string;
   page?: number;
@@ -25,6 +26,7 @@ export type JobsListQuery = {
 export function parseJobsListQuery(input: {
   q?: string;
   status?: string;
+  view?: string;
   customerId?: string;
   when?: string;
   page?: string;
@@ -33,6 +35,7 @@ export function parseJobsListQuery(input: {
   return {
     q: input.q?.trim() || undefined,
     status: input.status?.trim() || undefined,
+    view: input.view?.trim() || undefined,
     customerId: input.customerId?.trim() || undefined,
     when: input.when?.trim() || undefined,
     page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
@@ -44,6 +47,7 @@ export function jobsWhere(input: {
   access: Record<string, unknown>;
   q?: string;
   status?: string;
+  view?: string;
   customerId?: string;
   when?: string;
   now?: Date;
@@ -75,6 +79,9 @@ export function jobsWhere(input: {
     companyId: input.companyId,
     ...input.access,
     ...(status && input.when !== "today" && input.when !== "upcoming" ? { status } : {}),
+    ...(!status && input.view === "active" && input.when !== "today" && input.when !== "upcoming"
+      ? { status: { notIn: ["COMPLETED", "CANCELED"] as JobStatus[] } }
+      : {}),
     ...(input.customerId ? { customerId: input.customerId } : {}),
     ...whenFilter,
     ...(query
@@ -102,6 +109,7 @@ export function jobsWhere(input: {
 export function jobsListHref(query: JobsListQuery, page = query.page ?? 1) {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
+  if (query.view) params.set("view", query.view);
   if (query.status && query.status !== "ALL") params.set("status", query.status);
   if (query.customerId) params.set("customerId", query.customerId);
   if (query.when) params.set("when", query.when);

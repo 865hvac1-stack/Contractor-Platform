@@ -5,16 +5,16 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/marketing", label: "Hub", exact: true },
+  { href: "/marketing", label: "Overview", exact: true },
   { href: "/marketing/leads", label: "Leads" },
+  { href: "/marketing/communications", label: "Communications" },
+  { href: "/marketing/campaigns", label: "Campaigns" },
+  { href: "/marketing/reviews", label: "Reviews" },
   { href: "/marketing/channels", label: "Channels" },
   { href: "/marketing/onboarding", label: "Setup" },
   { href: "/marketing/forms", label: "Website" },
   { href: "/marketing/social", label: "Social" },
-  { href: "/marketing/campaigns", label: "Campaigns" },
-  { href: "/marketing/reviews", label: "Reviews" },
   { href: "/marketing/automations", label: "Automations" },
-  { href: "/marketing/communications", label: "Comms" },
 ];
 
 export function MarketingSubnav() {

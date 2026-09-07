@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { JobsSubnav } from "@/components/hub-subnav";
 import type { EstimateStatus, Prisma } from "@prisma/client";
 import {
   Table,
@@ -76,6 +77,7 @@ export default async function EstimatesPage({
           New estimate
         </Link>
       </div>
+      <JobsSubnav />
 
       <div className="flex flex-wrap gap-2">
         {[

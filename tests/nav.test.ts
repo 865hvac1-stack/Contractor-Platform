@@ -2,247 +2,155 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ACCORDION_SECTIONS,
+  MORE_NAV,
   PRIMARY_NAV,
-  accordionSectionForPath,
   filterNavItems,
   isNavItemActive,
   isSettingsActive,
-  parseRememberedSection,
-  resolveOpenSection,
-  sectionContainsPath,
-  visibleAccordionSections,
+  visibleMobileTabs,
+  visibleMoreNav,
   visiblePrimaryNav,
 } from "@/lib/nav";
-
-const ALL_SECTION_IDS = ["operations", "marketing", "money", "team"] as const;
+import { landingPath } from "@/lib/workspaces";
+import { CUSTOMERS_PAGE_SIZE } from "@/lib/customers/list";
 
 describe("nav catalog", () => {
-  it("keeps daily workspaces in the always-visible primary list", () => {
+  it("keeps the everyday shell to six destinations", () => {
     expect(PRIMARY_NAV.map((item) => item.label)).toEqual([
       "Home",
       "Dispatch",
-      "Customer Hub",
-      "Intelligence",
-      "Action Center",
-      "Inbox",
+      "Customers",
+      "Jobs",
+      "Money",
+      "Marketing",
     ]);
   });
 
-  it("keeps every existing destination under an accordion parent", () => {
-    const labels = ACCORDION_SECTIONS.flatMap((section) => section.items.map((item) => item.label));
-    expect(labels).toEqual([
-      "Customers",
-      "Schedule",
-      "Jobs",
+  it("keeps depth in More instead of deleting destinations", () => {
+    const labels = MORE_NAV.map((item) => item.label);
+    for (const label of [
+      "Action Center",
+      "Intelligence",
+      "Inbox",
       "Waiting Board",
       "Playbooks",
       "Estimates",
       "Invoices",
       "Pricebook",
       "Memberships",
-      "Marketing Hub",
-      "Leads",
-      "Communications",
-      "Campaigns",
-      "Reviews",
-      "Automations",
-      "Channels",
-      "Payments",
-      "Receipts",
-      "Expenses",
+      "Team",
       "Reports",
-      "Team",
-      "Compensation",
-      "Scorecards",
-      "My Performance",
-    ]);
-    expect(ACCORDION_SECTIONS.map((section) => section.label)).toEqual([
-      "Operations",
-      "Marketing",
-      "Money",
-      "Team",
-    ]);
+    ]) {
+      expect(labels).toContain(label);
+    }
   });
 });
 
-describe("active route expansion", () => {
-  it("expands Operations for estimate, invoice, and playbook deep links", () => {
-    expect(accordionSectionForPath("/estimates")).toBe("operations");
-    expect(accordionSectionForPath("/estimates/abc")).toBe("operations");
-    expect(accordionSectionForPath("/invoices/xyz")).toBe("operations");
-    expect(accordionSectionForPath("/settings/playbooks")).toBe("operations");
-    expect(accordionSectionForPath("/jobs/cm123")).toBe("operations");
+describe("hub highlighting", () => {
+  it("treats Waiting and Estimates as Jobs hub routes", () => {
+    const jobs = PRIMARY_NAV.find((item) => item.label === "Jobs")!;
+    expect(isNavItemActive("/jobs", jobs)).toBe(true);
+    expect(isNavItemActive("/operations/waiting", jobs)).toBe(true);
+    expect(isNavItemActive("/estimates/abc", jobs)).toBe(true);
+    expect(isNavItemActive("/settings/playbooks", jobs)).toBe(false);
   });
 
-  it("expands Marketing for marketing child routes but not Inbox", () => {
-    expect(accordionSectionForPath("/marketing/reviews")).toBe("marketing");
-    expect(accordionSectionForPath("/marketing")).toBe("marketing");
-    expect(accordionSectionForPath("/marketing/leads")).toBe("marketing");
-    expect(accordionSectionForPath("/marketing/communications")).toBeNull();
-    expect(accordionSectionForPath("/marketing/communications/thread-1")).toBeNull();
+  it("treats invoices and payments as Money hub routes", () => {
+    const money = PRIMARY_NAV.find((item) => item.label === "Money")!;
+    expect(isNavItemActive("/money", money)).toBe(true);
+    expect(isNavItemActive("/invoices/xyz", money)).toBe(true);
+    expect(isNavItemActive("/payments", money)).toBe(true);
+    expect(isNavItemActive("/reports", money)).toBe(false);
   });
 
-  it("expands Money and Team for their routes", () => {
-    expect(accordionSectionForPath("/payments")).toBe("money");
-    expect(accordionSectionForPath("/receipts/1")).toBe("money");
-    expect(accordionSectionForPath("/team")).toBe("team");
-    expect(accordionSectionForPath("/team/compensation")).toBe("team");
-    expect(accordionSectionForPath("/me/performance")).toBe("team");
-  });
-
-  it("does not treat Command Center pages as accordion destinations", () => {
-    expect(accordionSectionForPath("/dashboard")).toBeNull();
-    expect(accordionSectionForPath("/dispatch")).toBeNull();
-    expect(accordionSectionForPath("/office")).toBeNull();
-    expect(accordionSectionForPath("/office/customers/1")).toBeNull();
-    expect(accordionSectionForPath("/intelligence")).toBeNull();
-    expect(accordionSectionForPath("/actions")).toBeNull();
-  });
-
-  it("prefers the active route over a remembered section", () => {
-    expect(
-      resolveOpenSection({
-        pathname: "/estimates",
-        remembered: "marketing",
-        available: [...ALL_SECTION_IDS],
-      })
-    ).toBe("operations");
-  });
-
-  it("restores the last open section when the route is not in an accordion", () => {
-    expect(
-      resolveOpenSection({
-        pathname: "/dashboard",
-        remembered: "money",
-        available: [...ALL_SECTION_IDS],
-      })
-    ).toBe("money");
-  });
-
-  it("ignores a remembered section the role cannot see", () => {
-    expect(
-      resolveOpenSection({
-        pathname: "/dashboard",
-        remembered: "marketing",
-        available: ["operations", "team"],
-      })
-    ).toBeNull();
-  });
-
-  it("treats accordion as one-open-at-a-time", () => {
-    const remembered = parseRememberedSection("operations");
-    const opened = resolveOpenSection({
-      pathname: "/marketing/reviews",
-      remembered,
-      available: [...ALL_SECTION_IDS],
-    });
-    expect(opened).toBe("marketing");
-    expect(opened === "operations").toBe(false);
-  });
-});
-
-describe("active item highlighting", () => {
-  it("highlights Estimates on the estimates route and not Settings", () => {
-    const estimates = ACCORDION_SECTIONS[0].items.find((item) => item.label === "Estimates")!;
-    expect(isNavItemActive("/estimates", estimates)).toBe(true);
-    expect(isSettingsActive("/estimates")).toBe(false);
+  it("keeps Settings separate from Playbooks configuration in More", () => {
     expect(isSettingsActive("/settings")).toBe(true);
     expect(isSettingsActive("/settings/highlevel")).toBe(true);
     expect(isSettingsActive("/settings/playbooks")).toBe(false);
   });
-
-  it("highlights Customer Hub for office routes without activating Operations Customers", () => {
-    const customers = ACCORDION_SECTIONS[0].items.find((item) => item.label === "Customers")!;
-    const hub = PRIMARY_NAV.find((item) => item.label === "Customer Hub")!;
-    expect(isNavItemActive("/office/customers/1", hub)).toBe(true);
-    expect(isNavItemActive("/office/customers/1", customers)).toBe(false);
-    expect(isNavItemActive("/customers", customers)).toBe(true);
-  });
-
-  it("marks a parent as containing the active child even when another section is open", () => {
-    const operations = ACCORDION_SECTIONS[0];
-    expect(sectionContainsPath(operations, "/estimates")).toBe(true);
-    expect(sectionContainsPath(operations, "/marketing/reviews")).toBe(false);
-  });
 });
 
 describe("role-aware navigation", () => {
-  it("shows owners every authorized section", () => {
+  it("shows owners the full primary shell", () => {
     expect(visiblePrimaryNav("COMPANY_OWNER").map((item) => item.label)).toEqual([
       "Home",
       "Dispatch",
-      "Customer Hub",
-      "Intelligence",
-      "Action Center",
-      "Inbox",
+      "Customers",
+      "Jobs",
+      "Money",
+      "Marketing",
     ]);
-    expect(visibleAccordionSections("COMPANY_OWNER").map((section) => section.id)).toEqual([
-      "operations",
-      "marketing",
-      "money",
-      "team",
-    ]);
-    expect(visibleAccordionSections("COMPANY_OWNER").find((section) => section.id === "team")?.items.map((item) => item.label)).toEqual([
-      "Team",
-      "Compensation",
-      "Scorecards",
-      "My Performance",
-    ]);
+    expect(visibleMoreNav("COMPANY_OWNER").some((item) => item.label === "Compensation")).toBe(true);
   });
 
-  it("hides company-wide money and marketing from dispatchers", () => {
-    const labels = visibleAccordionSections("DISPATCHER").flatMap((section) =>
-      section.items.map((item) => `${section.id}:${item.label}`)
-    );
-    expect(labels.some((label) => label.startsWith("marketing:"))).toBe(false);
-    expect(labels.some((label) => label.startsWith("money:"))).toBe(false);
-    expect(labels).not.toContain("team:Compensation");
-    expect(labels).toContain("operations:Schedule");
-    expect(labels).toContain("operations:Jobs");
+  it("hides Money and Marketing from dispatchers", () => {
     expect(visiblePrimaryNav("DISPATCHER").map((item) => item.label)).toEqual([
       "Home",
       "Dispatch",
-      "Customer Hub",
-      "Intelligence",
-      "Action Center",
+      "Customers",
+      "Jobs",
     ]);
+    expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Inbox")).toBe(false);
+    expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Waiting Board")).toBe(true);
   });
 
-  it("lets office see CSR-relevant destinations without owner-only compensation", () => {
-    const team = visibleAccordionSections("OFFICE").find((section) => section.id === "team");
-    expect(team?.items.map((item) => item.label)).toEqual(["Team", "Scorecards", "My Performance"]);
-    expect(visibleAccordionSections("OFFICE").some((section) => section.id === "money")).toBe(true);
-    expect(filterNavItems(ACCORDION_SECTIONS.find((section) => section.id === "team")!.items, "OFFICE").map((item) => item.label)).not.toContain(
-      "Compensation"
-    );
+  it("lets office see Money without owner-only compensation", () => {
+    expect(visiblePrimaryNav("OFFICE").map((item) => item.label)).toContain("Money");
+    expect(filterNavItems(MORE_NAV, "OFFICE").map((item) => item.label)).not.toContain("Compensation");
   });
 
-  it("does not invent financial pages for technicians in the office shell catalog", () => {
-    const money = visibleAccordionSections("TECHNICIAN").find((section) => section.id === "money");
-    expect(money?.items.map((item) => item.label)).toEqual(["Payments", "Receipts", "Expenses"]);
-    expect(money?.items.some((item) => item.label === "Reports")).toBe(false);
-    expect(visibleAccordionSections("TECHNICIAN").some((section) => section.id === "marketing")).toBe(false);
+  it("does not invent a marketing destination for technicians in the office catalog", () => {
+    expect(visiblePrimaryNav("TECHNICIAN").some((item) => item.label === "Marketing")).toBe(false);
+    expect(visibleMoreNav("TECHNICIAN").some((item) => item.label === "Reports")).toBe(false);
+  });
+
+  it("sends office roles to Home and field roles to the tech app", () => {
+    expect(landingPath("COMPANY_OWNER")).toBe("/dashboard");
+    expect(landingPath("DISPATCHER")).toBe("/dashboard");
+    expect(landingPath("OFFICE")).toBe("/dashboard");
+    expect(landingPath("TECHNICIAN")).toBe("/tech");
   });
 });
 
 describe("sidebar and mobile source", () => {
-  it("uses an accessible accordion instead of permanently expanded lists", () => {
+  it("uses a flat primary list plus More and a mobile tab bar", () => {
     const nav = readFileSync(resolve("src/components/app-nav.tsx"), "utf8");
-    expect(nav).toContain("aria-expanded");
-    expect(nav).toContain("aria-controls");
-    expect(nav).toContain("role=\"region\"");
-    expect(nav).toContain("ChevronRight");
-    expect(nav).toContain("Command Center");
-    expect(nav).toContain("Business");
-    expect(nav).toContain("NAV_STORAGE_KEY");
-    expect(nav).not.toContain("MARKETING HUB");
+    expect(nav).toContain("visiblePrimaryNav");
+    expect(nav).toContain("MORE_ITEM");
+    expect(nav).not.toContain("Command Center");
+    expect(nav).not.toContain("aria-expanded");
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
-    expect(shell).toContain("w-[260px]");
     expect(shell).toContain("<AppNav");
-    expect(shell.match(/<AppNav/g)?.length).toBe(2);
+    expect(shell).toContain("MobileTabBar");
     expect(shell).toContain("GlobalSearch");
-    expect(shell).toContain("WorkspaceSwitcher");
-    expect(shell).not.toContain("MobileWorkspaceLinks");
+    expect(visibleMobileTabs("COMPANY_OWNER").map((item) => item.label)).toEqual([
+      "Home",
+      "Jobs",
+      "Customers",
+      "Dispatch",
+      "More",
+    ]);
+  });
+});
+
+describe("home and customers simplification", () => {
+  it("keeps Home to today, needs you, ask, and one snapshot", () => {
+    const page = readFileSync(resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
+    expect(page).toContain("getHomeSummary");
+    expect(page).toContain("Needs you");
+    expect(page).toContain("AskContractorYou");
+    expect(page).toContain("View all in Action Center");
+    expect(page).not.toContain("HealthHero");
+    expect(page).not.toContain("MetricRing");
+    expect(page).not.toContain("RevenueChart");
+    expect(page).not.toMatch(/\$36,924|\$66,801|\$17,480/);
+  });
+
+  it("paginates customers instead of dumping the directory", () => {
+    expect(CUSTOMERS_PAGE_SIZE).toBe(25);
+    const page = readFileSync(resolve("src/app/(app)/customers/page.tsx"), "utf8");
+    expect(page).toContain("loadCustomerList");
+    expect(page).toContain("+ Add Customer");
+    expect(page).toContain("Needs attention");
   });
 });
