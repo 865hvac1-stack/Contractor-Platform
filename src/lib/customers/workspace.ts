@@ -197,7 +197,12 @@ export async function getCustomer360(input: Customer360Options) {
       : Promise.resolve({ _sum: { amountCents: 0 } }),
     prisma.waitingRecord.findMany({
       where: { companyId: input.companyId, customerId: customer.id },
-      include: { column: true, job: { select: { jobNumber: true } } },
+      include: {
+        column: true,
+        job: { select: { id: true, jobNumber: true } },
+        transitions: { orderBy: { createdAt: "asc" }, take: 20 },
+        communications: { orderBy: { createdAt: "asc" }, take: 20, select: { id: true, sentAt: true, kind: true } },
+      },
       orderBy: { enteredAt: "desc" },
       take: 20,
     }),
@@ -570,10 +575,15 @@ function buildTimeline(input: {
     id: string;
     enteredAt: Date;
     resolvedAt: Date | null;
+    actualArrivalAt: Date | null;
+    lastCustomerUpdateAt: Date | null;
     state: string;
     reason: string;
-    column: { name: string };
-    job: { jobNumber: string };
+    metadata?: unknown;
+    column: { name: string; key?: string };
+    job: { id?: string; jobNumber: string };
+    transitions?: Array<{ createdAt: Date; actions: unknown; note: string | null }>;
+    communications?: Array<{ id: string; sentAt: Date | null; kind: string }>;
   }>;
 }) {
   const events: { id: string; at: Date; kind: string; title: string; href?: string }[] = [
@@ -642,20 +652,66 @@ function buildTimeline(input: {
     });
   }
   for (const waiting of input.waiting ?? []) {
+    const href = `/operations/waiting?record=${waiting.id}`;
     events.push({
       id: `wait-${waiting.id}`,
       at: waiting.enteredAt,
       kind: "jobs",
-      title: `${waiting.column.name} · ${waiting.job.jobNumber}`,
-      href: `/operations/waiting?record=${waiting.id}`,
+      title: `Waiting started · ${waiting.column.name} · ${waiting.job.jobNumber}`,
+      href,
     });
+    const meta = waiting.metadata && typeof waiting.metadata === "object" ? (waiting.metadata as Record<string, unknown>) : {};
+    const part = meta.part && typeof meta.part === "object" ? (meta.part as Record<string, unknown>) : {};
+    const orderedRaw = typeof part.orderedAt === "string" ? part.orderedAt : typeof meta.dateOrdered === "string" ? meta.dateOrdered : null;
+    const orderedAt = orderedRaw ? new Date(orderedRaw) : null;
+    if (orderedAt && !Number.isNaN(orderedAt.getTime())) {
+      events.push({
+        id: `wait-ordered-${waiting.id}`,
+        at: orderedAt,
+        kind: "jobs",
+        title: `Part ordered · ${waiting.job.jobNumber}`,
+        href,
+      });
+    }
+    for (const communication of waiting.communications ?? []) {
+      if (!communication.sentAt) continue;
+      events.push({
+        id: `wait-update-${communication.id}`,
+        at: communication.sentAt,
+        kind: "communications",
+        title: `Waiting update sent · ${waiting.job.jobNumber}`,
+        href,
+      });
+    }
+    if (waiting.actualArrivalAt) {
+      events.push({
+        id: `wait-arrived-${waiting.id}`,
+        at: waiting.actualArrivalAt,
+        kind: "jobs",
+        title: `Part arrived · ${waiting.job.jobNumber}`,
+        href,
+      });
+      events.push({
+        id: `wait-ready-${waiting.id}`,
+        at: waiting.actualArrivalAt,
+        kind: "jobs",
+        title: `Ready to schedule · ${waiting.job.jobNumber}`,
+        href: waiting.job.id ? `/jobs/${waiting.job.id}#schedule` : href,
+      });
+    }
     if (waiting.resolvedAt) {
+      const scheduled = (waiting.transitions ?? []).some((row) => {
+        const actions = row.actions && typeof row.actions === "object" ? (row.actions as Record<string, unknown>) : {};
+        return actions.appointmentScheduled === true || row.note === "Appointment scheduled";
+      });
       events.push({
         id: `wait-resolved-${waiting.id}`,
         at: waiting.resolvedAt,
         kind: "jobs",
-        title: `Waiting resolved · ${waiting.job.jobNumber}`,
-        href: `/operations/waiting?record=${waiting.id}`,
+        title: scheduled
+          ? `Appointment scheduled · ${waiting.job.jobNumber}`
+          : `Waiting resolved · ${waiting.job.jobNumber}`,
+        href,
       });
     }
   }

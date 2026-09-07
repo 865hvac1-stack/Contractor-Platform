@@ -29,6 +29,7 @@ export async function processDueWaitingUpdates(input: {
       automationEnabled: true,
       communicationEnabled: true,
       nextCustomerUpdateAt: { lte: now },
+      column: { kind: { not: "READY" }, key: { not: "READY_TO_SCHEDULE" } },
       ...(input.companyId ? { companyId: input.companyId } : {}),
     },
     include: {

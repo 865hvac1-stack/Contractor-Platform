@@ -42,6 +42,25 @@ export function WaitingTransitionDialog({
           <input type="hidden" name="recordId" value={card.id} />
           <input type="hidden" name="toColumnId" value={toColumn.id} />
           {partArrived ? <input type="hidden" name="markPartArrived" value="yes" /> : null}
+          {partArrived ? (
+            <ul className="space-y-1.5 text-sm">
+              {[
+                "Mark part as arrived",
+                'Stop all future "waiting on part" updates',
+                "Move job to Ready to Schedule",
+                "Create scheduling action",
+                "Notify assigned office user",
+                "Add Job 360 and Customer 360 events",
+              ].map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span aria-hidden className="text-emerald-700">
+                    ✓
+                  </span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <Toggle name="stopUpdates" label="Stop waiting updates" defaultOn />
           <Toggle
             name="notifyCustomer"
@@ -50,7 +69,7 @@ export function WaitingTransitionDialog({
           />
           <Toggle name="createSchedulingTask" label="Create scheduling task" defaultOn={ready} />
           <Button type="submit" className="h-11 w-full bg-[var(--cy-navy)] text-white">
-            Confirm move
+            {partArrived ? "Part Arrived — Move to Ready to Schedule" : "Confirm move"}
           </Button>
         </ActionForm>
       </DialogContent>

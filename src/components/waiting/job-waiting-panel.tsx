@@ -1,10 +1,13 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { formatWaitingDate, waitingSinceLabel } from "@/lib/waiting/format";
 import { PutInWaitingForm, type WaitingColumnOption, type WaitingOwnerOption } from "@/components/waiting/put-in-waiting-form";
-import { ActionForm } from "@/components/action-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { markPartArrivedAction, sendWaitingUpdateNowAction } from "@/server/actions/waiting";
+import { PartArrivedDialog } from "@/components/waiting/part-arrived-dialog";
+import { SendUpdateDialog } from "@/components/waiting/send-update-dialog";
 
 export function JobWaitingPanel({
   jobId,
@@ -31,6 +34,8 @@ export function JobWaitingPanel({
   timezone: string;
   canPlace: boolean;
 }) {
+  const [partOpen, setPartOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   return (
     <section className="space-y-3">
       <h2 className="font-display text-xl tracking-tight">Waiting status</h2>
@@ -49,22 +54,33 @@ export function JobWaitingPanel({
             <Link href={`/operations/waiting?record=${waiting.id}`} className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
               View waiting record
             </Link>
-            <ActionForm action={sendWaitingUpdateNowAction}>
-              <input type="hidden" name="recordId" value={waiting.id} />
-              <Button type="submit" variant="outline" className="h-10">
-                Send customer update
-              </Button>
-            </ActionForm>
+            <Button type="button" variant="outline" className="h-10" onClick={() => setSendOpen(true)}>
+              Send customer update
+            </Button>
             {waiting.columnKey === "WAITING_ON_PART" && readyColumnId ? (
-              <ActionForm action={markPartArrivedAction}>
-                <input type="hidden" name="recordId" value={waiting.id} />
-                <input type="hidden" name="toColumnId" value={readyColumnId} />
-                <Button type="submit" className="h-10 bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90">
-                  Part arrived
-                </Button>
-              </ActionForm>
+              <Button
+                type="button"
+                className="h-10 bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90"
+                onClick={() => setPartOpen(true)}
+              >
+                Part arrived
+              </Button>
             ) : null}
           </div>
+          <PartArrivedDialog
+            open={partOpen}
+            onOpenChange={setPartOpen}
+            recordId={waiting.id}
+            customerName={waiting.waitingFor || waiting.reason}
+            itemName={waiting.waitingFor || waiting.reason}
+            communicationEnabled
+          />
+          <SendUpdateDialog
+            open={sendOpen}
+            onOpenChange={setSendOpen}
+            recordId={waiting.id}
+            customerName={waiting.waitingFor || waiting.reason}
+          />
         </div>
       ) : canPlace ? (
         <details className="rounded-2xl border border-[var(--border)] bg-white p-4">

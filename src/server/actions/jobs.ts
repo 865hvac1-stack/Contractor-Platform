@@ -303,9 +303,18 @@ export async function scheduleJobAction(
       metadata: { scheduledStart, scheduledEnd },
     });
 
+    const { resolveWaitingRecordsForScheduledJob } = await import("@/lib/waiting/records");
+    await resolveWaitingRecordsForScheduledJob({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      jobId: job.id,
+    });
+
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath("/schedule");
     revalidatePath("/dashboard");
+    revalidatePath("/operations/waiting");
+    revalidatePath("/actions");
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

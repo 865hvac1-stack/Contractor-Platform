@@ -13,13 +13,16 @@ import { formatWaitingDate, relativeWaitingDay, waitingSinceLabel } from "@/lib/
 import { parseWaitingMetadata } from "@/lib/waiting/types";
 import {
   addWaitingNoteAction,
-  markPartArrivedAction,
   resolveWaitingAction,
-  sendWaitingUpdateNowAction,
   transitionWaitingAction,
   updateWaitingDetailsAction,
 } from "@/server/actions/waiting";
+import { PartArrivedDialog } from "@/components/waiting/part-arrived-dialog";
+import { SendUpdateDialog } from "@/components/waiting/send-update-dialog";
+import { UpdateFailedDialog } from "@/components/waiting/update-failed-dialog";
+import { sanitizeWaitingFailureReason } from "@/lib/waiting/safety";
 import type { WaitingCadence } from "@prisma/client";
+import { useState } from "react";
 
 export type WaitingDetailPayload = {
   id: string;
@@ -59,6 +62,7 @@ export type WaitingDetailPayload = {
     kind: string;
     sentAt: string | null;
     failedAt: string | null;
+    attemptedAt?: string | null;
     failureReason: string | null;
     provider: string | null;
     body: string;
@@ -80,10 +84,15 @@ export function WaitingDetailDrawer({
   owners: Array<{ id: string; name: string }>;
   timezone: string;
 }) {
+  const [partOpen, setPartOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [failedOpen, setFailedOpen] = useState(false);
   if (!detail) return null;
   const meta = parseWaitingMetadata(detail.metadata);
   const name = detail.customer.businessName?.trim() || `${detail.customer.firstName} ${detail.customer.lastName}`.trim();
   const readyColumn = columns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE");
+  const itemName = meta.waitingFor || meta.part?.name || detail.reason;
+  const lastFailed = detail.communications.find((row) => row.failedAt);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -144,9 +153,13 @@ export function WaitingDetailDrawer({
               </p>
             ) : null}
             {detail.lastCommunicationStatus === "FAILED" ? (
-              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                {detail.lastCommunicationError || "The last customer update was not sent."}
-              </p>
+              <button
+                type="button"
+                onClick={() => setFailedOpen(true)}
+                className="mt-3 w-full rounded-lg bg-rose-50 px-3 py-2 text-left text-xs text-rose-800"
+              >
+                UPDATE FAILED · {sanitizeWaitingFailureReason(detail.lastCommunicationError)}
+              </button>
             ) : null}
           </section>
 
@@ -160,20 +173,17 @@ export function WaitingDetailDrawer({
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <ActionForm action={sendWaitingUpdateNowAction}>
-              <input type="hidden" name="recordId" value={detail.id} />
-              <Button type="submit" variant="outline" className="h-11 w-full">
-                Send update now
-              </Button>
-            </ActionForm>
+            <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setSendOpen(true)}>
+              Send update now
+            </Button>
             {detail.column.key === "WAITING_ON_PART" && readyColumn ? (
-              <ActionForm action={markPartArrivedAction}>
-                <input type="hidden" name="recordId" value={detail.id} />
-                <input type="hidden" name="toColumnId" value={readyColumn.id} />
-                <Button type="submit" className="h-11 w-full bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90">
-                  Part arrived
-                </Button>
-              </ActionForm>
+              <Button
+                type="button"
+                className="h-11 w-full bg-[var(--cy-orange)] text-white hover:bg-[var(--cy-orange)]/90"
+                onClick={() => setPartOpen(true)}
+              >
+                Part arrived
+              </Button>
             ) : null}
           </div>
 
@@ -265,6 +275,17 @@ export function WaitingDetailDrawer({
                   <Input name="poNumber" defaultValue={meta.part?.poNumber ?? meta.poNumber ?? ""} placeholder="PO #" />
                 </div>
               ) : null}
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--cy-gray)]/40 px-3 py-2 text-sm">
+                <span>Notify customer of this expected-date change</span>
+                <select
+                  name="notifyExpectedDate"
+                  defaultValue="no"
+                  className="h-8 rounded-md border border-[var(--border)] bg-white px-2 text-xs"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes, send update</option>
+                </select>
+              </label>
               <Button type="submit" variant="outline" className="h-10">
                 Save details
               </Button>
@@ -298,6 +319,9 @@ export function WaitingDetailDrawer({
                     <p className="font-medium">
                       {row.kind} · {row.sentAt ? "Sent" : row.failedAt ? "Failed" : "Attempted"}
                       {row.provider ? ` · ${row.provider}` : ""}
+                      {row.attemptedAt
+                        ? ` · ${new Date(row.attemptedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                        : ""}
                     </p>
                     {row.failureReason ? <p className="mt-1 text-rose-700">{row.failureReason}</p> : null}
                     {row.body ? <p className="mt-1 text-[var(--muted-foreground)]">{row.body}</p> : null}
@@ -327,6 +351,30 @@ export function WaitingDetailDrawer({
               Mark resolved
             </Button>
           </ActionForm>
+          <PartArrivedDialog
+            open={partOpen}
+            onOpenChange={setPartOpen}
+            recordId={detail.id}
+            customerName={name}
+            itemName={itemName}
+            communicationEnabled={detail.communicationEnabled}
+          />
+          <SendUpdateDialog
+            open={sendOpen}
+            onOpenChange={setSendOpen}
+            recordId={detail.id}
+            customerName={name}
+          />
+          <UpdateFailedDialog
+            open={failedOpen}
+            onOpenChange={setFailedOpen}
+            customerName={name}
+            attemptedAt={lastFailed?.attemptedAt ?? lastFailed?.failedAt ?? null}
+            provider={lastFailed?.provider ?? null}
+            reason={lastFailed?.failureReason ?? detail.lastCommunicationError}
+            timezone={timezone}
+            onRetry={() => setSendOpen(true)}
+          />
         </div>
       </SheetContent>
     </Sheet>

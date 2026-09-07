@@ -68,3 +68,13 @@ export function nextJobStatusForWaiting(input: {
 export function canTechnicianMutateWaiting(assignedToUser: boolean) {
   return assignedToUser;
 }
+
+export function sanitizeWaitingFailureReason(reason: string | null | undefined) {
+  if (!reason?.trim()) return "The communications provider did not send the message.";
+  return reason
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/token[=:]\s*\S+/gi, "token=[redacted]")
+    .replace(/key[=:]\s*\S+/gi, "key=[redacted]")
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[redacted-email]")
+    .slice(0, 280);
+}

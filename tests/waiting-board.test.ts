@@ -8,7 +8,12 @@ import {
   waitingIdempotencyKey,
   zonedParts,
 } from "@/lib/waiting/schedule";
-import { waitingSendBlockReason, nextJobStatusForWaiting, shouldStopWaitingAutomation } from "@/lib/waiting/safety";
+import {
+  waitingSendBlockReason,
+  nextJobStatusForWaiting,
+  shouldStopWaitingAutomation,
+  sanitizeWaitingFailureReason,
+} from "@/lib/waiting/safety";
 import { buildWaitingTemplateVars, renderWaitingTemplate } from "@/lib/waiting/templates";
 import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
 import { toolsForQuestion } from "@/lib/intelligence/intent";
@@ -164,6 +169,36 @@ describe("waiting safety", () => {
         manual: true,
       })
     ).toBeNull();
+
+    expect(
+      waitingSendBlockReason({
+        jobStatus: "CANCELED",
+        recordState: "ACTIVE",
+        communicationEnabled: true,
+        automationEnabled: true,
+        companyAutomaticUpdatesEnabled: true,
+        customer,
+        kind: "RECURRING",
+      })
+    ).toMatch(/completed or canceled/i);
+
+    expect(
+      waitingSendBlockReason({
+        jobStatus: "ON_HOLD",
+        recordState: "ACTIVE",
+        communicationEnabled: true,
+        automationEnabled: true,
+        companyAutomaticUpdatesEnabled: false,
+        customer,
+        kind: "RECURRING",
+      })
+    ).toMatch(/automatic customer updates/i);
+  });
+
+  it("sanitizes provider failure reasons instead of inventing success", () => {
+    expect(sanitizeWaitingFailureReason("HighLevel unauthorized Bearer abc.def.ghi")).toContain("[redacted]");
+    expect(sanitizeWaitingFailureReason("HighLevel unauthorized Bearer abc.def.ghi")).not.toContain("abc.def.ghi");
+    expect(sanitizeWaitingFailureReason(null)).toMatch(/did not send/i);
   });
 
   it("stops automation when the job ends or the record is ready / resolved", () => {
@@ -280,6 +315,131 @@ describe("waiting board UI hierarchy", () => {
     expect(card).toContain("Part Arrived");
     expect(card).toContain("/jobs/");
     expect(card).toContain("#schedule");
-    expect(card).toContain("markPartArrivedAction");
+    expect(card).toContain("Open Job");
+    expect(card).toContain("Open Customer");
+    expect(card).toContain("PartArrivedDialog");
+    expect(card).toContain("SendUpdateDialog");
+    expect(card).toContain("UpdateFailedDialog");
+  });
+});
+
+describe("waiting part arrived and schedule completion", () => {
+  it("confirms Part Arrived before moving the job to Ready to Schedule", () => {
+    const dialog = readFileSync(resolve("src/components/waiting/part-arrived-dialog.tsx"), "utf8");
+    expect(dialog).toContain("PART ARRIVED");
+    expect(dialog).toContain("Mark part as arrived");
+    expect(dialog).toContain("Move job to Ready to Schedule");
+    expect(dialog).toContain("Create scheduling action");
+    expect(dialog).toContain("Notify assigned office user");
+    expect(dialog).toContain("Job 360");
+    expect(dialog).toContain("Customer 360");
+    expect(dialog).toContain("notifyCustomer");
+    expect(dialog).toContain("Part Arrived — Move to Ready to Schedule");
+    expect(dialog).toContain("markPartArrivedAction");
+  });
+
+  it("treats a second Part Arrived click as a no-op and records the actor", () => {
+    const records = readFileSync(resolve("src/lib/waiting/records.ts"), "utf8");
+    expect(records).toContain("record.actualArrivalAt");
+    expect(records).toContain("This waiting record is already resolved");
+    expect(records).toContain("export async function markPartArrived");
+    const actions = readFileSync(resolve("src/server/actions/waiting.ts"), "utf8");
+    expect(actions).toContain("markPartArrived({");
+  });
+
+  it("resolves Ready to Schedule records through the existing scheduler", () => {
+    const records = readFileSync(resolve("src/lib/waiting/records.ts"), "utf8");
+    expect(records).toContain("resolveWaitingRecordsForScheduledJob");
+    expect(records).toContain("appointmentScheduled");
+    expect(records).toContain('note: "Appointment scheduled"');
+    const jobs = readFileSync(resolve("src/server/actions/jobs.ts"), "utf8");
+    expect(jobs).toContain("resolveWaitingRecordsForScheduledJob");
+    expect(jobs).toContain("/operations/waiting");
+    const dispatch = readFileSync(resolve("src/server/actions/dispatch.ts"), "utf8");
+    expect(dispatch).toContain("resolveWaitingRecordsForScheduledJob");
+  });
+
+  it("records expected-date history and only notifies when asked", () => {
+    const records = readFileSync(resolve("src/lib/waiting/records.ts"), "utf8");
+    expect(records).toContain("expectedDateChanged");
+    expect(records).toContain("fromExpectedResolutionAt");
+    expect(records).toContain("toExpectedResolutionAt");
+    expect(records).toContain("input.notifyCustomer && nextExpected");
+    const drawer = readFileSync(resolve("src/components/waiting/detail-drawer.tsx"), "utf8");
+    expect(drawer).toContain("notifyExpectedDate");
+  });
+});
+
+describe("waiting communication workflow", () => {
+  it("previews the real message and accepts an edited body", () => {
+    const messages = readFileSync(resolve("src/lib/waiting/messages.ts"), "utf8");
+    expect(messages).toContain("previewWaitingCommunication");
+    expect(messages).toContain("bodyOverride");
+    expect(messages).toContain("sendCompanyCommunication");
+    expect(messages).not.toMatch(/fake success|pretend|invented delivery/i);
+    const actions = readFileSync(resolve("src/server/actions/waiting.ts"), "utf8");
+    expect(actions).toContain("previewWaitingUpdateAction");
+    expect(actions).toContain('formData.get("body")');
+    const dialog = readFileSync(resolve("src/components/waiting/send-update-dialog.tsx"), "utf8");
+    expect(dialog).toContain("previewWaitingUpdateAction");
+    expect(dialog).toContain("Loading the actual message preview");
+  });
+
+  it("keeps failed updates failed and shows provider details", () => {
+    const failed = readFileSync(resolve("src/components/waiting/update-failed-dialog.tsx"), "utf8");
+    expect(failed).toContain("UPDATE FAILED");
+    expect(failed).toContain("sanitizeWaitingFailureReason");
+    expect(failed).toContain("HighLevel");
+    expect(failed).toContain("did not mark this customer as contacted");
+    const messages = readFileSync(resolve("src/lib/waiting/messages.ts"), "utf8");
+    expect(messages).toContain("lastCommunicationStatus: \"FAILED\"");
+    expect(messages).not.toContain("lastCustomerUpdateAt: now,\n        lastCommunicationStatus: \"FAILED\"");
+  });
+
+  it("does not auto-resolve waiting records from a customer reply", () => {
+    const replies = readFileSync(resolve("src/lib/waiting/replies.ts"), "utf8");
+    expect(replies).toContain("customerRepliedAt");
+    expect(replies).not.toContain('state: "RESOLVED"');
+    const attention = readFileSync(resolve("src/lib/waiting/attention.ts"), "utf8");
+    expect(attention).toContain("waiting_customer_replied");
+    expect(attention).toContain("Do not assume the wait is over");
+  });
+
+  it("excludes Ready to Schedule from the automatic processor", () => {
+    const processor = readFileSync(resolve("src/lib/waiting/processor.ts"), "utf8");
+    expect(processor).toContain('kind: { not: "READY" }');
+    expect(processor).toContain("READY_TO_SCHEDULE");
+    expect(processor).toContain("shouldStopWaitingAutomation");
+  });
+});
+
+describe("waiting operational timeline", () => {
+  it("writes Job 360 events and Customer 360 history without deleting the record", () => {
+    const records = readFileSync(resolve("src/lib/waiting/records.ts"), "utf8");
+    expect(records).toContain("jobWorkflowEvent.create");
+    expect(records).toContain("Part arrived");
+    expect(records).toContain("History is preserved");
+    const workspace = readFileSync(resolve("src/lib/customers/workspace.ts"), "utf8");
+    expect(workspace).toContain("Waiting started");
+    expect(workspace).toContain("Part ordered");
+    expect(workspace).toContain("Part arrived");
+    expect(workspace).toContain("Ready to schedule");
+    expect(workspace).toContain("Appointment scheduled");
+    expect(workspace).toContain("Waiting update sent");
+  });
+});
+
+describe("waiting Action Center workflow copy", () => {
+  it("creates Ready, overdue, and failed items with operational actions", () => {
+    const attention = readFileSync(resolve("src/lib/waiting/attention.ts"), "utf8");
+    expect(attention).toContain("READY TO SCHEDULE");
+    expect(attention).toContain("has arrived.");
+    expect(attention).toContain("Schedule Customer");
+    expect(attention).toContain("/jobs/${record.jobId}#schedule");
+    expect(attention).toContain("PART OVERDUE");
+    expect(attention).toContain("Check Part Status");
+    expect(attention).toContain("UPDATE FAILED");
+    expect(attention).toContain("waiting-ready-${record.id}");
+    expect(attention).toContain("waiting-send-failed-${record.id}");
   });
 });

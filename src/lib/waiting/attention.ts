@@ -3,6 +3,7 @@ import type { AttentionItem } from "@/lib/attention";
 import { prisma } from "@/lib/db";
 import { customerDisplayName } from "@/lib/actions/eligibility";
 import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
+import { sanitizeWaitingFailureReason } from "@/lib/waiting/safety";
 
 export async function detectWaitingAttention(companyId: string): Promise<AttentionItem[]> {
   const now = new Date();
@@ -25,18 +26,21 @@ export async function detectWaitingAttention(companyId: string): Promise<Attenti
     const href = `/operations/waiting?record=${record.id}`;
 
     if (record.expectedResolutionAt && record.expectedResolutionAt < now && record.column.kind !== "READY") {
+      const partOverdue = record.column.key === "WAITING_ON_PART";
       items.push({
         id: `waiting-overdue-${record.id}`,
         type: "waiting_expected_date_passed",
-        title: `${customerName} — ${item}`,
-        description: `Expected ${record.expectedResolutionAt.toLocaleDateString()} · still ${record.column.name}`,
+        title: partOverdue ? `PART OVERDUE · ${customerName}` : `${customerName} — ${item}`,
+        description: partOverdue
+          ? `${item} · Expected ${record.expectedResolutionAt.toLocaleDateString()}`
+          : `Expected ${record.expectedResolutionAt.toLocaleDateString()} · still ${record.column.name}`,
         severity: "critical",
         href,
         entityType: "WaitingRecord",
         entityId: record.id,
         createdAt: record.expectedResolutionAt,
         customerName,
-        recommendedAction: "Check status and update the customer.",
+        recommendedAction: partOverdue ? "Check Part Status" : "Check status and update the customer.",
         category: "operations",
       });
     }
@@ -79,15 +83,15 @@ export async function detectWaitingAttention(companyId: string): Promise<Attenti
       items.push({
         id: `waiting-send-failed-${record.id}`,
         type: "waiting_update_failed",
-        title: `Customer update failed · ${customerName}`,
-        description: record.lastCommunicationError || "The provider did not send the waiting update.",
+        title: `UPDATE FAILED · ${customerName}`,
+        description: sanitizeWaitingFailureReason(record.lastCommunicationError),
         severity: "critical",
         href,
         entityType: "WaitingRecord",
         entityId: record.id,
         createdAt: record.updatedAt,
         customerName,
-        recommendedAction: "Fix communications and send the update.",
+        recommendedAction: "Review the provider failure and send the update.",
         category: "operations",
       });
     }
@@ -96,15 +100,15 @@ export async function detectWaitingAttention(companyId: string): Promise<Attenti
       items.push({
         id: `waiting-ready-${record.id}`,
         type: "waiting_ready_to_schedule",
-        title: `Ready to schedule · ${customerName}`,
-        description: `${record.job.jobNumber}${item ? ` · ${item}` : ""}`,
+        title: `READY TO SCHEDULE · ${customerName}`,
+        description: item ? `${item} has arrived.` : `${record.job.jobNumber} is ready to schedule.`,
         severity: "warning",
-        href: `/jobs/${record.jobId}`,
+        href: `/jobs/${record.jobId}#schedule`,
         entityType: "Job",
         entityId: record.jobId,
         createdAt: record.actualArrivalAt ?? record.updatedAt,
         customerName,
-        recommendedAction: "Schedule the customer.",
+        recommendedAction: "Schedule Customer",
         category: "operations",
       });
     }

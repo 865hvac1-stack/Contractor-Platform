@@ -186,6 +186,7 @@ function serializeDetail(row: NonNullable<Awaited<ReturnType<typeof loadWaitingD
       kind: communication.kind,
       sentAt: communication.sentAt?.toISOString() ?? null,
       failedAt: communication.failedAt?.toISOString() ?? null,
+      attemptedAt: communication.attemptedAt.toISOString(),
       failureReason: communication.failureReason,
       provider: communication.provider,
       body: communication.body,

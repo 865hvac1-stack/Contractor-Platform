@@ -114,6 +114,9 @@ export type WaitingCard = {
   lastCustomerUpdateAt: Date | null;
   nextCustomerUpdateAt: Date | null;
   expectedResolutionAt: Date | null;
+  actualArrivalAt: Date | null;
+  lastFailedAt: Date | null;
+  lastProvider: string | null;
   priority: JobPriority;
   overdue: boolean;
   warning: boolean;

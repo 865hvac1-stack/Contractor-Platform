@@ -115,6 +115,16 @@ export async function assignJobToTechnicianAction(input: {
         confirmConflict: Boolean(input.confirmConflict),
       },
     });
+    if (data.scheduledStart) {
+      const { resolveWaitingRecordsForScheduledJob } = await import("@/lib/waiting/records");
+      await resolveWaitingRecordsForScheduledJob({
+        companyId: ctx.company.id,
+        actorId: ctx.user.id,
+        jobId: job.id,
+      });
+      revalidatePath("/operations/waiting");
+      revalidatePath("/actions");
+    }
     revalidateDispatch(job.id);
     return { ok: true };
   } catch (e) {

@@ -7,10 +7,11 @@ import { can } from "@/lib/permissions";
 import { jobAccessFilter, requirePermission } from "@/lib/tenant";
 import type { ActionResult } from "@/server/actions/auth";
 import { columnKeyFromName, ensureWaitingSetup } from "@/lib/waiting/columns";
-import { sendWaitingCommunication } from "@/lib/waiting/messages";
+import { previewWaitingCommunication, sendWaitingCommunication } from "@/lib/waiting/messages";
 import {
   addWaitingNote,
   createWaitingRecord,
+  markPartArrived,
   resolveWaitingRecord,
   transitionWaitingRecord,
   updateWaitingRecord,
@@ -192,11 +193,28 @@ export async function markPartArrivedAction(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
-  formData.set("markPartArrived", "yes");
-  formData.set("stopUpdates", "yes");
-  if (!formData.get("notifyCustomer")) formData.set("notifyCustomer", "yes");
-  if (!formData.get("createSchedulingTask")) formData.set("createSchedulingTask", "yes");
-  return transitionWaitingAction(_prev, formData);
+  try {
+    const recordId = String(formData.get("recordId") ?? "");
+    const existing = await prisma.waitingRecord.findFirst({
+      where: { id: recordId },
+      include: { column: true },
+    });
+    if (!existing) return { ok: false, error: "Waiting record not found." };
+    const { ctx } = await requireWaitingMutation(existing.jobId);
+    if (existing.companyId !== ctx.company.id) return { ok: false, error: "Waiting record not found." };
+    await markPartArrived({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      recordId,
+      notifyCustomer: formData.get("notifyCustomer") !== "no",
+      createSchedulingTask: formData.get("createSchedulingTask") !== "no",
+      note: String(formData.get("note") ?? "").trim() || "Part arrived",
+    });
+    revalidateWaiting(existing.jobId, existing.customerId);
+    return { ok: true, message: "Part arrived. Job is Ready to Schedule." };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not mark the part arrived." };
+  }
 }
 
 export async function resolveWaitingAction(
@@ -226,6 +244,37 @@ export async function resolveWaitingAction(
   }
 }
 
+export async function previewWaitingUpdateAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const recordId = String(formData.get("recordId") ?? "");
+    const existing = await prisma.waitingRecord.findFirst({
+      where: { id: recordId },
+      select: { companyId: true, jobId: true },
+    });
+    if (!existing) return { ok: false, error: "Waiting record not found." };
+    const { ctx } = await requireWaitingMutation(existing.jobId);
+    if (existing.companyId !== ctx.company.id) return { ok: false, error: "Waiting record not found." };
+    const preview = await previewWaitingCommunication({
+      companyId: ctx.company.id,
+      recordId,
+      kind: "MANUAL",
+    });
+    if (!preview.ok || !preview.body) {
+      return { ok: false, error: preview.reason ?? "Could not preview the update." };
+    }
+    return {
+      ok: true,
+      preview: preview.body,
+      message: preview.reason ?? undefined,
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not preview the update." };
+  }
+}
+
 export async function sendWaitingUpdateNowAction(
   _prev: ActionResult | null,
   formData: FormData
@@ -245,6 +294,7 @@ export async function sendWaitingUpdateNowAction(
       kind: "MANUAL",
       actorId: ctx.user.id,
       manual: true,
+      bodyOverride: String(formData.get("body") ?? "").trim() || null,
       idempotencySlot: new Date(),
     });
     revalidateWaiting(existing.jobId, existing.customerId);
@@ -290,6 +340,7 @@ export async function updateWaitingDetailsAction(
         ? dateOrNull(formData.get("expectedResolutionAt"))
         : undefined,
       metadata: { ...parseWaitingMetadata(existing.metadata), ...metadataFromForm(formData, existing.column.key) },
+      notifyCustomer: formData.get("notifyExpectedDate") === "yes",
     });
     revalidateWaiting(existing.jobId, existing.customerId);
     return { ok: true, message: "Waiting record updated." };

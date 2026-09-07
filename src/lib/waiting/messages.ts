@@ -37,12 +37,68 @@ export async function resolveWaitingTemplate(input: {
   });
 }
 
+export async function previewWaitingCommunication(input: {
+  companyId: string;
+  recordId: string;
+  kind?: SendKind;
+  db?: PrismaClient;
+}): Promise<{ ok: boolean; body?: string; reason?: string; provider?: string }> {
+  const db = input.db ?? defaultPrisma;
+  const record = await db.waitingRecord.findFirst({
+    where: { id: input.recordId, companyId: input.companyId },
+    include: {
+      customer: true,
+      job: { select: { id: true, jobNumber: true, status: true } },
+      column: true,
+      assignedOwner: { select: { firstName: true, lastName: true } },
+      company: { select: { businessName: true, timezone: true } },
+    },
+  });
+  if (!record) return { ok: false, reason: "Waiting record not found." };
+
+  const setting = await db.waitingBoardSetting.findUnique({ where: { companyId: input.companyId } });
+  const kind = input.kind ?? "MANUAL";
+  const block = waitingSendBlockReason({
+    jobStatus: record.job.status,
+    recordState: record.state,
+    communicationEnabled: record.communicationEnabled,
+    automationEnabled: record.automationEnabled,
+    companyAutomaticUpdatesEnabled: setting?.automaticUpdatesEnabled ?? true,
+    customer: record.customer,
+    kind,
+    manual: true,
+  });
+
+  const template = await resolveWaitingTemplate({
+    companyId: input.companyId,
+    columnId: record.columnId,
+    kind,
+    db,
+  });
+  if (!template) return { ok: false, reason: block ?? "No waiting message template is configured." };
+
+  const vars = buildWaitingTemplateVars({
+    firstName: firstNameOf(record.customer),
+    companyName: record.company.businessName,
+    jobNumber: record.job.jobNumber,
+    waitingReason: record.reason,
+    ownerName: record.assignedOwner
+      ? `${record.assignedOwner.firstName} ${record.assignedOwner.lastName}`.trim()
+      : null,
+    metadata: parseWaitingMetadata(record.metadata),
+    expectedResolutionAt: record.expectedResolutionAt,
+    timezone: record.company.timezone,
+  });
+  return { ok: true, body: renderWaitingTemplate(template.body, vars), reason: block ?? undefined };
+}
+
 export async function sendWaitingCommunication(input: {
   companyId: string;
   recordId: string;
   kind: SendKind;
   actorId?: string | null;
   manual?: boolean;
+  bodyOverride?: string | null;
   idempotencySlot?: Date | string;
   db?: PrismaClient;
 }): Promise<{ ok: boolean; skipped?: boolean; reason?: string; communicationId?: string }> {
@@ -124,13 +180,16 @@ export async function sendWaitingCommunication(input: {
     return { ok: false, reason: block, communicationId: failed.id };
   }
 
-  const template = await resolveWaitingTemplate({
-    companyId: input.companyId,
-    columnId: record.columnId,
-    kind: input.kind,
-    db,
-  });
-  if (!template) {
+  const override = input.bodyOverride?.trim() ?? "";
+  const template = override
+    ? null
+    : await resolveWaitingTemplate({
+        companyId: input.companyId,
+        columnId: record.columnId,
+        kind: input.kind,
+        db,
+      });
+  if (!override && !template) {
     return { ok: false, reason: "No waiting message template is configured." };
   }
 
@@ -146,7 +205,7 @@ export async function sendWaitingCommunication(input: {
     expectedResolutionAt: record.expectedResolutionAt,
     timezone: record.company.timezone,
   });
-  const body = renderWaitingTemplate(template.body, vars);
+  const body = override || renderWaitingTemplate(template!.body, vars);
   const to = smsRecipient(record.customer)!;
 
   const communication =
@@ -158,7 +217,7 @@ export async function sendWaitingCommunication(input: {
         kind: input.kind,
         idempotencyKey,
         body,
-        templateKind: template.kind,
+        templateKind: template?.kind ?? input.kind,
         attemptedAt: new Date(),
       },
     }));
@@ -258,7 +317,7 @@ export async function sendWaitingCommunication(input: {
     action: input.manual ? "waiting.communication_manual" : "waiting.communication_sent",
     entityType: "WaitingRecord",
     entityId: record.id,
-    metadata: { kind: input.kind, provider: sent.provider, templateKind: template.kind },
+    metadata: { kind: input.kind, provider: sent.provider, templateKind: template?.kind ?? input.kind },
   });
 
   return { ok: true, communicationId: communication.id };

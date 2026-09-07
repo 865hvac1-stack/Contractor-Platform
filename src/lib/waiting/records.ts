@@ -168,6 +168,16 @@ export async function transitionWaitingRecord(input: TransitionWaitingInput, db:
   });
   if (!record) throw new Error("Waiting record not found.");
   if (record.state === "RESOLVED") throw new Error("This waiting record is already resolved.");
+  if (
+    input.actions?.markPartArrived &&
+    isReadyColumn(record.column.kind, record.column.key) &&
+    record.actualArrivalAt
+  ) {
+    return db.waitingRecord.findFirstOrThrow({
+      where: { id: record.id, companyId: input.companyId },
+      include: waitingRecordInclude,
+    });
+  }
 
   const toColumn = await db.waitingColumn.findFirst({
     where: { id: input.toColumnId, companyId: input.companyId, archivedAt: null },
@@ -235,7 +245,9 @@ export async function transitionWaitingRecord(input: TransitionWaitingInput, db:
     record.job.status,
     ready,
     input.actorId,
-    `Waiting moved to ${toColumn.name}`
+    actions.markPartArrived
+      ? `Part arrived · moved to ${toColumn.name}`
+      : `Waiting moved to ${toColumn.name}`
   );
 
   if (actions.createSchedulingTask && ready) {
@@ -246,6 +258,7 @@ export async function transitionWaitingRecord(input: TransitionWaitingInput, db:
       jobId: record.job.id,
       jobNumber: record.job.jobNumber,
       customerName: `${record.customer.firstName} ${record.customer.lastName}`.trim(),
+      itemName: meta.part?.name?.trim() || meta.waitingFor?.trim() || record.reason,
       assignedOwnerUserId: record.assignedOwnerUserId,
       db,
     });
@@ -283,7 +296,14 @@ export async function transitionWaitingRecord(input: TransitionWaitingInput, db:
 }
 
 export async function resolveWaitingRecord(
-  input: { companyId: string; actorId: string; recordId: string; note?: string | null; notifyCustomer?: boolean },
+  input: {
+    companyId: string;
+    actorId: string;
+    recordId: string;
+    note?: string | null;
+    notifyCustomer?: boolean;
+    appointmentScheduled?: boolean;
+  },
   db: PrismaClient = defaultPrisma
 ) {
   const record = await db.waitingRecord.findFirst({
@@ -309,8 +329,22 @@ export async function resolveWaitingRecord(
       fromColumnId: record.columnId,
       toColumnId: record.columnId,
       actorId: input.actorId,
-      actions: { resolved: true, notifyCustomer: Boolean(input.notifyCustomer) },
+      actions: {
+        resolved: true,
+        notifyCustomer: Boolean(input.notifyCustomer),
+        appointmentScheduled: Boolean(input.appointmentScheduled),
+      },
       note: input.note ?? null,
+    },
+  });
+  await db.jobWorkflowEvent.create({
+    data: {
+      companyId: input.companyId,
+      jobId: record.jobId,
+      stepId: "waiting",
+      actorId: input.actorId,
+      kind: "WAITING_UPDATE",
+      note: input.note?.trim() || "Waiting record resolved. History is preserved.",
     },
   });
   if (input.notifyCustomer) {
@@ -350,6 +384,7 @@ export async function updateWaitingRecord(
     expectedResolutionAt?: Date | null;
     metadata?: WaitingMetadata;
     priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+    notifyCustomer?: boolean;
   },
   db: PrismaClient = defaultPrisma
 ) {
@@ -396,7 +431,57 @@ export async function updateWaitingRecord(
         : null,
   };
 
+  const previousExpected = record.expectedResolutionAt;
+  const nextExpected =
+    input.expectedResolutionAt === undefined ? record.expectedResolutionAt : input.expectedResolutionAt;
+  const expectedDateChanged =
+    input.expectedResolutionAt !== undefined &&
+    (previousExpected?.getTime() ?? null) !== (nextExpected?.getTime() ?? null);
+
   await db.waitingRecord.update({ where: { id: record.id }, data });
+
+  if (expectedDateChanged) {
+    await db.waitingTransition.create({
+      data: {
+        companyId: input.companyId,
+        recordId: record.id,
+        fromColumnId: record.columnId,
+        toColumnId: record.columnId,
+        actorId: input.actorId,
+        actions: {
+          expectedDateChanged: true,
+          fromExpectedResolutionAt: previousExpected?.toISOString() ?? null,
+          toExpectedResolutionAt: nextExpected?.toISOString() ?? null,
+        },
+        note: `Expected date ${previousExpected ? previousExpected.toISOString().slice(0, 10) : "none"} → ${
+          nextExpected ? nextExpected.toISOString().slice(0, 10) : "none"
+        }`,
+      },
+    });
+    await db.jobWorkflowEvent.create({
+      data: {
+        companyId: input.companyId,
+        jobId: record.jobId,
+        stepId: "waiting",
+        actorId: input.actorId,
+        kind: "WAITING_UPDATE",
+        note: `Expected date changed ${previousExpected ? previousExpected.toISOString().slice(0, 10) : "none"} → ${
+          nextExpected ? nextExpected.toISOString().slice(0, 10) : "none"
+        }`,
+      },
+    });
+    if (input.notifyCustomer && nextExpected) {
+      await sendWaitingCommunication({
+        companyId: input.companyId,
+        recordId: record.id,
+        kind: "RECURRING",
+        actorId: input.actorId,
+        manual: true,
+        idempotencySlot: `expected-${nextExpected.toISOString()}`,
+      });
+    }
+  }
+
   await writeAudit({
     companyId: input.companyId,
     actorId: input.actorId,
@@ -405,13 +490,98 @@ export async function updateWaitingRecord(
     entityId: record.id,
     metadata: {
       cadenceChanged: input.cadence != null && input.cadence !== record.cadence,
-      expectedDateChanged: input.expectedResolutionAt !== undefined,
+      expectedDateChanged,
+      fromExpectedResolutionAt: expectedDateChanged ? previousExpected?.toISOString() ?? null : undefined,
+      toExpectedResolutionAt: expectedDateChanged ? nextExpected?.toISOString() ?? null : undefined,
     },
   });
   return db.waitingRecord.findFirstOrThrow({
     where: { id: record.id, companyId: input.companyId },
     include: waitingRecordInclude,
   });
+}
+
+export async function markPartArrived(
+  input: {
+    companyId: string;
+    actorId: string;
+    recordId: string;
+    notifyCustomer?: boolean;
+    createSchedulingTask?: boolean;
+    note?: string | null;
+  },
+  db: PrismaClient = defaultPrisma
+) {
+  const record = await db.waitingRecord.findFirst({
+    where: { id: input.recordId, companyId: input.companyId },
+    include: { column: true },
+  });
+  if (!record) throw new Error("Waiting record not found.");
+  if (record.state === "RESOLVED") {
+    return db.waitingRecord.findFirstOrThrow({
+      where: { id: record.id, companyId: input.companyId },
+      include: waitingRecordInclude,
+    });
+  }
+  if (isReadyColumn(record.column.kind, record.column.key) && record.actualArrivalAt) {
+    return db.waitingRecord.findFirstOrThrow({
+      where: { id: record.id, companyId: input.companyId },
+      include: waitingRecordInclude,
+    });
+  }
+  const { columns } = await ensureWaitingSetup(input.companyId, db);
+  const ready = columns.find((column) => isReadyColumn(column.kind, column.key));
+  if (!ready) throw new Error("Ready to Schedule is not configured.");
+  return transitionWaitingRecord(
+    {
+      companyId: input.companyId,
+      actorId: input.actorId,
+      recordId: record.id,
+      toColumnId: ready.id,
+      note: input.note ?? "Part arrived",
+      actions: {
+        markPartArrived: true,
+        stopUpdates: true,
+        notifyCustomer: input.notifyCustomer === true,
+        createSchedulingTask: input.createSchedulingTask !== false,
+      },
+    },
+    db
+  );
+}
+
+export async function resolveWaitingRecordsForScheduledJob(
+  input: { companyId: string; actorId: string; jobId: string },
+  db: PrismaClient = defaultPrisma
+) {
+  const records = await db.waitingRecord.findMany({
+    where: { companyId: input.companyId, jobId: input.jobId, state: "ACTIVE" },
+    include: { column: true },
+  });
+  const ready = records.filter((record) => isReadyColumn(record.column.kind, record.column.key));
+  for (const record of ready) {
+    await resolveWaitingRecord(
+      {
+        companyId: input.companyId,
+        actorId: input.actorId,
+        recordId: record.id,
+        note: "Appointment scheduled",
+        notifyCustomer: false,
+        appointmentScheduled: true,
+      },
+      db
+    );
+    await db.companyTask.updateMany({
+      where: {
+        companyId: input.companyId,
+        relatedType: "WaitingRecord",
+        relatedId: record.id,
+        status: "OPEN",
+      },
+      data: { status: "DONE" },
+    });
+  }
+  return ready.length;
 }
 
 export async function addWaitingNote(
@@ -499,6 +669,7 @@ async function createSchedulingFollowUp(input: {
   jobId: string;
   jobNumber: string;
   customerName: string;
+  itemName?: string | null;
   assignedOwnerUserId: string | null;
   db: PrismaClient;
 }) {
@@ -517,8 +688,10 @@ async function createSchedulingFollowUp(input: {
       companyId: input.companyId,
       assignedToUserId: input.assignedOwnerUserId,
       createdByUserId: input.actorId,
-      title: `Schedule ${input.customerName} · ${input.jobNumber}`,
-      details: "Waiting hold cleared. Customer is ready to schedule.",
+      title: `Schedule Customer · ${input.customerName}`,
+      details: input.itemName
+        ? `${input.itemName} has arrived.`
+        : `${input.jobNumber} is ready to schedule.`,
       dueAt: new Date(),
       status: "OPEN",
       relatedType: "WaitingRecord",
