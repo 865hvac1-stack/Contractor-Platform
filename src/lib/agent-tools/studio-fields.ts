@@ -79,16 +79,16 @@ export function extractSlots(data: unknown): StudioSlot[] {
   const record = asRecord(data);
   const raw = record?.available_slots;
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((row) => {
-      const item = asRecord(row);
-      if (!item) return null;
-      const display = asString(item.display);
-      const token = asString(item.slot_token);
-      if (!display && !token) return null;
-      return { display, slot_token: token };
-    })
-    .filter((row): row is StudioSlot => Boolean(row));
+  const slots: StudioSlot[] = [];
+  for (const row of raw) {
+    const item = asRecord(row);
+    if (!item) continue;
+    const display = asString(item.display);
+    const token = asString(item.slot_token);
+    if (!display && !token) continue;
+    slots.push({ display, slot_token: token });
+  }
+  return slots;
 }
 
 export function flattenSlots(slots: StudioSlot[]): StudioSlotFields {
