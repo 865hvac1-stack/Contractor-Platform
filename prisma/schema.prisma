@@ -575,6 +575,8 @@ model Company {
   aiActionTargets AIActionTarget[]
   companyTasks CompanyTask[]
   intelligenceSetting CompanyIntelligenceSetting?
+  aiReceptionistSetting CompanyAiReceptionistSetting?
+  receptionistTurns ReceptionistTurn[]
   importSessions ImportSession[]
   importRows ImportRow[]
   importExternalRefs ImportExternalRef[]
@@ -2028,6 +2030,46 @@ model CompanyIntelligenceSetting {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
+model CompanyAiReceptionistSetting {
+  id                      String   @id @default(cuid())
+  companyId               String   @unique
+  enabled                 Boolean  @default(false)
+  assistantName           String   @default("Regina")
+  autoReplyInboundSms     Boolean  @default(true)
+  autoBookServiceCalls    Boolean  @default(true)
+  allowSameDayBooking     Boolean  @default(true)
+  humanHandoffFallback    Boolean  @default(true)
+  businessHoursBehavior   String   @default("ALWAYS")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model ReceptionistTurn {
+  id                 String   @id @default(cuid())
+  companyId          String
+  threadId           String
+  inboundMessageId   String
+  customerId         String?
+  propertyId         String?
+  intent             String
+  schedulingState    String?
+  availabilityCount  Int      @default(0)
+  bookingResult      String?
+  outboundSent       Boolean  @default(false)
+  handoffReason      String?
+  errorCode          String?
+  durationMs         Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, inboundMessageId])
+  @@index([companyId, threadId, createdAt])
+  @@index([companyId, createdAt])
+}
+
 model AIConversation {
   id            String   @id @default(cuid())
   companyId     String
@@ -3159,6 +3201,10 @@ model ConversationSchedulingState {
   suggestedJobId       String?
   bookedJobId          String?
   paused               Boolean                       @default(false)
+  lastIntent           String?
+  lastAiAction         String?
+  handoffReason        String?
+  receptionistTurnCount Int                          @default(0)
   expiresAt            DateTime
   createdAt            DateTime                      @default(now())
   updatedAt            DateTime                      @updatedAt

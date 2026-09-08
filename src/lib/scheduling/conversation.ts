@@ -54,7 +54,9 @@ import {
   type OfferedSlot,
 } from "@/lib/scheduling/conversation-turn";
 
-type SchedulingProcessInput = {
+export type SchedulingReplyComposer = (input: { templateText: string; outcome?: string }) => Promise<string> | string;
+
+export type SchedulingProcessInput = {
   companyId: string;
   threadId: string;
   customerId?: string | null;
@@ -63,6 +65,8 @@ type SchedulingProcessInput = {
   direction?: string | null;
   channel?: string | null;
   phone?: string | null;
+  forceScheduling?: boolean;
+  composeReply?: SchedulingReplyComposer;
 };
 
 export async function processInboundScheduling(input: SchedulingProcessInput) {
@@ -112,7 +116,7 @@ export async function processInboundScheduling(input: SchedulingProcessInput) {
     activeState: previous,
     intent: fresh,
   });
-  if (route === "ignore") {
+  if (route === "ignore" && !input.forceScheduling) {
     return { handled: false as const };
   }
 
@@ -219,7 +223,12 @@ export async function processInboundScheduling(input: SchedulingProcessInput) {
     propertyId = customerContext.properties[0]!.id;
   }
 
-  const replyInput = { ...input, customerId, phone: input.phone || customerContext?.phone || null };
+  const replyInput = {
+    ...input,
+    customerId,
+    phone: input.phone || customerContext?.phone || null,
+    composeReply: input.composeReply,
+  };
 
   if (intent.humanRequested) {
     await prisma.conversationSchedulingState.update({
@@ -934,7 +943,15 @@ function expandDates(start: string, end: string) {
   return dates;
 }
 
-async function reply(input: { companyId: string; customerId?: string | null; phone?: string | null }, body: string) {
+async function reply(
+  input: {
+    companyId: string;
+    customerId?: string | null;
+    phone?: string | null;
+    composeReply?: SchedulingReplyComposer;
+  },
+  body: string
+) {
   const customer = input.customerId
     ? await prisma.customer.findFirst({
         where: { id: input.customerId, companyId: input.companyId },
@@ -943,11 +960,12 @@ async function reply(input: { companyId: string; customerId?: string | null; pho
     : null;
   const to = customer?.phone || input.phone;
   if (!to) return;
+  const text = input.composeReply ? await input.composeReply({ templateText: body }) : body;
   await sendCompanyCommunication({
     companyId: input.companyId,
     channel: "SMS",
     to,
-    body,
+    body: text,
     customerId: input.customerId,
     origin: "CONTRACTORYOU_AUTOMATION",
   });

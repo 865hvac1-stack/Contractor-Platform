@@ -1,6 +1,8 @@
 # HighLevel Agent Studio tools
 
-Regina / HighLevel Conversation AI talks to the customer. ContractorYou remains the source of truth for customers, properties, availability, capacity, jobs, and Dispatch.
+HighLevel is the SMS transport. ContractorYou Regina is the brain: inbound messages are ingested, the receptionist interprets them, deterministic scheduling books real windows, and replies go out through the canonical HighLevel SMS sender.
+
+These Agent Studio tools remain available for integrations and testing. They still never send SMS.
 
 Phase 1 tools:
 

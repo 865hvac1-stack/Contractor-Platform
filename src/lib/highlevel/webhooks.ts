@@ -376,8 +376,7 @@ export async function processHighLevelWebhook(
         );
         const conversationOwner = await loadCustomerConversationOwner(prisma, input.companyId);
         if (contractorYouMayAutoreply(conversationOwner)) {
-          const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
-          await processInboundScheduling({
+          const inbound = {
             companyId: input.companyId,
             threadId: comms.thread.id,
             customerId: comms.customerId,
@@ -386,7 +385,18 @@ export async function processHighLevelWebhook(
             direction: comms.message.direction,
             channel: comms.message.channel,
             phone: fields.from || emptyToNull(text(data.phone)),
-          });
+          };
+          const { loadReceptionistSettings, receptionistShouldHandleInbound } = await import(
+            "@/lib/intelligence/receptionist/settings"
+          );
+          const receptionist = await loadReceptionistSettings(input.companyId);
+          if (receptionistShouldHandleInbound(receptionist)) {
+            const { processInboundReceptionist } = await import("@/lib/intelligence/receptionist/inbound");
+            await processInboundReceptionist(inbound);
+          } else {
+            const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
+            await processInboundScheduling(inbound);
+          }
         }
       } catch (error) {
         console.error("[scheduling] inbound conversation handler failed", error);

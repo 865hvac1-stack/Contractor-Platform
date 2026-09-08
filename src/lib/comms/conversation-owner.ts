@@ -34,10 +34,10 @@ export async function loadCustomerConversationOwner(
 
 export function conversationOwnerCopy(owner: CustomerConversationOwner) {
   if (owner === "HIGHLEVEL_AI") {
-    return "HighLevel handles natural customer conversations. ContractorYou remains the source of truth for scheduling and business data.";
+    return "HighLevel Conversation AI talks to the customer. ContractorYou remains the source of truth for scheduling and business data.";
   }
   if (owner === "MANUAL") {
     return "Neither AI replies automatically. The office sends customer texts from ContractorYou.";
   }
-  return "ContractorYou may reply to inbound scheduling messages. HighLevel Conversation AI should stay off for this location.";
+  return "ContractorYou Regina (or your company assistant) replies through HighLevel SMS. Turn HighLevel Conversation AI off for this location so customers are not double-texted.";
 }

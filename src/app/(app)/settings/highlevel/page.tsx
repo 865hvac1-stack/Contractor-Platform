@@ -17,6 +17,8 @@ import { highlevelSettingsHealth } from "@/lib/highlevel/settings-health";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { AgentToolSettings } from "@/components/highlevel/agent-tool-settings";
 import { ConversationOwnerForm } from "@/components/highlevel/conversation-owner-form";
+import { ReceptionistSettingsForm } from "@/components/highlevel/receptionist-settings-form";
+import { loadReceptionistSettings } from "@/lib/intelligence/receptionist/settings";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { parseCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -364,6 +366,7 @@ export default async function HighLevelSettingsPage({
       </Card>
 
       <ConversationOwnerForm value={parseCustomerConversationOwner(ctx.company.customerConversationOwner)} />
+      <ReceptionistSettingsForm settings={await loadReceptionistSettings(ctx.company.id)} />
       <AgentToolSettings
         keys={agentToolKeys.map((row) => ({
           id: row.id,

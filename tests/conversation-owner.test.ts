@@ -39,11 +39,14 @@ describe("customer conversation owner", () => {
     expect(webhook).toMatch(/upsertConversationMessage/);
     expect(webhook).toMatch(/contractorYouMayAutoreply/);
     expect(webhook).toMatch(/loadCustomerConversationOwner/);
+    expect(webhook).toMatch(/processInboundReceptionist/);
     expect(webhook).toMatch(/processInboundScheduling/);
     const ownerCheck = webhook.indexOf("contractorYouMayAutoreply(conversationOwner)");
-    const processCall = webhook.indexOf("processInboundScheduling({");
+    const receptionistCall = webhook.indexOf("processInboundReceptionist(inbound)");
+    const processCall = webhook.indexOf("processInboundScheduling(inbound)");
     expect(ownerCheck).toBeGreaterThan(0);
-    expect(processCall).toBeGreaterThan(ownerCheck);
+    expect(receptionistCall).toBeGreaterThan(ownerCheck);
+    expect(processCall).toBeGreaterThan(receptionistCall);
   });
 
   it("does not create scheduling state or send when HighLevel AI or Manual owns the conversation", async () => {
@@ -116,5 +119,16 @@ describe("customer conversation owner", () => {
     expect(migration).toMatch(/isDemo" = false/);
     expect(migration).toMatch(/HIGHLEVEL_AI/);
     expect(migration).not.toMatch(/SET "customerConversationOwner" = 'HIGHLEVEL_AI';\s*$/m);
+  });
+
+  it("moves 865 HVAC receptionist ownership back to ContractorYou Regina", () => {
+    const migration = readFileSync(
+      resolve("prisma/migrations/20260908190000_ai_receptionist_foundation/migration.sql"),
+      "utf8"
+    );
+    expect(migration).toMatch(/customerConversationOwner" = 'CONTRACTORYOU'/);
+    expect(migration).toMatch(/assistantName/);
+    expect(migration).toMatch(/Regina/);
+    expect(migration).toMatch(/businessName" = '865 HVAC'/);
   });
 });
