@@ -11,10 +11,19 @@ describe("scheduling security and HighLevel safeguards", () => {
     expect(can("TECHNICIAN", "schedule:view")).toBe(true);
     expect(can("OFFICE", "jobs:manage")).toBe(true);
     const actions = readFileSync(resolve("src/server/actions/scheduling.ts"), "utf8");
-    expect(actions).toMatch(/requirePermission\("company:settings"\)/);
-    expect(actions).toMatch(/requirePermission\("schedule:manage"\)/);
+    const page = readFileSync(resolve("src/app/(app)/settings/scheduling/page.tsx"), "utf8");
+    expect(actions).toMatch(/requireAnyPermission\(\["company:settings", "schedule:manage"\]\)/);
+    expect(actions).toMatch(/requireAnyPermission\(\["schedule:manage", "company:settings"\]\)/);
     expect(actions).toMatch(/requirePermission\("jobs:manage"\)/);
     expect(actions).toMatch(/companyId: ctx.company.id/);
+    expect(actions).toMatch(/where: \{ id: serviceTypeId, companyId: ctx.company.id \}/);
+    expect(actions).toMatch(/where: \{ id: windowId, companyId: ctx.company.id \}/);
+    expect(actions).not.toMatch(/formString\(formData, "available"\) === "yes"/);
+    expect(page).toMatch(/requireAnyPermission\(\["company:settings", "schedule:manage"\]\)/);
+    expect(can("DISPATCHER", "schedule:manage")).toBe(true);
+    expect(can("DISPATCHER", "company:settings")).toBe(false);
+    expect(can("TECHNICIAN", "company:settings")).toBe(false);
+    expect(can("TECHNICIAN", "schedule:manage")).toBe(false);
   });
 
   it("does not bypass HighLevel identity or approved sender", () => {

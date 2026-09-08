@@ -26,6 +26,17 @@ export function formatWindowClock(startMinutes: number, endMinutes: number) {
   return `${formatClockMinutes(startMinutes)}–${formatClockMinutes(endMinutes)}`;
 }
 
+export function formatWindowChip(startMinutes: number, endMinutes: number) {
+  const start = formatClockMinutes(startMinutes);
+  const end = formatClockMinutes(endMinutes);
+  const startPeriod = start.slice(-2);
+  const endPeriod = end.slice(-2);
+  const startClock = start.replace(/ (AM|PM)$/, "").replace(":00", "");
+  const endClock = end.replace(/ (AM|PM)$/, "").replace(":00", "");
+  if (startPeriod === endPeriod) return `${startClock}–${endClock} ${endPeriod}`;
+  return `${startClock} ${startPeriod}–${endClock} ${endPeriod}`;
+}
+
 export function parseClockToMinutes(value: string): number | null {
   const trimmed = value.trim();
   const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);

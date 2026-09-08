@@ -143,7 +143,7 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
-      {can(ctx.role, "company:settings") ? (
+      {can(ctx.role, "company:settings") || can(ctx.role, "schedule:manage") ? (
         <Link
           href="/settings/scheduling"
           className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"

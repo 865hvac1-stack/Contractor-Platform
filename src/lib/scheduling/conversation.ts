@@ -16,6 +16,7 @@ import {
 import { formatClockMinutes, formatLocalDateShort, formatWindowClock } from "@/lib/scheduling/time";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "@/lib/scheduling/booking";
 import { findOpenMaintenanceVisit } from "@/lib/scheduling/maintenance";
+import { conversationCanAutoBook } from "@/lib/scheduling/auto-book";
 import { ensureSchedulingSetup } from "@/lib/scheduling/ensure";
 import { matchesDaypart } from "@/lib/scheduling/daypart";
 
@@ -259,8 +260,7 @@ export async function processInboundScheduling(input: {
         where: { companyId: input.companyId, serviceTypeId },
       })
     : null;
-  const canAutoBook =
-    policy.autoBookingEnabled && (!rule || (rule.autoBookAllowed && !rule.requiresOfficeApproval));
+  const canAutoBook = conversationCanAutoBook(policy, rule);
 
   const dates = intent.requestedDateEnd && intent.requestedDate
     ? expandDates(intent.requestedDate, intent.requestedDateEnd)

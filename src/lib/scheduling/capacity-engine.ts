@@ -109,7 +109,7 @@ export function evaluateCapacity(snapshot: EngineSnapshot, query: CapacityQuery)
       const weekly = snapshot.weekly.find(
         (row) => row.userId === tech.id && row.windowId === window.id && row.weekday === weekday
       );
-      const available = override ? override.available : Boolean(weekly?.available);
+      const available = override ? override.available === true : weekly?.available === true;
       const configuredCapacity = override?.capacity ?? weekly?.capacity ?? 0;
       if (!weekly && !override) reasons.push("not_working");
       else if (!available) reasons.push("window_unavailable");

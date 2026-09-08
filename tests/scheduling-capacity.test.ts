@@ -103,6 +103,53 @@ describe("canonical capacity engine", () => {
     expect(result.rejected.every((row) => row.reasons.includes("company_window_full"))).toBe(true);
   });
 
+  it("treats persisted Off as unavailable even when capacity is stored", () => {
+    const result = evaluateCapacity(
+      snapshot({
+        technicians: [{ id: "tj", name: "TJ Hurst", active: true }],
+        weekly: [{ userId: "tj", windowId: "w1", weekday: 3, available: false, capacity: 1 }],
+      }),
+      { companyId: "865", date: "2026-09-09", appointmentWindowId: "w1" }
+    );
+    expect(result.options).toHaveLength(0);
+    expect(result.rejected.some((row) => row.technicianId === "tj" && row.reasons.includes("window_unavailable"))).toBe(
+      true
+    );
+  });
+
+  it("uses the persisted On + capacity 1 row for the same technician/window/weekday", () => {
+    const result = evaluateCapacity(
+      snapshot({
+        technicians: [{ id: "user-tj-hurst", name: "TJ Hurst", active: true }],
+        weekly: [{ userId: "user-tj-hurst", windowId: "w1", weekday: 3, available: true, capacity: 1 }],
+      }),
+      { companyId: "865", date: "2026-09-09", appointmentWindowId: "w1" }
+    );
+    expect(result.options).toHaveLength(1);
+    expect(result.options[0].technicianId).toBe("user-tj-hurst");
+    expect(result.options[0].configuredCapacity).toBe(1);
+    expect(result.options[0].remainingCapacity).toBe(1);
+  });
+
+  it("keeps the 365-day maintenance horizon intact", () => {
+    const far = evaluateCapacity(snapshot(), {
+      companyId: "co1",
+      date: "2027-09-08",
+      appointmentWindowId: "w1",
+      maintenance: true,
+    });
+    expect(far.options.length).toBeGreaterThan(0);
+    expect(far.rejected.some((row) => row.reasons.includes("outside_horizon"))).toBe(false);
+    const tooFar = evaluateCapacity(snapshot(), {
+      companyId: "co1",
+      date: "2027-09-10",
+      appointmentWindowId: "w1",
+      maintenance: true,
+    });
+    expect(tooFar.options).toHaveLength(0);
+    expect(tooFar.rejected.every((row) => row.reasons.includes("outside_horizon"))).toBe(true);
+  });
+
   it("keeps one remaining last slot visible and rejects overbook", () => {
     const result = evaluateCapacity(
       snapshot({

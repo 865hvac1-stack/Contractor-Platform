@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { requirePermission } from "@/lib/tenant";
+import { requireAnyPermission, requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
 import type { ActionResult } from "@/server/actions/auth";
 import type { AppointmentDaypart } from "@prisma/client";
@@ -12,6 +12,13 @@ import { parseClockToMinutes } from "@/lib/scheduling/time";
 import { ensureSchedulingSetup } from "@/lib/scheduling/ensure";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "@/lib/scheduling/booking";
 import { setConversationAutoBooking } from "@/lib/scheduling/conversation";
+import {
+  parseFormBoolean,
+  parseFormFieldBoolean,
+  parseFormCapacity,
+  parseFormWeekday,
+  parseTechnicianWeekSlots,
+} from "@/lib/scheduling/persist";
 
 function formString(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -32,30 +39,30 @@ export async function saveSchedulingPolicyAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("company:settings");
+    const ctx = await requireAnyPermission(["company:settings", "schedule:manage"]);
     await ensureSchedulingSetup(prisma, ctx.company.id);
     await prisma.schedulingPolicy.upsert({
       where: { companyId: ctx.company.id },
       create: { companyId: ctx.company.id },
       update: {
-        autoBookingEnabled: formString(formData, "autoBookingEnabled") === "yes",
-        allowSameDay: formString(formData, "allowSameDay") === "yes",
-        allowWeekend: formString(formData, "allowWeekend") === "yes",
+        autoBookingEnabled: parseFormBoolean(formData.get("autoBookingEnabled")),
+        allowSameDay: parseFormBoolean(formData.get("allowSameDay")),
+        allowWeekend: parseFormBoolean(formData.get("allowWeekend")),
         minNoticeMinutes: Number(formString(formData, "minNoticeMinutes") || 120),
         standardHorizonDays: Number(formString(formData, "standardHorizonDays") || 90),
         maintenanceHorizonDays: Number(formString(formData, "maintenanceHorizonDays") || 365),
         maxJobsPerWindow: formString(formData, "maxJobsPerWindow") ? Number(formString(formData, "maxJobsPerWindow")) : null,
         maxJobsPerDay: formString(formData, "maxJobsPerDay") ? Number(formString(formData, "maxJobsPerDay")) : null,
         emergencyReservePerWindow: Number(formString(formData, "emergencyReservePerWindow") || 0),
-        allowEmergencyReserveUse: formString(formData, "allowEmergencyReserveUse") === "yes",
-        autoCancelEnabled: formString(formData, "autoCancelEnabled") === "yes",
-        showTechnicianName: formString(formData, "showTechnicianName") === "yes",
-        allowPaidOneTimeMaintenance: formString(formData, "allowPaidOneTimeMaintenance") === "yes",
-        allowOfficeOverride: formString(formData, "allowOfficeOverride") === "yes",
+        allowEmergencyReserveUse: parseFormBoolean(formData.get("allowEmergencyReserveUse")),
+        autoCancelEnabled: parseFormBoolean(formData.get("autoCancelEnabled")),
+        showTechnicianName: parseFormBoolean(formData.get("showTechnicianName")),
+        allowPaidOneTimeMaintenance: parseFormBoolean(formData.get("allowPaidOneTimeMaintenance")),
+        allowOfficeOverride: parseFormBoolean(formData.get("allowOfficeOverride") ?? "yes"),
         confirmationTemplate: formString(formData, "confirmationTemplate") || null,
         defaultServiceTypeId: formString(formData, "defaultServiceTypeId") || null,
         maintenanceServiceTypeId: formString(formData, "maintenanceServiceTypeId") || null,
-        proactiveOutreachEnabled: formString(formData, "proactiveOutreachEnabled") === "yes",
+        proactiveOutreachEnabled: parseFormBoolean(formData.get("proactiveOutreachEnabled")),
       },
     });
     const timezone = formString(formData, "timezone");
@@ -77,12 +84,41 @@ export async function saveSchedulingPolicyAction(
   }
 }
 
+export async function saveAutoBookingEnabledAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requireAnyPermission(["company:settings", "schedule:manage"]);
+    await ensureSchedulingSetup(prisma, ctx.company.id);
+    const autoBookingEnabled = parseFormFieldBoolean(formData, "autoBookingEnabled");
+    await prisma.schedulingPolicy.upsert({
+      where: { companyId: ctx.company.id },
+      create: { companyId: ctx.company.id, autoBookingEnabled },
+      update: { autoBookingEnabled },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "scheduling.policy_updated",
+      entityType: "SchedulingPolicy",
+      entityId: ctx.company.id,
+      metadata: { autoBookingEnabled },
+    });
+    revalidatePath("/settings/scheduling");
+    return { ok: true, message: autoBookingEnabled ? "Auto booking is on." : "Auto booking is off." };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
 export async function saveAppointmentWindowAction(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     await ensureSchedulingSetup(prisma, ctx.company.id);
     const id = formString(formData, "id");
     const startMinutes = minutesFromForm(formData, "start");
@@ -95,7 +131,7 @@ export async function saveAppointmentWindowAction(
       startMinutes,
       endMinutes,
       daypart: (formString(formData, "daypart") || inferDaypart(startMinutes)) as AppointmentDaypart,
-      active: formString(formData, "active") !== "no",
+      active: parseFormBoolean(formData.get("active") ?? "yes"),
       sortOrder: Number(formString(formData, "sortOrder") || 0),
     };
     const invalid = validateAppointmentWindow(draft);
@@ -163,7 +199,7 @@ export async function deleteAppointmentWindowAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     const id = formString(formData, "id");
     const window = await prisma.appointmentWindow.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!window) return { ok: false, error: "Window not found." };
@@ -187,10 +223,13 @@ export async function saveTechnicianAvailabilityAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     const userId = formString(formData, "userId");
     const windowId = formString(formData, "windowId");
-    const weekday = Number(formString(formData, "weekday"));
+    const weekday = parseFormWeekday(formData.get("weekday"));
+    const available = parseFormBoolean(formData.get("available"));
+    const capacity = parseFormCapacity(formData.get("capacity"), 1);
+    if (weekday == null) return { ok: false, error: "Choose a valid weekday." };
     const member = await prisma.membership.findFirst({
       where: { companyId: ctx.company.id, userId, status: "ACTIVE" },
     });
@@ -213,12 +252,12 @@ export async function saveTechnicianAvailabilityAction(
         userId,
         windowId,
         weekday,
-        available: formString(formData, "available") === "yes",
-        capacity: Math.max(0, Number(formString(formData, "capacity") || 1)),
+        available,
+        capacity,
       },
       update: {
-        available: formString(formData, "available") === "yes",
-        capacity: Math.max(0, Number(formString(formData, "capacity") || 1)),
+        available,
+        capacity,
       },
     });
     await writeAudit({
@@ -227,10 +266,97 @@ export async function saveTechnicianAvailabilityAction(
       action: "scheduling.capacity_changed",
       entityType: "TechnicianWindowAvailability",
       entityId: userId,
-      metadata: { windowId, weekday },
+      metadata: { windowId, weekday, available, capacity },
     });
     revalidatePath("/settings/scheduling");
     return { ok: true };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+export async function saveTechnicianWeekAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
+    const userId = formString(formData, "userId");
+    const member = await prisma.membership.findFirst({
+      where: { companyId: ctx.company.id, userId, status: "ACTIVE" },
+    });
+    if (!member) return { ok: false, error: "Technician not found." };
+    if (ctx.role === "TECHNICIAN" && ctx.user.id !== userId) {
+      return { ok: false, error: "Technicians can only view their own schedule." };
+    }
+    const windows = await prisma.appointmentWindow.findMany({
+      where: { companyId: ctx.company.id },
+      select: { id: true },
+    });
+    const windowIds = windows.map((window) => window.id);
+    const slots = parseTechnicianWeekSlots(formData, windowIds);
+    await prisma.$transaction(
+      slots.map((slot) =>
+        prisma.technicianWindowAvailability.upsert({
+          where: {
+            companyId_userId_windowId_weekday: {
+              companyId: ctx.company.id,
+              userId,
+              windowId: slot.windowId,
+              weekday: slot.weekday,
+            },
+          },
+          create: {
+            companyId: ctx.company.id,
+            userId,
+            windowId: slot.windowId,
+            weekday: slot.weekday,
+            available: slot.available,
+            capacity: slot.capacity,
+          },
+          update: {
+            available: slot.available,
+            capacity: slot.capacity,
+          },
+        })
+      )
+    );
+    const eligibility = formData.getAll("eligibleServiceTypeId").map(String);
+    const serviceTypes = await prisma.serviceType.findMany({
+      where: { companyId: ctx.company.id, active: true, archivedAt: null },
+      select: { id: true },
+    });
+    await prisma.$transaction(
+      serviceTypes.map((type) =>
+        prisma.technicianServiceEligibility.upsert({
+          where: {
+            companyId_userId_serviceTypeId: {
+              companyId: ctx.company.id,
+              userId,
+              serviceTypeId: type.id,
+            },
+          },
+          create: {
+            companyId: ctx.company.id,
+            userId,
+            serviceTypeId: type.id,
+            eligible: eligibility.includes(type.id),
+          },
+          update: { eligible: eligibility.includes(type.id) },
+        })
+      )
+    );
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "scheduling.capacity_changed",
+      entityType: "TechnicianWindowAvailability",
+      entityId: userId,
+      metadata: { weekSlots: slots.length, availableSlots: slots.filter((slot) => slot.available).length },
+    });
+    revalidatePath("/settings/scheduling");
+    return { ok: true, message: "Technician schedule saved." };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     throw error;
@@ -242,7 +368,7 @@ export async function saveAvailabilityOverrideAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     const userId = formString(formData, "userId");
     const windowId = formString(formData, "windowId");
     const date = formString(formData, "date");
@@ -266,13 +392,13 @@ export async function saveAvailabilityOverrideAction(
         userId,
         windowId,
         date: new Date(`${date}T00:00:00.000Z`),
-        available: formString(formData, "available") === "yes",
-        capacity: formString(formData, "capacity") ? Number(formString(formData, "capacity")) : null,
+        available: parseFormBoolean(formData.get("available")),
+        capacity: formString(formData, "capacity") ? parseFormCapacity(formData.get("capacity"), 0) : null,
         reason: formString(formData, "reason") || null,
       },
       update: {
-        available: formString(formData, "available") === "yes",
-        capacity: formString(formData, "capacity") ? Number(formString(formData, "capacity")) : null,
+        available: parseFormBoolean(formData.get("available")),
+        capacity: formString(formData, "capacity") ? parseFormCapacity(formData.get("capacity"), 0) : null,
         reason: formString(formData, "reason") || null,
       },
     });
@@ -297,7 +423,7 @@ export async function deleteAvailabilityOverrideAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     const id = formString(formData, "id");
     const row = await prisma.availabilityOverride.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!row) return { ok: false, error: "Override not found." };
@@ -315,7 +441,7 @@ export async function saveTechnicianEligibilityAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("schedule:manage");
+    const ctx = await requireAnyPermission(["schedule:manage", "company:settings"]);
     const userId = formString(formData, "userId");
     const serviceTypeId = formString(formData, "serviceTypeId");
     const member = await prisma.membership.findFirst({
@@ -337,9 +463,9 @@ export async function saveTechnicianEligibilityAction(
         companyId: ctx.company.id,
         userId,
         serviceTypeId,
-        eligible: formString(formData, "eligible") === "yes",
+        eligible: parseFormBoolean(formData.get("eligible")),
       },
-      update: { eligible: formString(formData, "eligible") === "yes" },
+      update: { eligible: parseFormBoolean(formData.get("eligible")) },
     });
     revalidatePath("/settings/scheduling");
     return { ok: true };
@@ -354,7 +480,7 @@ export async function saveServiceTypeRuleAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("company:settings");
+    const ctx = await requireAnyPermission(["company:settings", "schedule:manage"]);
     const serviceTypeId = formString(formData, "serviceTypeId");
     const serviceType = await prisma.serviceType.findFirst({
       where: { id: serviceTypeId, companyId: ctx.company.id },
@@ -365,14 +491,14 @@ export async function saveServiceTypeRuleAction(
       create: {
         companyId: ctx.company.id,
         serviceTypeId,
-        autoBookAllowed: formString(formData, "autoBookAllowed") === "yes",
-        requiresOfficeApproval: formString(formData, "requiresOfficeApproval") === "yes",
-        isMaintenance: formString(formData, "isMaintenance") === "yes",
+        autoBookAllowed: parseFormFieldBoolean(formData, "autoBookAllowed"),
+        requiresOfficeApproval: parseFormFieldBoolean(formData, "requiresOfficeApproval"),
+        isMaintenance: parseFormFieldBoolean(formData, "isMaintenance"),
       },
       update: {
-        autoBookAllowed: formString(formData, "autoBookAllowed") === "yes",
-        requiresOfficeApproval: formString(formData, "requiresOfficeApproval") === "yes",
-        isMaintenance: formString(formData, "isMaintenance") === "yes",
+        autoBookAllowed: parseFormFieldBoolean(formData, "autoBookAllowed"),
+        requiresOfficeApproval: parseFormFieldBoolean(formData, "requiresOfficeApproval"),
+        isMaintenance: parseFormFieldBoolean(formData, "isMaintenance"),
       },
     });
     revalidatePath("/settings/scheduling");
