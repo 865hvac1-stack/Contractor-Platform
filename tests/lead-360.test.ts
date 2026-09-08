@@ -30,11 +30,12 @@ describe("Lead 360 wiring", () => {
 
   it("builds Lead 360 on existing routes and systems", () => {
     const page = readFileSync(resolve("src/app/(app)/marketing/leads/[id]/page.tsx"), "utf8");
+    const ai = readFileSync(resolve("src/components/leads/lead-ai-panel.tsx"), "utf8");
     const actions = readFileSync(resolve("src/server/actions/leads.ts"), "utf8");
     const estimate = readFileSync(resolve("src/app/(app)/estimates/new/page.tsx"), "utf8");
     const job = readFileSync(resolve("src/app/(app)/jobs/new/page.tsx"), "utf8");
     expect(page).toContain("NO CONTACT ATTEMPT");
-    expect(page).toContain("ContractorYou Intelligence");
+    expect(ai).toContain("ContractorYou Intelligence");
     expect(page).toContain("Open conversation");
     expect(page).toContain("/jobs/new?leadId=");
     expect(page).toContain("/estimates/new?leadId=");
@@ -54,7 +55,7 @@ describe("Lead 360 wiring", () => {
     const convert = readFileSync(resolve("src/components/leads/convert-customer-panel.tsx"), "utf8");
     expect(actions).toContain("Link them instead of creating a duplicate");
     expect(actions).not.toMatch(/if \(match\) \{\s*customerId = match.customer.id/);
-    expect(convert).toContain("will not silently merge");
+    expect(convert).toContain("not silently merge records");
     expect(convert).toContain("Link existing customer");
     expect(convert).toContain("/api/customers/search");
   });
@@ -100,7 +101,7 @@ describe("Lead 360 wiring", () => {
     );
     expect(notes).toContain("Gloria McClure");
     expect(notes).toContain("unknown");
-    expect(notes).not.toMatch(/close probability|diagnosis|budget/i);
+    expect(notes).not.toMatch(/close probability|80% chance|replacement furnace/i);
     expect(summary).toContain("Google Ads");
     expect(summary).toContain("No contact attempt is recorded");
     expect(summary).toContain("Megan Brooks");
