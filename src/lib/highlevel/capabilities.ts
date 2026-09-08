@@ -1,6 +1,18 @@
 import { HIGHLEVEL_SCOPES } from "@/lib/highlevel/config";
 
-export type CapabilityStatus = "CONNECTED" | "AVAILABLE" | "NOT_AUTHORIZED" | "NOT_CONFIGURED";
+export type CapabilityStatus =
+  | "CONNECTED"
+  | "AVAILABLE"
+  | "NOT_AUTHORIZED"
+  | "NOT_CONFIGURED"
+  | "CONNECTION_ERROR"
+  | "AUTHENTICATED_NEEDS_ATTENTION";
+
+export function formatHighLevelCapabilityStatus(status: CapabilityStatus) {
+  if (status === "AUTHENTICATED_NEEDS_ATTENTION") return "AUTHENTICATED — NEEDS ATTENTION";
+  if (status === "CONNECTION_ERROR") return "CONNECTION ERROR";
+  return status.replaceAll("_", " ");
+}
 
 export type HighLevelCapability = {
   key: string;
@@ -31,15 +43,22 @@ function hasScope(granted: string[], needed: string[]) {
 
 export function highlevelCapabilities(input: {
   connected: boolean;
+  authenticated?: boolean;
   scopes: string[];
   verifiedKeys?: string[];
+  errorKeys?: string[];
 }): HighLevelCapability[] {
   const verified = new Set(input.verifiedKeys ?? []);
+  const errored = new Set(input.errorKeys ?? []);
+  const configured = input.connected || Boolean(input.authenticated);
   return CAPABILITIES.map((capability) => {
-    if (!input.connected) {
+    if (!configured) {
       return { ...capability, status: "NOT_CONFIGURED" as const };
     }
     const authorized = capability.scopes.length === 0 ? false : hasScope(input.scopes, capability.scopes);
+    if (errored.has(capability.key)) {
+      return { ...capability, status: "CONNECTION_ERROR" as const };
+    }
     if (verified.has(capability.key)) {
       return { ...capability, status: "CONNECTED" as const };
     }

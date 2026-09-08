@@ -64,6 +64,21 @@ export type HighLevelOAuthDiagnosticFields = {
   tokenType?: "location" | "company" | "unknown" | null;
   responseKeys?: string[];
   verified?: boolean;
+  tokenUserType?: string | null;
+  tokenResponseLocationId?: string | null;
+  jwtLocationId?: string | null;
+  agencyCompanyId?: string | null;
+  isBulkInstallation?: boolean | null;
+  approvedLocationsCount?: number | null;
+  approveAllLocations?: boolean | null;
+  installToFutureLocations?: boolean | null;
+  previousMappedLocationId?: string | null;
+  freshOauthLocationId?: string | null;
+  finalPersistedLocationId?: string | null;
+  locationSource?: string | null;
+  staleMappingReused?: boolean | null;
+  authorizeUrlHasLocationId?: boolean | null;
+  locationIdsDisagree?: boolean | null;
 };
 
 function sanitizeErrorMessage(message: string | null | undefined): string | null {
@@ -102,6 +117,33 @@ export function sanitizeOAuthDiagnostic(
   if (fields.tokenType) out.tokenType = fields.tokenType;
   if (fields.responseKeys?.length) out.responseKeys = fields.responseKeys;
   if (fields.verified !== undefined) out.verified = fields.verified;
+  if (fields.tokenUserType) out.tokenUserType = fields.tokenUserType;
+  if (fields.tokenResponseLocationId) out.tokenResponseLocationId = fields.tokenResponseLocationId;
+  if (fields.jwtLocationId) out.jwtLocationId = fields.jwtLocationId;
+  if (fields.agencyCompanyId) out.agencyCompanyId = fields.agencyCompanyId;
+  if (fields.isBulkInstallation !== undefined && fields.isBulkInstallation !== null) {
+    out.isBulkInstallation = fields.isBulkInstallation;
+  }
+  if (fields.approvedLocationsCount != null) out.approvedLocationsCount = fields.approvedLocationsCount;
+  if (fields.approveAllLocations !== undefined && fields.approveAllLocations !== null) {
+    out.approveAllLocations = fields.approveAllLocations;
+  }
+  if (fields.installToFutureLocations !== undefined && fields.installToFutureLocations !== null) {
+    out.installToFutureLocations = fields.installToFutureLocations;
+  }
+  if (fields.previousMappedLocationId) out.previousMappedLocationId = fields.previousMappedLocationId;
+  if (fields.freshOauthLocationId) out.freshOauthLocationId = fields.freshOauthLocationId;
+  if (fields.finalPersistedLocationId) out.finalPersistedLocationId = fields.finalPersistedLocationId;
+  if (fields.locationSource) out.locationSource = fields.locationSource;
+  if (fields.staleMappingReused !== undefined && fields.staleMappingReused !== null) {
+    out.staleMappingReused = fields.staleMappingReused;
+  }
+  if (fields.authorizeUrlHasLocationId !== undefined && fields.authorizeUrlHasLocationId !== null) {
+    out.authorizeUrlHasLocationId = fields.authorizeUrlHasLocationId;
+  }
+  if (fields.locationIdsDisagree !== undefined && fields.locationIdsDisagree !== null) {
+    out.locationIdsDisagree = fields.locationIdsDisagree;
+  }
 
   for (const key of FORBIDDEN) {
     delete out[key];

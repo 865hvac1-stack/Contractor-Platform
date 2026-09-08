@@ -8,7 +8,7 @@ import {
   highlevelRequestedScopes,
   isHighLevelAppOrVersionId,
 } from "@/lib/highlevel/env";
-import { highlevelAuthorizeUrl, highlevelOAuthRedirectUri } from "@/lib/highlevel/oauth";
+import { highlevelAuthorizeUrl, highlevelAuthorizeUrlHasLocationId, highlevelOAuthRedirectUri } from "@/lib/highlevel/oauth";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { createOAuthState } from "@/lib/integrations/oauth/state";
 import { upsertConnection } from "@/lib/integrations/store";
@@ -56,6 +56,7 @@ export async function GET() {
       hasState: true,
       hasCode: false,
     });
+    const authorizeUrl = highlevelAuthorizeUrl(state.state);
     logHighLevelOAuthDiagnostic({
       marker: HIGHLEVEL_OAUTH_MARKERS.START,
       route: START_ROUTE,
@@ -65,6 +66,7 @@ export async function GET() {
       hasState: true,
       redirectUriMatchesProduction: redirectUriMatchesProduction(highlevelOAuthRedirectUri()),
       requestedScopes: highlevelRequestedScopes(),
+      authorizeUrlHasLocationId: highlevelAuthorizeUrlHasLocationId(authorizeUrl),
     });
     if (!sandbox) {
       await upsertConnection({
@@ -74,7 +76,7 @@ export async function GET() {
         healthMessage: "Waiting for HighLevel Marketplace authorization.",
       });
     }
-    return NextResponse.redirect(highlevelAuthorizeUrl(state.state));
+    return NextResponse.redirect(authorizeUrl);
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.redirect(new URL("/login?next=/settings/highlevel", process.env.APP_URL || "http://127.0.0.1:43123"));

@@ -480,6 +480,109 @@ describe("HighLevel Marketplace OAuth callback", () => {
     expect(connection?.status).not.toBe("CONNECTED");
   });
 
+  it("persists a fresh OAuth location over a stale same-company mapping", async () => {
+    const staleLocationId = `loc_stale_${Date.now()}`;
+    const freshLocationId = `loc_fresh_${Date.now()}`;
+    await upsertConnection({
+      companyId: ids.company,
+      providerKey: HIGHLEVEL_PROVIDER_KEY,
+      status: "CONNECTED",
+      accountLabel: "Previous location",
+      externalAccountId: staleLocationId,
+      scopes: ["locations.readonly"],
+    });
+    const row = await stateFor(ids.company);
+    const accessToken = `fresh-access-${Date.now()}`;
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockResolvedValue({
+      tokens: {
+        accessToken,
+        refreshToken: "fresh-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        scopes: ["locations.readonly"],
+        userType: "Location",
+        locationId: freshLocationId,
+      },
+      locationId: freshLocationId,
+      agencyId: null,
+      userType: "Location",
+    });
+    mockVerifiedLocation(freshLocationId);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=fresh-code&state=${row.state}`));
+    expect(response.headers.get("location") || "").toContain("connected=1");
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY },
+    });
+    expect(connection?.externalAccountId).toBe(freshLocationId);
+    expect(connection?.externalAccountId).not.toBe(staleLocationId);
+    const saved = diagnosticRows(info).find((row) => row.marker === HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED);
+    expect(saved?.previousMappedLocationId).toBe(staleLocationId);
+    expect(saved?.tokenResponseLocationId).toBe(freshLocationId);
+    expect(saved?.freshOauthLocationId).toBe(freshLocationId);
+    expect(saved?.finalPersistedLocationId).toBe(freshLocationId);
+    expect(saved?.staleMappingReused).toBe(false);
+    expect(JSON.stringify(diagnosticRows(info))).not.toContain("fresh-code");
+    expect(JSON.stringify(diagnosticRows(info))).not.toContain(accessToken);
+    const install = await prisma.integrationSync.findFirst({
+      where: { companyId: ids.company, connectionId: connection!.id, kind: "oauth_install" },
+      orderBy: { startedAt: "desc" },
+    });
+    expect(install?.summary).toMatchObject({
+      previousMappedLocationId: staleLocationId,
+      freshOauthLocationId: freshLocationId,
+      finalPersistedLocationId: freshLocationId,
+      staleMappingReused: false,
+    });
+    const other = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.other, providerKey: HIGHLEVEL_PROVIDER_KEY },
+    });
+    expect(other?.externalAccountId ?? null).not.toBe(freshLocationId);
+  });
+
+  it("uses a JWT location claim when the token body omits locationId", async () => {
+    const staleLocationId = `loc_jwt_stale_${Date.now()}`;
+    const freshLocationId = `loc_jwt_fresh_${Date.now()}`;
+    const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({ oauthMeta: { userType: "Location", locationId: freshLocationId } })
+    ).toString("base64url");
+    const accessToken = `${header}.${payload}.sig`;
+    await upsertConnection({
+      companyId: ids.company,
+      providerKey: HIGHLEVEL_PROVIDER_KEY,
+      status: "CONNECTED",
+      externalAccountId: staleLocationId,
+      scopes: ["locations.readonly"],
+    });
+    const row = await stateFor(ids.company);
+    vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockResolvedValue({
+      tokens: {
+        accessToken,
+        refreshToken: "jwt-refresh",
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        scopes: ["locations.readonly"],
+        userType: "Location",
+      },
+      locationId: null,
+      agencyId: null,
+      userType: "Location",
+    });
+    mockVerifiedLocation(freshLocationId);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const response = await handleHighLevelMarketplaceCallback(callbackRequest(`code=jwt-code&state=${row.state}`));
+    expect(response.headers.get("location") || "").toContain("connected=1");
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: ids.company, providerKey: HIGHLEVEL_PROVIDER_KEY },
+    });
+    expect(connection?.externalAccountId).toBe(freshLocationId);
+    const resolved = diagnosticRows(info).find((row) => row.marker === HIGHLEVEL_OAUTH_MARKERS.LOCATION_RESOLVED);
+    expect(resolved?.locationSource).toBe("jwt_claim");
+    expect(resolved?.jwtLocationId).toBe(freshLocationId);
+    expect(resolved?.previousMappedLocationId).toBe(staleLocationId);
+    expect(resolved?.staleMappingReused).toBe(false);
+    expect(JSON.stringify(diagnosticRows(info))).not.toContain(accessToken);
+  });
+
   it("logs CODE_EXCHANGE_FAILED with HTTP status and no authorization code", async () => {
     const row = await stateFor(ids.company);
     vi.spyOn(highlevelOAuth, "exchangeHighLevelCode").mockRejectedValue(

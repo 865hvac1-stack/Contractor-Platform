@@ -9,10 +9,13 @@ import { appUrl } from "@/lib/integrations/env";
 import { upsertIdentityMap } from "@/lib/highlevel/identity";
 import { logHighLevelOAuth } from "@/lib/highlevel/oauth-log";
 import { MARKETPLACE_OAUTH_CALLBACK_PATH } from "@/lib/integrations/env";
+import { inspectHighLevelTokenClaims } from "@/lib/highlevel/token-claims";
+import { resolveFreshHighLevelOauthLocation } from "@/lib/highlevel/oauth-location";
 import {
   HIGHLEVEL_OAUTH_MARKERS,
   logHighLevelOAuthDiagnostic,
   redirectUriMatchesProduction,
+  sanitizeOAuthDiagnostic,
 } from "@/lib/highlevel/oauth-diagnostics";
 
 const START_FROM_CONTRACTORYOU =
@@ -156,7 +159,47 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       hasCode: true,
       hasState: true,
     });
-    const locationId = exchanged.locationId || url.searchParams.get("locationId");
+    const { assertHighLevelLocationAvailable } = await import("@/lib/highlevel/phone-numbers");
+    const { prisma } = await import("@/lib/db");
+    const existingBefore = await prisma.integrationConnection.findFirst({
+      where: { companyId: stored.row.companyId, providerKey: HIGHLEVEL_PROVIDER_KEY },
+    });
+    const claims = inspectHighLevelTokenClaims(exchanged.tokens.accessToken);
+    const locationResolution = resolveFreshHighLevelOauthLocation({
+      tokenUserType: exchanged.userType || exchanged.tokens.userType || claims.userType,
+      tokenResponseLocationId: exchanged.locationId || exchanged.tokens.locationId,
+      jwtLocationId: claims.locationId,
+      callbackQueryLocationId: url.searchParams.get("locationId"),
+      agencyCompanyId: exchanged.agencyId || exchanged.tokens.highlevelCompanyId || claims.companyId,
+      approvedLocations: exchanged.tokens.approvedLocations,
+      isBulkInstallation: exchanged.tokens.isBulkInstallation,
+      approveAllLocations: exchanged.tokens.approveAllLocations,
+      installToFutureLocations: exchanged.tokens.installToFutureLocations,
+      previousMappedLocationId: existingBefore?.externalAccountId,
+    });
+    const locationId = locationResolution.freshOauthLocationId;
+    logHighLevelOAuthDiagnostic({
+      marker: HIGHLEVEL_OAUTH_MARKERS.LOCATION_RESOLVED,
+      route,
+      companyId: stored.row.companyId,
+      locationId,
+      reason: locationId ? "resolved" : "fresh_location_missing",
+      tokenUserType: locationResolution.tokenUserType,
+      tokenResponseLocationId: locationResolution.tokenResponseLocationId,
+      jwtLocationId: locationResolution.jwtLocationId,
+      agencyCompanyId: locationResolution.agencyCompanyId,
+      isBulkInstallation: locationResolution.isBulkInstallation,
+      approvedLocationsCount: locationResolution.approvedLocationsCount,
+      approveAllLocations: locationResolution.approveAllLocations,
+      installToFutureLocations: locationResolution.installToFutureLocations,
+      previousMappedLocationId: locationResolution.previousMappedLocationId,
+      freshOauthLocationId: locationResolution.freshOauthLocationId,
+      finalPersistedLocationId: locationResolution.finalPersistedLocationId,
+      locationSource: locationResolution.locationSource,
+      staleMappingReused: locationResolution.staleMappingReused,
+      authorizeUrlHasLocationId: false,
+      locationIdsDisagree: locationResolution.locationIdsDisagree,
+    });
     if (!locationId) {
       logHighLevelOAuth({
         reason: "LOCATION_ID_MISSING",
@@ -167,15 +210,6 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       });
       return settingsRedirect(origin, "error=HighLevel+did+not+return+a+location+id.");
     }
-    logHighLevelOAuthDiagnostic({
-      marker: HIGHLEVEL_OAUTH_MARKERS.LOCATION_RESOLVED,
-      route,
-      companyId: stored.row.companyId,
-      locationId,
-      reason: "resolved",
-    });
-    const { assertHighLevelLocationAvailable } = await import("@/lib/highlevel/phone-numbers");
-    const { prisma } = await import("@/lib/db");
     const { companyAllowsExternalIntegrationTesting } = await import("@/lib/demo/guard");
     const { authorizeHighLevelTestGrant } = await import("@/lib/highlevel/test-grant");
     const { probeHighLevelLocation } = await import("@/lib/highlevel/connection");
@@ -234,9 +268,7 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       });
       return settingsRedirect(origin, `error=${encodeURIComponent(locationLock.error)}`);
     }
-    const existing = await prisma.integrationConnection.findFirst({
-      where: { companyId: stored.row.companyId, providerKey: HIGHLEVEL_PROVIDER_KEY },
-    });
+    const existing = existingBefore;
     const pitUpgrade =
       Boolean(existing?.scopes.includes("private_token")) &&
       (existing?.externalAccountId === locationId || !existing?.externalAccountId);
@@ -267,6 +299,10 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       connectionId: connection.id,
       tokens: materialized.tokens,
     });
+    const savedResolution = {
+      ...locationResolution,
+      finalPersistedLocationId: locationId,
+    };
     logHighLevelOAuthDiagnostic({
       marker: HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED,
       route,
@@ -274,6 +310,51 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
       locationId,
       httpStatus: probe.ok ? 200 : 502,
       reason: probe.ok ? (pitUpgrade ? "oauth_upgraded_from_pit" : "oauth_connected") : "oauth_probe_failed",
+      tokenUserType: savedResolution.tokenUserType,
+      tokenResponseLocationId: savedResolution.tokenResponseLocationId,
+      jwtLocationId: savedResolution.jwtLocationId,
+      agencyCompanyId: savedResolution.agencyCompanyId,
+      isBulkInstallation: savedResolution.isBulkInstallation,
+      approvedLocationsCount: savedResolution.approvedLocationsCount,
+      approveAllLocations: savedResolution.approveAllLocations,
+      installToFutureLocations: savedResolution.installToFutureLocations,
+      previousMappedLocationId: savedResolution.previousMappedLocationId,
+      freshOauthLocationId: savedResolution.freshOauthLocationId,
+      finalPersistedLocationId: savedResolution.finalPersistedLocationId,
+      locationSource: savedResolution.locationSource,
+      staleMappingReused: savedResolution.staleMappingReused,
+      authorizeUrlHasLocationId: false,
+      locationIdsDisagree: savedResolution.locationIdsDisagree,
+    });
+    await prisma.integrationSync.create({
+      data: {
+        companyId: stored.row.companyId,
+        connectionId: connection.id,
+        kind: "oauth_install",
+        status: "COMPLETED",
+        finishedAt: new Date(),
+        summary: sanitizeOAuthDiagnostic({
+          marker: HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED,
+          route,
+          companyId: stored.row.companyId,
+          locationId,
+          tokenUserType: savedResolution.tokenUserType,
+          tokenResponseLocationId: savedResolution.tokenResponseLocationId,
+          jwtLocationId: savedResolution.jwtLocationId,
+          agencyCompanyId: savedResolution.agencyCompanyId,
+          isBulkInstallation: savedResolution.isBulkInstallation,
+          approvedLocationsCount: savedResolution.approvedLocationsCount,
+          approveAllLocations: savedResolution.approveAllLocations,
+          installToFutureLocations: savedResolution.installToFutureLocations,
+          previousMappedLocationId: savedResolution.previousMappedLocationId,
+          freshOauthLocationId: savedResolution.freshOauthLocationId,
+          finalPersistedLocationId: savedResolution.finalPersistedLocationId,
+          locationSource: savedResolution.locationSource,
+          staleMappingReused: savedResolution.staleMappingReused,
+          authorizeUrlHasLocationId: false,
+          locationIdsDisagree: savedResolution.locationIdsDisagree,
+        }) as never,
+      },
     });
     await upsertIdentityMap(prisma, {
       companyId: stored.row.companyId,
@@ -298,6 +379,14 @@ export async function handleHighLevelMarketplaceCallback(request: Request) {
         locationId,
         pitUpgrade,
         verified: probe.ok,
+        tokenUserType: savedResolution.tokenUserType,
+        tokenResponseLocationId: savedResolution.tokenResponseLocationId,
+        jwtLocationId: savedResolution.jwtLocationId,
+        previousMappedLocationId: savedResolution.previousMappedLocationId,
+        freshOauthLocationId: savedResolution.freshOauthLocationId,
+        finalPersistedLocationId: savedResolution.finalPersistedLocationId,
+        locationSource: savedResolution.locationSource,
+        staleMappingReused: savedResolution.staleMappingReused,
       },
     });
     logHighLevelOAuth({

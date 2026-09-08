@@ -3,10 +3,15 @@ import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
-import { highlevelCapabilities } from "@/lib/highlevel/capabilities";
+import { formatHighLevelCapabilityStatus, highlevelCapabilities } from "@/lib/highlevel/capabilities";
 import { highlevelAuthMode, resolveHighLevelConnection } from "@/lib/highlevel/connection";
-import { formatConversationsDiagnostic, type HighLevelConversationsDiagnostic } from "@/lib/highlevel/conversations-diagnostic";
+import {
+  formatConversationsDiagnostic,
+  type HighLevelConversationsDiagnostic,
+} from "@/lib/highlevel/conversations-diagnostic";
 import { formatTokenTypeDiagnostic, type HighLevelTokenTypeDiagnostic } from "@/lib/highlevel/token-type-diagnostic";
+import { formatOauthInstallDiagnostic, type FreshOauthLocationResolution } from "@/lib/highlevel/oauth-location";
+import { highlevelSettingsHealth } from "@/lib/highlevel/settings-health";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,6 +112,12 @@ export default async function HighLevelSettingsPage({
         orderBy: { startedAt: "desc" },
       })
     : null;
+  const lastOauthInstall = connection
+    ? await prisma.integrationSync.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id, kind: "oauth_install" },
+        orderBy: { startedAt: "desc" },
+      })
+    : null;
   const socialAccounts = connection
     ? await prisma.integrationAccount.count({
         where: { companyId: ctx.company.id, connectionId: connection.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
@@ -130,20 +141,26 @@ export default async function HighLevelSettingsPage({
   });
   const oauth = highlevelOAuthNotes();
   const isConnected = resolved.connected;
+  const authenticated = Boolean(isConnected || credential);
+  const conversationsDiagnostic = lastConversationsDiagnostic?.summary as HighLevelConversationsDiagnostic | null;
+  const settingsHealth = highlevelSettingsHealth({
+    authenticated,
+    operationalTokens: isConnected,
+    connectionStatus: connectionStatus ?? connection?.status ?? "NOT_CONNECTED",
+    testGrant: Boolean(testGrant),
+    diagnostic: conversationsDiagnostic,
+    socialAccounts,
+  });
+  const connectionHealthStatus = settingsHealth.headerStatus;
   const wrongWorkspace =
     !isConnected &&
     (/865\s*hvac/i.test(ctx.company.businessName) || ctx.user.email.toLowerCase() === "owner@865hvac.local");
-  const verifiedKeys = [
-    lastEvent || mapped ? "contacts" : null,
-    lastCommsSync ? "conversations" : null,
-    lastCommsSync ? "sms" : null,
-    lastCommsSync ? "phone" : null,
-    socialAccounts > 0 ? "social" : null,
-  ].filter((key): key is string => Boolean(key));
   const capabilities = highlevelCapabilities({
-    connected: Boolean(isConnected),
+    connected: settingsHealth.operational,
+    authenticated,
     scopes: connection?.scopes ?? [],
-    verifiedKeys,
+    verifiedKeys: settingsHealth.verifiedKeys,
+    errorKeys: settingsHealth.errorKeys,
   });
 
   return (
@@ -211,7 +228,7 @@ export default async function HighLevelSettingsPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Connection</CardTitle>
-          <StatusBadge status={testGrant ? "TEST ONLY" : connectionStatus ?? connection?.status ?? "NOT_CONNECTED"} />
+          <StatusBadge status={connectionHealthStatus} />
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <dl className="grid gap-3 sm:grid-cols-2">
@@ -277,6 +294,13 @@ export default async function HighLevelSettingsPage({
             <p className="text-[var(--muted-foreground)]">{connection.healthMessage}</p>
           ) : null}
           {connection?.errorMessage ? <p className="text-rose-700">{connection.errorMessage}</p> : null}
+          {lastOauthInstall?.summary ? (
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
+              {formatOauthInstallDiagnostic(lastOauthInstall.summary as FreshOauthLocationResolution & {
+                authorizeUrlHasLocationId?: boolean | null;
+              })}
+            </pre>
+          ) : null}
           {lastTokenTypeDiagnostic?.summary ? (
             <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
               {formatTokenTypeDiagnostic(lastTokenTypeDiagnostic.summary as HighLevelTokenTypeDiagnostic)}
@@ -299,13 +323,13 @@ export default async function HighLevelSettingsPage({
             {capabilities.map((capability) => (
               <li key={capability.key} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
                 <span>{capability.label}</span>
-                <StatusBadge status={capability.status.replaceAll("_", " ")} />
+                <StatusBadge status={formatHighLevelCapabilityStatus(capability.status)} />
               </li>
             ))}
           </ul>
           <p className="mt-3 text-xs text-[var(--muted-foreground)]">
-            CONNECTED is shown only after ContractorYou verifies access. AVAILABLE means the authorized scopes
-            include that capability.
+            CONNECTED is shown only after a live HighLevel API verification succeeds. Stored credentials alone
+            are not an operational connection. AVAILABLE means the authorized scopes include that capability.
           </p>
         </CardContent>
       </Card>

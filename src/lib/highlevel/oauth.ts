@@ -38,6 +38,16 @@ export function highlevelAuthorizeUrl(state: string) {
   return `${highlevelAuthorizeBaseUrl()}?${params.toString()}`;
 }
 
+/** Marketplace chooselocation must not pin a ContractorYou-stored location. */
+export function highlevelAuthorizeUrlHasLocationId(authorizeUrl: string) {
+  try {
+    const url = new URL(authorizeUrl);
+    return Boolean(url.searchParams.get("locationId") || url.searchParams.get("location_id"));
+  } catch {
+    return /[?&]locationId=|[?&]location_id=/.test(authorizeUrl);
+  }
+}
+
 export class HighLevelOAuthExchangeError extends Error {
   readonly errorClass = "HighLevelOAuthExchangeError";
 

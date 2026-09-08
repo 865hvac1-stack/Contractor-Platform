@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   diagnoseHighLevelConversationsApi,
   formatConversationsDiagnostic,
+  operationalHealthFromConversationsDiagnostic,
   sanitizeHighLevelPublicError,
   type HighLevelConversationsDiagnostic,
 } from "@/lib/highlevel/conversations-diagnostic";
@@ -72,5 +73,28 @@ describe("HighLevel conversations API diagnostic", () => {
     expect(search.mock.calls.map((call) => call[0].version)).toEqual(["2021-04-15", "2021-07-28", "v3"]);
     expect(result.probes.every((row) => row.errorMessage === "Location is not active")).toBe(true);
     expect(result.authMode).toBe("oauth");
+  });
+
+  it("treats 401 Location is not active as a failed conversations health check", () => {
+    const health = operationalHealthFromConversationsDiagnostic({
+      locationId: "loc_inactive_oauth",
+      authMode: "oauth",
+      mappedContactTested: false,
+      probes: [
+        {
+          endpoint: "GET /conversations/search",
+          version: "2021-04-15",
+          httpStatus: 401,
+          errorCode: "401",
+          errorMessage: "Location is not active",
+          conversationsReturned: false,
+          contactObjectReturned: false,
+          topLevelKeys: ["message"],
+        },
+      ],
+    });
+    expect(health.conversationsOk).toBe(false);
+    expect(health.conversationsFailed).toBe(true);
+    expect(health.locationInactive).toBe(true);
   });
 });

@@ -63,6 +63,52 @@ function topLevelKeys(data: unknown) {
   return Object.keys(data).slice(0, 24);
 }
 
+export type ConversationsDiagnosticHealth = {
+  conversationsOk: boolean;
+  contactsOk: boolean | null;
+  locationInactive: boolean;
+  conversationsFailed: boolean;
+  contactsFailed: boolean;
+};
+
+function isLocationInactiveMessage(message: string | null | undefined) {
+  return Boolean(message && /location is not active/i.test(message));
+}
+
+export function operationalHealthFromConversationsDiagnostic(
+  diagnostic: HighLevelConversationsDiagnostic | null | undefined
+): ConversationsDiagnosticHealth {
+  if (!diagnostic?.probes?.length) {
+    return {
+      conversationsOk: false,
+      contactsOk: null,
+      locationInactive: false,
+      conversationsFailed: false,
+      contactsFailed: false,
+    };
+  }
+  const conversationProbes = diagnostic.probes.filter((probe) => probe.endpoint === "GET /conversations/search");
+  const contactProbes = diagnostic.probes.filter((probe) => probe.endpoint === "GET /contacts/:id");
+  const conversationsOk = conversationProbes.some((probe) => probe.httpStatus === 200);
+  const conversationsAttempted = conversationProbes.length > 0;
+  const locationInactive = conversationProbes.some(
+    (probe) =>
+      (probe.httpStatus === 401 || probe.httpStatus === 400) && isLocationInactiveMessage(probe.errorMessage)
+  );
+  const conversationsFailed = conversationsAttempted && !conversationsOk;
+  const contactsOk = contactProbes.length
+    ? contactProbes.some((probe) => probe.httpStatus === 200 && probe.contactObjectReturned)
+    : null;
+  const contactsFailed = contactProbes.length > 0 && contactsOk === false;
+  return {
+    conversationsOk,
+    contactsOk,
+    locationInactive,
+    conversationsFailed,
+    contactsFailed,
+  };
+}
+
 export function formatConversationsDiagnostic(result: HighLevelConversationsDiagnostic) {
   const lines = [
     `HighLevel API diagnostic · authMode=${result.authMode} · locationId=${result.locationId} · mappedContact=${result.mappedContactTested ? "yes" : "no"}`,

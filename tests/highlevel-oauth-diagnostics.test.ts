@@ -186,6 +186,32 @@ describe("HighLevel OAuth production-safe diagnostics", () => {
     }
   });
 
+  it("records previous vs fresh vs final location metadata without secrets", () => {
+    const leaked = sanitizeOAuthDiagnostic({
+      marker: HIGHLEVEL_OAUTH_MARKERS.CONNECTION_SAVED,
+      route: "/api/integrations/oauth/callback",
+      companyId: "company_internal_1",
+      tokenUserType: "Location",
+      tokenResponseLocationId: "loc_fresh_oauth",
+      jwtLocationId: "loc_fresh_oauth",
+      previousMappedLocationId: "loc_stale_mapped",
+      freshOauthLocationId: "loc_fresh_oauth",
+      finalPersistedLocationId: "loc_fresh_oauth",
+      locationSource: "token_response",
+      staleMappingReused: false,
+      authorizeUrlHasLocationId: false,
+      approvedLocationsCount: 1,
+      isBulkInstallation: false,
+    });
+    expect(leaked.tokenUserType).toBe("Location");
+    expect(leaked.tokenResponseLocationId).toBe("loc_fresh_oauth");
+    expect(leaked.previousMappedLocationId).toBe("loc_stale_mapped");
+    expect(leaked.finalPersistedLocationId).toBe("loc_fresh_oauth");
+    expect(leaked.staleMappingReused).toBe(false);
+    expect(leaked.authorizeUrlHasLocationId).toBe(false);
+    expect(JSON.stringify(leaked)).not.toMatch(/access_token|refresh_token|client_secret|"code":/i);
+  });
+
   it("surfaces HighLevel token HTTP status without returning token material in the error", async () => {
     process.env.APP_URL = PRODUCTION_ORIGIN;
     delete process.env.HIGHLEVEL_REDIRECT_URI;
