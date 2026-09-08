@@ -79,6 +79,12 @@ export default async function DispatchCenterPage({
               Today
             </Link>
           ) : null}
+          <Link
+            href="/settings/scheduling"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-11 px-3 md:h-8")}
+          >
+            Availability
+          </Link>
           {canCreate ? (
             <Link
               href="/jobs/new?returnTo=dispatch"

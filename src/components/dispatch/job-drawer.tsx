@@ -129,6 +129,9 @@ export function DispatchJobDrawer({
             {job.membership ? (
               <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">{job.membership}</span>
             ) : null}
+            {job.bookedByContractorYou ? (
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700">Booked by ContractorYou</span>
+            ) : null}
           </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>

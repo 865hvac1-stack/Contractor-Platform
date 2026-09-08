@@ -7,6 +7,11 @@ import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
 import { formatDateTime } from "@/lib/datetime";
+import { can } from "@/lib/permissions";
+import { ConversationScheduleSheet } from "@/components/scheduling/conversation-schedule";
+import { getAvailabilityRange } from "@/lib/scheduling/capacity";
+import { companyTodayKey, formatLocalDateShort } from "@/lib/scheduling/time";
+import { ensureSchedulingSetup } from "@/lib/scheduling/ensure";
 
 export default async function CommunicationThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,7 +19,7 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
   const thread = await prisma.communicationThread.findFirst({
     where: { id, companyId: ctx.company.id },
     include: {
-      customer: true,
+      customer: { include: { properties: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], take: 1 } } },
       lead: true,
       messages: { orderBy: { occurredAt: "asc" }, take: 200 },
     },
@@ -29,6 +34,38 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
         select: { id: true, jobNumber: true, status: true, jobType: true },
       })
     : [];
+  await ensureSchedulingSetup(prisma, ctx.company.id);
+  const schedulingState = await prisma.conversationSchedulingState.findFirst({
+    where: { companyId: ctx.company.id, threadId: thread.id },
+    orderBy: { updatedAt: "desc" },
+  });
+  const today = companyTodayKey(new Date(), ctx.company.timezone);
+  const availabilityDays = thread.customerId
+    ? await getAvailabilityRange({
+        companyId: ctx.company.id,
+        startDate: today,
+        days: 5,
+      })
+    : [];
+  const scheduleOptions = availabilityDays.flatMap((day) =>
+    day.options.map((option) => ({
+      date: option.date,
+      windowId: option.windowId,
+      windowName: option.windowName,
+      startMinutes: option.startMinutes,
+      endMinutes: option.endMinutes,
+      technicianId: option.technicianId,
+      technicianName: option.technicianName,
+      remainingCapacity: option.remainingCapacity,
+      configuredCapacity: option.configuredCapacity,
+      usedCapacity: option.usedCapacity,
+    }))
+  );
+  const requestedLabel = schedulingState?.requestedDate
+    ? `${formatLocalDateShort(schedulingState.requestedDate.toISOString().slice(0, 10), ctx.company.timezone)}${
+        schedulingState.requestedDaypart ? ` · ${schedulingState.requestedDaypart.toLowerCase()}` : ""
+      }`
+    : null;
   const highlevel = await isHighLevelConnected(prisma, ctx.company.id);
   const name = thread.customer
     ? thread.customer.businessName || `${thread.customer.firstName} ${thread.customer.lastName}`
@@ -60,7 +97,23 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
               </p>
             )}
           </div>
-          <StatusBadge status={thread.channel} />
+          <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <StatusBadge status={thread.channel} />
+            {thread.customer ? (
+              <ConversationScheduleSheet
+                customerId={thread.customer.id}
+                customerName={name}
+                propertyId={thread.customer.properties[0]?.id}
+                propertyLabel={undefined}
+                threadId={thread.id}
+                paused={Boolean(schedulingState?.paused)}
+                requestedLabel={requestedLabel}
+                options={scheduleOptions}
+                timeZone={ctx.company.timezone}
+                canBook={can(ctx.role, "jobs:manage")}
+              />
+            ) : null}
+          </div>
         </div>
         {jobs.length ? (
           <ul className="mt-3 text-sm">

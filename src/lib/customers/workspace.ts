@@ -426,6 +426,28 @@ export async function getCustomer360(input: Customer360Options) {
           benefits: activeMembership.plan.benefits,
         }
       : null,
+    maintenance: await (async () => {
+      try {
+        const { getCustomerMaintenanceSummary } = await import("@/lib/scheduling/maintenance");
+        const summary = await getCustomerMaintenanceSummary(input.companyId, customer.id);
+        return summary.next
+          ? {
+              planName: summary.next.planName,
+              status: summary.next.status,
+              label: summary.next.label,
+              dueStart: summary.next.dueStart,
+              dueEnd: summary.next.dueEnd,
+              scheduledDate: summary.next.scheduledDate,
+              jobId: summary.next.jobId,
+              href: summary.next.jobId ? `/jobs/${summary.next.jobId}` : `/maintenance?status=${summary.next.status === "SCHEDULED" ? "scheduled" : "unscheduled"}`,
+            }
+          : activeMembership
+            ? { planName: activeMembership.plan.name, status: "ACTIVE", href: "/maintenance" }
+            : null;
+      } catch {
+        return null;
+      }
+    })(),
     membershipOpportunity:
       !activeMembership && completedCount >= 3
         ? { visits: completedCount, href: "/memberships" }

@@ -369,6 +369,23 @@ export async function processHighLevelWebhook(
       recordingUrl: fields.hasRecording ? "available" : null,
       locationId: fields.locationId || null,
     });
+    if (comms?.thread.id && comms.message && (fields.direction || "inbound").toLowerCase() === "inbound") {
+      try {
+        const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
+        await processInboundScheduling({
+          companyId: input.companyId,
+          threadId: comms.thread.id,
+          customerId: comms.customerId,
+          messageId: fields.messageId || comms.message.id,
+          body: fields.body,
+          direction: comms.message.direction,
+          channel: comms.message.channel,
+          phone: fields.from || emptyToNull(text(data.phone)),
+        });
+      } catch (error) {
+        console.error("[scheduling] inbound conversation handler failed", error);
+      }
+    }
   }
 
   await prisma.integrationEvent.update({

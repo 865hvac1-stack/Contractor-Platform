@@ -24,6 +24,7 @@ export type DispatchCard = {
   membership: string | null;
   assigneeIds: string[];
   assignees: string[];
+  bookedByContractorYou?: boolean;
 };
 
 export type DispatchLane = {

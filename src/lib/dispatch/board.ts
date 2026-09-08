@@ -131,6 +131,7 @@ export function toDispatchCard(job: {
   scheduledEnd: Date | null;
   scheduleLocked: boolean;
   routeOrder: number | null;
+  bookedByContractorYou?: boolean;
   customerId: string;
   customer: {
     firstName: string;
@@ -168,6 +169,7 @@ export function toDispatchCard(job: {
     membership: job.customer.customerMemberships[0]?.plan.name ?? null,
     assigneeIds: job.assignments.map((row) => row.userId),
     assignees: job.assignments.map((row) => `${row.user.firstName} ${row.user.lastName}`.trim()),
+    bookedByContractorYou: Boolean(job.bookedByContractorYou),
   };
 }
 

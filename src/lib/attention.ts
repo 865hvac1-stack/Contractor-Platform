@@ -563,6 +563,54 @@ registerAttentionDetector(async (companyId) => {
 
 registerAttentionDetector(detectWaitingAttention);
 
+registerAttentionDetector(async (companyId) => {
+  const jobs = await prisma.job.findMany({
+    where: { companyId, confirmationFailed: true, status: { notIn: ["CANCELED", "COMPLETED"] } },
+    take: 25,
+    orderBy: { updatedAt: "desc" },
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
+  });
+  return jobs.map((job) => ({
+    id: `confirm-failed-${job.id}`,
+    type: "scheduling_confirmation_failed",
+    title: "Confirmation failed",
+    description: `${job.jobNumber} was booked, but the customer text did not send.`,
+    severity: "warning" as const,
+    href: `/jobs/${job.id}`,
+    entityType: "Job",
+    entityId: job.id,
+    createdAt: job.updatedAt,
+    customerName: customerLabel(job.customer),
+    recommendedAction: "Retry the confirmation from the conversation.",
+    category: "operations" as const,
+  }));
+});
+
+registerAttentionDetector(async (companyId) => {
+  const states = await prisma.conversationSchedulingState.findMany({
+    where: { companyId, status: { in: ["NEEDS_REVIEW", "PAUSED"] } },
+    take: 25,
+    orderBy: { updatedAt: "desc" },
+    include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
+  });
+  return states.map((state) => ({
+    id: `sched-review-${state.id}`,
+    type: "scheduling_needs_review",
+    title: state.paused ? "Auto booking paused" : "Scheduling needs review",
+    description: state.customer
+      ? `${state.customer.firstName} ${state.customer.lastName}`.trim()
+      : "A conversation needs an office decision.",
+    severity: "warning" as const,
+    href: `/marketing/communications/${state.threadId}`,
+    entityType: "ConversationSchedulingState",
+    entityId: state.id,
+    createdAt: state.updatedAt,
+    customerName: state.customer ? `${state.customer.firstName} ${state.customer.lastName}`.trim() : null,
+    recommendedAction: "Open the conversation and take over or book manually.",
+    category: "operations" as const,
+  }));
+});
+
 function customerLabel(customer?: { firstName: string; lastName: string; businessName: string | null } | null) {
   if (!customer) return null;
   const person = `${customer.firstName} ${customer.lastName}`.trim();

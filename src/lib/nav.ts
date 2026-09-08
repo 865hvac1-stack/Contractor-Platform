@@ -56,6 +56,7 @@ export const MORE_NAV: NavItem[] = [
   { href: "/estimates", label: "Estimates", icon: FileText, permission: "estimates:view" },
   { href: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices:view" },
   { href: "/memberships", label: "Memberships", icon: Star, permission: "memberships:view" },
+  { href: "/maintenance", label: "Maintenance", icon: Star, permission: "memberships:view" },
   { href: "/pricebook", label: "Pricebook", icon: BookOpen, permission: "pricebook:view" },
   { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen, permission: "playbooks:view" },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
@@ -154,7 +155,7 @@ export function moreGroups(role: CompanyRole) {
   return [
     { label: "Daily tools", items: pick(["/attention", "/actions", "/intelligence", "/marketing/communications", "/office"]) },
     { label: "Operations", items: pick(["/schedule", "/operations/waiting", "/estimates", "/settings/playbooks", "/pricebook"]) },
-    { label: "Money & growth", items: pick(["/invoices", "/payments", "/receipts", "/expenses", "/reports", "/memberships", "/marketing/leads", "/marketing/campaigns", "/marketing/reviews", "/marketing/automations", "/marketing/channels"]) },
+    { label: "Money & growth", items: pick(["/invoices", "/payments", "/receipts", "/expenses", "/reports", "/memberships", "/maintenance", "/marketing/leads", "/marketing/campaigns", "/marketing/reviews", "/marketing/automations", "/marketing/channels"]) },
     { label: "Team", items: pick(["/team", "/team/compensation", "/team/performance", "/me/performance"]) },
   ].filter((group) => group.items.length > 0 && group.items.every((item) => byHref.has(item.href)));
 }

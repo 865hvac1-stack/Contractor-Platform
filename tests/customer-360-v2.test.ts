@@ -22,6 +22,7 @@ describe("Customer 360 V2 workspace", () => {
     expect(view).toMatch(/#active-work/);
     expect(view).toMatch(/CustomerHistoryTabs/);
     expect(view).toMatch(/CustomerTimeline/);
+    expect(view).toMatch(/Maintenance/);
     expect(view).toMatch(/AskContractorYou/);
     expect(view).toMatch(/timeZone/);
   });

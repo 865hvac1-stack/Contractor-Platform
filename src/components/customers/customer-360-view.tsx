@@ -261,6 +261,32 @@ export function Customer360View({
         </section>
       ) : null}
 
+      {workspace.maintenance ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Maintenance</p>
+              <h2 className="mt-1 font-medium text-[var(--cy-navy)]">{workspace.maintenance.planName}</h2>
+              {"label" in workspace.maintenance && workspace.maintenance.label ? (
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                  Next visit: {workspace.maintenance.label}
+                  {workspace.maintenance.scheduledDate
+                    ? ` · ${workspace.maintenance.scheduledDate}`
+                    : workspace.maintenance.dueStart
+                      ? ` · Due ${workspace.maintenance.dueStart}–${workspace.maintenance.dueEnd}`
+                      : ""}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-[var(--muted-foreground)]">Active plan</p>
+              )}
+            </div>
+            <Link href={workspace.maintenance.href} className="text-sm text-[var(--cy-orange)] hover:underline">
+              {"status" in workspace.maintenance && workspace.maintenance.status === "SCHEDULED" ? "Open" : "Schedule"} →
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {workspace.attention.length > 0 ? (
         <ul className="flex gap-2 overflow-x-auto">
           {workspace.attention.slice(0, 3).map((item) => (

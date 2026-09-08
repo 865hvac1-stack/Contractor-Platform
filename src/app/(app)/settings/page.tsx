@@ -145,6 +145,22 @@ export default async function SettingsPage() {
 
       {can(ctx.role, "company:settings") ? (
         <Link
+          href="/settings/scheduling"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            Operations
+          </p>
+          <h2 className="mt-2 font-medium">Scheduling & Capacity</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Appointment windows, technician availability, capacity, and auto-booking rules. ContractorYou owns the
+            calendar — HighLevel only carries the texts.
+          </p>
+        </Link>
+      ) : null}
+
+      {can(ctx.role, "company:settings") ? (
+        <Link
           href="/settings/waiting"
           className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
         >

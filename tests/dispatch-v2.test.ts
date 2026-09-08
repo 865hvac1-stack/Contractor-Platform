@@ -41,6 +41,7 @@ function card(partial: Partial<ReturnType<typeof toDispatchCard>> & { id: string
     membership: "Summit Comfort Club",
     assigneeIds: [] as string[],
     assignees: [] as string[],
+    bookedByContractorYou: false,
     ...partial,
   };
 }

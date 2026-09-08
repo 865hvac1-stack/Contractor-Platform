@@ -339,6 +339,41 @@ enum PlaybookStatus {
   ARCHIVED
 }
 
+enum AppointmentDaypart {
+  MORNING
+  AFTERNOON
+  EVENING
+  ANY
+}
+
+enum ConversationSchedulingStatus {
+  OPEN
+  CLARIFYING
+  SUGGESTED
+  BOOKED
+  CANCELED
+  NEEDS_REVIEW
+  PAUSED
+}
+
+enum MaintenanceVisitStatus {
+  NOT_YET_DUE
+  DUE_SOON
+  UNSCHEDULED
+  SCHEDULED
+  COMPLETED
+  OVERDUE
+  CANCELED
+  NEEDS_RESCHEDULE
+}
+
+enum SchedulingBookingSource {
+  AUTO
+  MANUAL
+  CONVERSATION
+  MAINTENANCE
+}
+
 // ============================================================
 // PLATFORM / AUTH
 // ============================================================
@@ -390,6 +425,10 @@ model User {
   aiActionsApproved AIActionRequest[] @relation("AIActionApprovedBy")
   companyTasksAssigned CompanyTask[] @relation("CompanyTaskAssignee")
   companyTasksCreated CompanyTask[] @relation("CompanyTaskCreator")
+  technicianWindowAvailabilities TechnicianWindowAvailability[]
+  availabilityOverrides AvailabilityOverride[]
+  technicianServiceEligibilities TechnicianServiceEligibility[]
+  schedulingBookings SchedulingBooking[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -569,6 +608,15 @@ model Company {
   waitingTemplates WaitingTemplate[]
   waitingCommunications WaitingCommunication[]
   waitingBoardSetting WaitingBoardSetting?
+  appointmentWindows AppointmentWindow[]
+  technicianWindowAvailabilities TechnicianWindowAvailability[]
+  availabilityOverrides AvailabilityOverride[]
+  schedulingPolicy SchedulingPolicy?
+  serviceTypeSchedulingRules ServiceTypeSchedulingRule[]
+  technicianServiceEligibilities TechnicianServiceEligibility[]
+  conversationSchedulingStates ConversationSchedulingState[]
+  maintenanceVisits MaintenanceVisit[]
+  schedulingBookings SchedulingBooking[]
 
   @@index([status])
   @@index([industry])
@@ -638,6 +686,10 @@ model ServiceType {
   playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
   jobs     Job[]
   invoices Invoice[]
+  schedulingRules ServiceTypeSchedulingRule[]
+  technicianEligibilities TechnicianServiceEligibility[]
+  defaultForPolicies SchedulingPolicy[] @relation("DefaultServiceType")
+  maintenanceForPolicies SchedulingPolicy[] @relation("MaintenanceServiceType")
 
   @@unique([companyId, key])
   @@index([companyId, active, sortOrder])
@@ -688,6 +740,8 @@ model Customer {
   compensationEvents CompensationEvent[]
   customerNotes CustomerNote[]
   waitingRecords WaitingRecord[]
+  conversationSchedulingStates ConversationSchedulingState[]
+  maintenanceVisits MaintenanceVisit[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -876,6 +930,10 @@ model Job {
   importedTotalCents  Int?
   scheduleLocked      Boolean     @default(false)
   routeOrder          Int?
+  appointmentWindowId String?
+  bookedByContractorYou Boolean   @default(false)
+  confirmationFailed  Boolean     @default(false)
+  schedulingIdempotencyKey String?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -905,8 +963,13 @@ model Job {
   compensationEvents CompensationEvent[]
   photos JobPhoto[]
   waitingRecords WaitingRecord[]
+  appointmentWindow AppointmentWindow? @relation(fields: [appointmentWindowId], references: [id], onDelete: SetNull)
+  schedulingBooking SchedulingBooking?
+  maintenanceVisits MaintenanceVisit[]
+  conversationSchedulingStates ConversationSchedulingState[]
 
   @@unique([companyId, jobNumber])
+  @@unique([companyId, schedulingIdempotencyKey])
   @@index([companyId])
   @@index([companyId, status])
   @@index([companyId, scheduledStart])
@@ -1863,6 +1926,7 @@ model CommunicationThread {
   customer Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
   lead     Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
   messages CommunicationMessage[]
+  schedulingStates ConversationSchedulingState[]
 
   @@unique([companyId, provider, externalId])
   @@index([companyId, lastActivityAt])
@@ -2644,6 +2708,9 @@ model MembershipPlan {
   priceCents       Int
   billingFrequency String   @default("ANNUAL")
   includedVisits   Int?
+  visitsPerYear    Int?
+  cadenceMonths    Int?
+  dueSoonDays      Int      @default(45)
   discountPercent  Int      @default(0)
   priorityService  Boolean  @default(false)
   benefits         String?
@@ -2686,6 +2753,7 @@ model CustomerMembership {
   job      Job?            @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
   estimate Estimate?       @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
   invoice  Invoice?        @relation(fields: [sourceInvoiceId], references: [id], onDelete: SetNull)
+  maintenanceVisits MaintenanceVisit[]
 
   @@index([companyId, status])
   @@index([companyId, customerId])
@@ -2921,4 +2989,235 @@ model WaitingCommunication {
 
   @@unique([companyId, idempotencyKey])
   @@index([companyId, recordId, createdAt])
+}
+
+// ============================================================
+// SCHEDULING & CAPACITY
+// ============================================================
+
+model AppointmentWindow {
+  id           String             @id @default(cuid())
+  companyId    String
+  name         String
+  label        String?
+  startMinutes Int
+  endMinutes   Int
+  daypart      AppointmentDaypart @default(ANY)
+  active       Boolean            @default(true)
+  sortOrder    Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  company                  Company                         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  technicianAvailabilities TechnicianWindowAvailability[]
+  overrides                AvailabilityOverride[]
+  jobs                     Job[]
+  bookings                 SchedulingBooking[]
+  conversationStates       ConversationSchedulingState[]
+
+  @@index([companyId, active, sortOrder])
+}
+
+model TechnicianWindowAvailability {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  windowId  String
+  weekday   Int
+  available Boolean  @default(true)
+  capacity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  window  AppointmentWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, windowId, weekday])
+  @@index([companyId, userId, weekday])
+}
+
+model AvailabilityOverride {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  windowId  String
+  date      DateTime @db.Date
+  available Boolean
+  capacity  Int?
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  window  AppointmentWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, windowId, date])
+  @@index([companyId, date])
+  @@index([companyId, userId, date])
+}
+
+model SchedulingPolicy {
+  id                          String   @id @default(cuid())
+  companyId                   String   @unique
+  autoBookingEnabled          Boolean  @default(false)
+  allowSameDay                Boolean  @default(true)
+  allowWeekend                Boolean  @default(false)
+  minNoticeMinutes            Int      @default(120)
+  standardHorizonDays         Int      @default(90)
+  maintenanceHorizonDays      Int      @default(365)
+  maxJobsPerWindow            Int?
+  maxJobsPerDay               Int?
+  emergencyReservePerWindow   Int      @default(0)
+  allowEmergencyReserveUse    Boolean  @default(false)
+  allowTechnicianPreference   Boolean  @default(true)
+  allowOfficeOverride         Boolean  @default(true)
+  autoCancelEnabled           Boolean  @default(false)
+  showTechnicianName          Boolean  @default(false)
+  allowPaidOneTimeMaintenance Boolean  @default(false)
+  confirmationTemplate        String?  @db.Text
+  noAvailabilityTemplate      String?  @db.Text
+  clarificationTemplate       String?  @db.Text
+  maintenanceDuplicateTemplate String? @db.Text
+  noPlanTemplate              String?  @db.Text
+  defaultServiceTypeId        String?
+  maintenanceServiceTypeId    String?
+  proactiveOutreachEnabled    Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  company                Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultServiceType     ServiceType? @relation("DefaultServiceType", fields: [defaultServiceTypeId], references: [id], onDelete: SetNull)
+  maintenanceServiceType ServiceType? @relation("MaintenanceServiceType", fields: [maintenanceServiceTypeId], references: [id], onDelete: SetNull)
+}
+
+model ServiceTypeSchedulingRule {
+  id                    String   @id @default(cuid())
+  companyId             String
+  serviceTypeId         String
+  autoBookAllowed       Boolean  @default(true)
+  requiresOfficeApproval Boolean @default(false)
+  isMaintenance         Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, serviceTypeId])
+}
+
+model TechnicianServiceEligibility {
+  id            String   @id @default(cuid())
+  companyId     String
+  userId        String
+  serviceTypeId String
+  eligible      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, serviceTypeId])
+  @@index([companyId, serviceTypeId])
+}
+
+model ConversationSchedulingState {
+  id                   String                        @id @default(cuid())
+  companyId            String
+  threadId             String
+  customerId           String?
+  status               ConversationSchedulingStatus  @default(OPEN)
+  requestedDate        DateTime?                     @db.Date
+  requestedDateEnd     DateTime?                     @db.Date
+  requestedDaypart     AppointmentDaypart?
+  requestedWindowId    String?
+  serviceTypeId        String?
+  serviceIntent        String?
+  maintenanceIntent    Boolean                       @default(false)
+  urgency              String?
+  rescheduleIntent     Boolean                       @default(false)
+  cancelIntent         Boolean                       @default(false)
+  lastInboundMessageId String?
+  missingField         String?
+  suggestedJobId       String?
+  bookedJobId          String?
+  paused               Boolean                       @default(false)
+  expiresAt            DateTime
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+
+  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  thread  CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  customer Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  window  AppointmentWindow? @relation(fields: [requestedWindowId], references: [id], onDelete: SetNull)
+  bookedJob Job?             @relation(fields: [bookedJobId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, lastInboundMessageId])
+  @@index([companyId, threadId, status])
+  @@index([companyId, customerId, status])
+  @@index([companyId, expiresAt])
+}
+
+model MaintenanceVisit {
+  id             String                 @id @default(cuid())
+  companyId      String
+  membershipId   String
+  customerId     String
+  cycleKey       String
+  label          String
+  dueStart       DateTime               @db.Date
+  dueEnd         DateTime               @db.Date
+  status         MaintenanceVisitStatus @default(UNSCHEDULED)
+  jobId          String?
+  completedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  membership CustomerMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job        Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  bookings   SchedulingBooking[]
+
+  @@unique([companyId, membershipId, cycleKey])
+  @@index([companyId, status, dueStart])
+  @@index([companyId, customerId])
+}
+
+model SchedulingBooking {
+  id                  String                  @id @default(cuid())
+  companyId           String
+  jobId               String                  @unique
+  windowId            String
+  technicianUserId    String
+  localDate           DateTime                @db.Date
+  slotIndex           Int                     @default(0)
+  source              SchedulingBookingSource @default(MANUAL)
+  idempotencyKey      String
+  inboundMessageId    String?
+  threadId            String?
+  maintenanceVisitId  String?
+  confirmationStatus  String                  @default("PENDING")
+  confirmationError   String?
+  autoAssigned        Boolean                 @default(true)
+  rankingReason       Json?
+  releasedAt          DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job              Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  window           AppointmentWindow @relation(fields: [windowId], references: [id], onDelete: Restrict)
+  technician       User              @relation(fields: [technicianUserId], references: [id], onDelete: Restrict)
+  maintenanceVisit MaintenanceVisit? @relation(fields: [maintenanceVisitId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, idempotencyKey])
+  @@unique([companyId, technicianUserId, windowId, localDate, slotIndex])
+  @@index([companyId, localDate, windowId])
+  @@index([companyId, technicianUserId, localDate])
+  @@index([companyId, maintenanceVisitId])
 }

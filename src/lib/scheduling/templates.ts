@@ -1,0 +1,92 @@
+import { formatClockMinutes, formatLocalDateShort } from "@/lib/scheduling/time";
+import type { SchedulingPolicyView } from "@/lib/scheduling/types";
+
+function applyVars(template: string, vars: Record<string, string>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => vars[key] ?? "");
+}
+
+export function confirmationMessage(input: {
+  policy: SchedulingPolicyView;
+  dateKey: string;
+  startMinutes: number;
+  endMinutes: number;
+  technicianName?: string | null;
+  timeZone: string;
+}) {
+  const window = `${formatClockMinutes(input.startMinutes)}–${formatClockMinutes(input.endMinutes)}`;
+  const when = formatLocalDateShort(input.dateKey, input.timeZone);
+  const vars = {
+    when,
+    window,
+    technician: input.technicianName || "",
+  };
+  if (input.policy.confirmationTemplate) return applyVars(input.policy.confirmationTemplate, vars);
+  if (input.policy.showTechnicianName && input.technicianName) {
+    return `Absolutely — we have you scheduled ${when} between ${window} with ${input.technicianName}. We’ll text you when your technician is on the way.`;
+  }
+  return `Absolutely — we have you scheduled ${when} between ${window}. We’ll text you when your technician is on the way.`;
+}
+
+export function noAvailabilityMessage(input: {
+  policy: SchedulingPolicyView;
+  requestedLabel: string;
+  alternatives: Array<{ dateKey: string; startMinutes: number; endMinutes: number; timeZone: string }>;
+}) {
+  const alts = input.alternatives
+    .map((row) => `${formatLocalDateShort(row.dateKey, row.timeZone)} ${formatClockMinutes(row.startMinutes)}–${formatClockMinutes(row.endMinutes)}`)
+    .join(" or ");
+  if (input.policy.noAvailabilityTemplate) {
+    return applyVars(input.policy.noAvailabilityTemplate, { requested: input.requestedLabel, alternatives: alts });
+  }
+  if (!alts) {
+    return `We’re full ${input.requestedLabel}. I don’t see another open window that matches your request yet — an office teammate can help find the next opening.`;
+  }
+  return `We’re full ${input.requestedLabel}, but we have ${alts} available. Would either work?`;
+}
+
+export function clarificationMessage(input: { policy: SchedulingPolicyView; missing: "date" | "daypart" | "window" | "appointment" | "service" }) {
+  if (input.policy.clarificationTemplate) return input.policy.clarificationTemplate;
+  if (input.missing === "daypart") return "Absolutely. Do you prefer morning or afternoon?";
+  if (input.missing === "date") return "Happy to get you on the calendar. What day works best?";
+  if (input.missing === "appointment") return "You have more than one upcoming appointment. Which one should we change?";
+  if (input.missing === "service") return "I can schedule that. Is this a service call or a maintenance visit?";
+  return "I want to get this right — what day and time window works for you?";
+}
+
+export function maintenanceDuplicateMessage(input: {
+  policy: SchedulingPolicyView;
+  dateKey: string;
+  startMinutes: number;
+  endMinutes: number;
+  timeZone: string;
+}) {
+  const when = `${formatLocalDateShort(input.dateKey, input.timeZone)} between ${formatClockMinutes(input.startMinutes)}–${formatClockMinutes(input.endMinutes)}`;
+  if (input.policy.maintenanceDuplicateTemplate) {
+    return applyVars(input.policy.maintenanceDuplicateTemplate, { when });
+  }
+  return `You already have a maintenance visit scheduled for ${when}. Would you like to keep that appointment or change it?`;
+}
+
+export function noPlanMessage(input: { policy: SchedulingPolicyView }) {
+  if (input.policy.noPlanTemplate) return input.policy.noPlanTemplate;
+  return "You don’t currently have a maintenance plan on file. Would you like information about setting one up?";
+}
+
+export function suggestedBookingMessage(input: {
+  dateKey: string;
+  startMinutes: number;
+  endMinutes: number;
+  timeZone: string;
+}) {
+  const when = formatLocalDateShort(input.dateKey, input.timeZone);
+  const window = `${formatClockMinutes(input.startMinutes)}–${formatClockMinutes(input.endMinutes)}`;
+  return `I found an opening ${when} between ${window}. An office teammate will confirm that appointment shortly.`;
+}
+
+export function cancelConfirmationMessage(when: string) {
+  return `Your appointment for ${when} has been canceled. If you want to reschedule, just text us a day and time that works.`;
+}
+
+export function officeReviewMessage() {
+  return "I’ve asked the office to take a look at your request. Someone from our team will text you back shortly.";
+}
