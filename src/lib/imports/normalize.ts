@@ -1,4 +1,5 @@
 import { neutralizeCell } from "@/lib/imports/security";
+import { canonicalizeUsPhone } from "@/lib/phone";
 
 const STATE_MAP: Record<string, string> = {
   alabama: "AL",
@@ -152,13 +153,7 @@ export function digitsOnly(value: unknown): string {
 }
 
 export function normalizePhone(value: unknown): string | null {
-  const digits = digitsOnly(value);
-  if (!digits) return null;
-  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  if (local.length === 10) {
-    return `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
-  }
-  return normalizeText(value) || null;
+  return canonicalizeUsPhone(value);
 }
 
 export function normalizeState(value: unknown): { state: string; recognized: boolean } {

@@ -71,7 +71,8 @@ export default async function NewCustomerPage({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" type="tel" autoComplete="tel" />
+                <Input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="8658514300" />
+                <p className="text-xs text-[var(--muted-foreground)]">US numbers are saved as +1… You can type 8658514300.</p>
               </div>
             </div>
 
@@ -121,6 +122,11 @@ export default async function NewCustomerPage({
               <Label htmlFor="notes">Notes</Label>
               <Textarea id="notes" name="notes" rows={4} />
             </div>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="confirmSharedPhone" value="1" className="mt-1 rounded border" />
+              This phone is shared with another customer (family or business). Create anyway.
+            </label>
 
             <div className="flex justify-end gap-2 pt-2">
               <Link href="/customers">

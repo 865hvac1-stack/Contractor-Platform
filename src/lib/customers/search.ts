@@ -2,11 +2,13 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { jobAccessFilter } from "@/lib/tenant";
 import type { CompanyRole } from "@prisma/client";
+import { canonicalizeUsPhone, digitsOnlyPhone } from "@/lib/phone";
 
 export function customerSearchWhere(companyId: string, raw: string): Prisma.CustomerWhereInput {
   const query = raw.trim();
   if (!query) return { companyId };
-  const digits = query.replace(/\D/g, "");
+  const digits = digitsOnlyPhone(query);
+  const canonical = canonicalizeUsPhone(query);
   const commaParts = query.split(",").map((part) => part.trim()).filter(Boolean);
   const tokens = query.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   const or: Prisma.CustomerWhereInput[] = [
@@ -72,6 +74,10 @@ export function customerSearchWhere(companyId: string, raw: string): Prisma.Cust
   if (digits.length >= 3) {
     or.push({ phone: { contains: digits } });
     or.push({ secondaryPhone: { contains: digits } });
+    if (canonical) {
+      or.push({ phone: { contains: canonical } });
+      or.push({ secondaryPhone: { contains: canonical } });
+    }
     if (digits.length >= 10) {
       const last10 = digits.slice(-10);
       or.push({ phone: { contains: last10 } });

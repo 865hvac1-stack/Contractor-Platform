@@ -92,7 +92,7 @@ export async function ingestHighLevelLead(
       entityType: "LEAD",
       internalId: `${result.lead.id}:contact`,
       externalId: input.contactId,
-    }).catch(() => undefined);
+    });
   }
   return { ...result, customerId: match.customerId, matchKind: match.kind };
 }

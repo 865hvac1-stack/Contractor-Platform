@@ -159,7 +159,7 @@ describe("smart field detection and presets", () => {
 
 describe("normalization, validation, and duplicates", () => {
   it("normalizes phones, currency, dates, and formula-looking cells", () => {
-    expect(normalizePhone("4235550101")).toBe("(423) 555-0101");
+    expect(normalizePhone("4235550101")).toBe("+14235550101");
     expect(parseCurrencyToCents("$1,234.56")).toBe(123456);
     expect(parseDate("03/15/2021")?.toISOString().startsWith("2021-03-15")).toBe(true);
     expect(neutralizeCell("=CMD()")).toBe("'=CMD()");

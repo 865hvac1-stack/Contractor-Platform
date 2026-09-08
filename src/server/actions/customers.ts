@@ -8,9 +8,54 @@ import { requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
 import { customerSchema, propertySchema } from "@/lib/validators";
 import type { ActionResult } from "@/server/actions/auth";
+import { canonicalizeUsPhone, phonesMatch } from "@/lib/phone";
+import { normalizeEmailValue } from "@/lib/highlevel/identity";
 
 function emptyToNull(v?: string | null) {
   return v && v.trim() ? v.trim() : null;
+}
+
+function normalizedCustomerPhones(phone?: string | null, secondaryPhone?: string | null) {
+  return {
+    phone: canonicalizeUsPhone(phone),
+    secondaryPhone: canonicalizeUsPhone(secondaryPhone),
+  };
+}
+
+async function findCustomerByEmailOrPhone(
+  companyId: string,
+  input: { email?: string | null; phone?: string | null; secondaryPhone?: string | null; excludeId?: string }
+) {
+  const email = normalizeEmailValue(input.email);
+  if (email) {
+    const byEmail = await prisma.customer.findFirst({
+      where: {
+        companyId,
+        id: input.excludeId ? { not: input.excludeId } : undefined,
+        email: { equals: email, mode: "insensitive" },
+      },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+    });
+    if (byEmail) return { customer: byEmail, matchedOn: "email" as const };
+  }
+  const phones = [canonicalizeUsPhone(input.phone), canonicalizeUsPhone(input.secondaryPhone)].filter(
+    (value): value is string => Boolean(value)
+  );
+  if (!phones.length) return null;
+  const candidates = await prisma.customer.findMany({
+    where: {
+      companyId,
+      id: input.excludeId ? { not: input.excludeId } : undefined,
+      status: { not: "ARCHIVED" },
+      OR: [{ phone: { not: null } }, { secondaryPhone: { not: null } }],
+    },
+    select: { id: true, firstName: true, lastName: true, phone: true, secondaryPhone: true, email: true },
+    take: 2000,
+  });
+  const hit = candidates.find((row) =>
+    phones.some((phone) => phonesMatch(phone, row.phone) || phonesMatch(phone, row.secondaryPhone))
+  );
+  return hit ? { customer: hit, matchedOn: "phone" as const } : null;
 }
 
 export async function createCustomerAction(
@@ -43,15 +88,35 @@ export async function createCustomerAction(
     }
 
     const d = parsed.data;
+    const phones = normalizedCustomerPhones(d.phone, d.secondaryPhone);
+    const email = normalizeEmailValue(d.email);
+    const existing = await findCustomerByEmailOrPhone(ctx.company.id, {
+      email,
+      phone: phones.phone,
+      secondaryPhone: phones.secondaryPhone,
+    });
+    const confirmSharedPhone = String(formData.get("confirmSharedPhone") || "") === "1";
+    if (existing?.matchedOn === "email") {
+      return {
+        ok: false,
+        error: `A customer with this email already exists: ${existing.customer.firstName} ${existing.customer.lastName}.`,
+      };
+    }
+    if (existing?.matchedOn === "phone" && !confirmSharedPhone) {
+      return {
+        ok: false,
+        error: `A customer with this phone already exists: ${existing.customer.firstName} ${existing.customer.lastName}. Confirm if this is a shared family or business number.`,
+      };
+    }
     const customer = await prisma.customer.create({
       data: {
         companyId: ctx.company.id,
         firstName: d.firstName,
         lastName: d.lastName,
         businessName: emptyToNull(d.businessName),
-        email: emptyToNull(d.email),
-        phone: emptyToNull(d.phone),
-        secondaryPhone: emptyToNull(d.secondaryPhone),
+        email: email,
+        phone: phones.phone,
+        secondaryPhone: phones.secondaryPhone,
         preferredContactMethod: d.preferredContactMethod,
         notes: emptyToNull(d.notes),
         status: d.status,
@@ -223,18 +288,15 @@ export async function updateCustomerProfileAction(
   try {
     const ctx = await requirePermission("customers:manage");
     const customerId = String(formData.get("customerId") || "");
-    const parsed = customerSchema.pick({
-      firstName: true,
-      lastName: true,
-      email: true,
-      phone: true,
-      preferredContactMethod: true,
-    }).safeParse({
+    const parsed = customerSchema.safeParse({
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
+      businessName: formData.get("businessName") || "",
       email: formData.get("email") || "",
       phone: formData.get("phone") || "",
+      secondaryPhone: formData.get("secondaryPhone") || "",
       preferredContactMethod: formData.get("preferredContactMethod") || "ANY",
+      notes: formData.get("notes") || "",
     });
     if (!parsed.success) {
       return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid customer." };
@@ -244,23 +306,56 @@ export async function updateCustomerProfileAction(
       select: { id: true },
     });
     if (!customer) return { ok: false, error: "Customer not found." };
+    const phones = normalizedCustomerPhones(parsed.data.phone, parsed.data.secondaryPhone);
+    const email = normalizeEmailValue(parsed.data.email);
+    const existing = await findCustomerByEmailOrPhone(ctx.company.id, {
+      email,
+      phone: phones.phone,
+      secondaryPhone: phones.secondaryPhone,
+      excludeId: customer.id,
+    });
+    if (existing?.matchedOn === "email") {
+      return {
+        ok: false,
+        error: `Another customer already uses this email: ${existing.customer.firstName} ${existing.customer.lastName}.`,
+      };
+    }
     await prisma.customer.update({
       where: { id: customer.id },
       data: {
         firstName: parsed.data.firstName,
         lastName: parsed.data.lastName,
-        email: emptyToNull(parsed.data.email),
-        phone: emptyToNull(parsed.data.phone),
+        businessName: emptyToNull(parsed.data.businessName),
+        email,
+        phone: phones.phone,
+        secondaryPhone: phones.secondaryPhone,
         preferredContactMethod: parsed.data.preferredContactMethod,
+        notes: emptyToNull(parsed.data.notes),
       },
     });
+    const propertyId = String(formData.get("propertyId") || "");
+    const address = emptyToNull(String(formData.get("address") || ""));
+    const city = emptyToNull(String(formData.get("city") || ""));
+    const state = emptyToNull(String(formData.get("state") || ""));
+    const zip = emptyToNull(String(formData.get("zip") || ""));
+    if (propertyId && address && city && state && zip) {
+      const property = await prisma.property.findFirst({
+        where: { id: propertyId, companyId: ctx.company.id, customerId: customer.id },
+        select: { id: true },
+      });
+      if (!property) return { ok: false, error: "Property not found." };
+      await prisma.property.update({
+        where: { id: property.id },
+        data: { address, city, state, zip },
+      });
+    }
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
       action: "customer.updated",
       entityType: "Customer",
       entityId: customer.id,
-      metadata: { fields: ["name", "phone", "email", "preferredContactMethod"] },
+      metadata: { fields: ["profile", "phone", "email", "property"] },
     });
     revalidatePath(`/customers/${customer.id}`);
     revalidatePath(`/office/customers/${customer.id}`);

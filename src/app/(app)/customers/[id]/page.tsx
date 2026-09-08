@@ -45,9 +45,17 @@ export default async function CustomerDetailPage({
           customerId={workspace.customer.id}
           firstName={workspace.customer.firstName}
           lastName={workspace.customer.lastName}
+          businessName={workspace.customer.businessName}
           phone={workspace.customer.phone}
+          secondaryPhone={workspace.customer.secondaryPhone}
           email={workspace.customer.email}
+          notes={workspace.customer.notes}
           preferredContactMethod={workspace.customer.preferredContactMethod}
+          propertyId={workspace.selectedProperty?.id}
+          address={workspace.selectedProperty?.address}
+          city={workspace.selectedProperty?.city}
+          propertyState={workspace.selectedProperty?.state}
+          zip={workspace.selectedProperty?.zip}
         />
       ) : null}
     </div>

@@ -12,6 +12,7 @@ import { suggestedQuestions } from "@/lib/intelligence/intent";
 import type { Customer360 } from "@/lib/customers/workspace";
 import { CustomerWaitingBanner } from "@/components/waiting/customer-waiting-banner";
 import type { CompanyRole } from "@prisma/client";
+import { formatUsPhoneDisplay } from "@/lib/phone";
 
 function telHref(phone: string | null) {
   return phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
@@ -77,7 +78,9 @@ export function Customer360View({
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Primary phone</dt>
-                <dd className="mt-1 text-[var(--cy-navy)]">{customer.phone || "—"}</dd>
+                <dd className="mt-1 text-[var(--cy-navy)]">
+                  {formatUsPhoneDisplay(customer.phone) || customer.phone || "—"}
+                </dd>
               </div>
               <div>
                 <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Email</dt>
@@ -114,6 +117,14 @@ export function Customer360View({
               >
                 New job
               </Link>
+            ) : null}
+            {canManage ? (
+              <a
+                href="#edit-customer"
+                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-medium"
+              >
+                Edit customer
+              </a>
             ) : null}
             {canManage ? (
               <Link

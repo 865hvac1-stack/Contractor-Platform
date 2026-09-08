@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { canonicalizeUsPhone } from "@/lib/phone";
 
 export const CUSTOMERS_PAGE_SIZE = 25;
 
@@ -17,6 +18,7 @@ export function parseCustomerListQuery(input: { q?: string; view?: string; page?
 
 export function customerSearchWhere(companyId: string, q: string, view: CustomerListView): Prisma.CustomerWhereInput {
   const digits = q.replace(/\D/g, "");
+  const canonical = canonicalizeUsPhone(q);
   const search: Prisma.CustomerWhereInput | null = q
     ? {
         OR: [
@@ -27,6 +29,7 @@ export function customerSearchWhere(companyId: string, q: string, view: Customer
           { phone: { contains: q, mode: "insensitive" } },
           { secondaryPhone: { contains: q, mode: "insensitive" } },
           ...(digits.length >= 3 ? [{ phone: { contains: digits } }, { secondaryPhone: { contains: digits } }] : []),
+          ...(canonical ? [{ phone: { contains: canonical } }, { secondaryPhone: { contains: canonical } }] : []),
           ...(q.split(/\s+/).filter((token) => token.length >= 2).length >= 2
             ? [
                 {

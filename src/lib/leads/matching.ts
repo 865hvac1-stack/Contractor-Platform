@@ -1,9 +1,8 @@
 import { prisma } from "@/lib/db";
+import { canonicalizeUsPhone } from "@/lib/phone";
 
 function normalizePhone(phone?: string | null) {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 7 ? digits : null;
+  return canonicalizeUsPhone(phone);
 }
 
 function normalizeEmail(email?: string | null) {

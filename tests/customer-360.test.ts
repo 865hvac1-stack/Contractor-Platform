@@ -435,6 +435,8 @@ describe("Customer 360 V2", () => {
     const ui = readFileSync(resolve("src/components/customers/customer-360-view.tsx"), "utf8");
     const photos = readFileSync(resolve("src/components/tech/job-photos.tsx"), "utf8");
     expect(photos).toMatch(/capture="environment"/);
+    expect(ui).toMatch(/Edit customer/);
+    expect(ui).toMatch(/#edit-customer/);
     expect(ui).toMatch(/Ask ContractorYou about/);
     expect(ui).toMatch(/JobPhotoUpload/);
     expect(ui).toMatch(/flex-col/);
