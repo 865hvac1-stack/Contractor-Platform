@@ -22,9 +22,9 @@ export function confirmationMessage(input: {
   };
   if (input.policy.confirmationTemplate) return applyVars(input.policy.confirmationTemplate, vars);
   if (input.policy.showTechnicianName && input.technicianName) {
-    return `Absolutely — we have you scheduled ${when} between ${window} with ${input.technicianName}. We’ll text you when your technician is on the way.`;
+    return `You’re all set with ${input.technicianName} for ${when} between ${window}. We’ll text you when your technician is on the way.`;
   }
-  return `Absolutely — we have you scheduled ${when} between ${window}. We’ll text you when your technician is on the way.`;
+  return `You’re all set for ${when} between ${window}. We’ll text you when your technician is on the way.`;
 }
 
 export function noAvailabilityMessage(input: {
@@ -46,15 +46,49 @@ export function noAvailabilityMessage(input: {
 
 export function clarificationMessage(input: {
   policy: SchedulingPolicyView;
-  missing: "date" | "daypart" | "window" | "appointment" | "service" | "slot_selection";
+  missing: "date" | "daypart" | "window" | "appointment" | "service" | "slot_selection" | "name" | "address" | "property";
 }) {
-  if (input.policy.clarificationTemplate) return input.policy.clarificationTemplate;
+  if (input.policy.clarificationTemplate && !["name", "address", "property", "slot_selection"].includes(input.missing)) {
+    return input.policy.clarificationTemplate;
+  }
   if (input.missing === "daypart") return "Absolutely. Do you prefer morning or afternoon?";
   if (input.missing === "date") return "Happy to get you on the calendar. What day works best?";
   if (input.missing === "slot_selection") return "Which of those openings works best?";
+  if (input.missing === "name") return "Absolutely. What’s your name?";
+  if (input.missing === "address") return "What’s the service address?";
+  if (input.missing === "property") return "Which property is this service call for?";
   if (input.missing === "appointment") return "You have more than one upcoming appointment. Which one should we change?";
   if (input.missing === "service") return "I can schedule that. Is this a service call or a maintenance visit?";
   return "I want to get this right — what day and time window works for you?";
+}
+
+export function askNameMessage() {
+  return "Absolutely. What’s your name?";
+}
+
+export function thanksNameAskAddressMessage(firstName: string) {
+  return `Thanks, ${firstName}. What’s the service address?`;
+}
+
+export function askAddressMessage() {
+  return "What’s the address for the service call?";
+}
+
+export function askWhichPropertyMessage(labels: string[]) {
+  if (labels.length === 2) return `Is this for ${labels[0]} or ${labels[1]}?`;
+  if (labels.length > 2) return `Which property is this for — ${labels.join(", ")}?`;
+  return "Which property is this service call for?";
+}
+
+export function clarifyOfferedSlotsMessage(input: {
+  slots: Array<{ dateKey: string; startMinutes: number; endMinutes: number; timeZone: string }>;
+}) {
+  const labeled = input.slots.map(
+    (row) => `${formatLocalDateShort(row.dateKey, row.timeZone)} ${formatClockMinutes(row.startMinutes)}–${formatClockMinutes(row.endMinutes)}`
+  );
+  if (labeled.length === 1) return `Just to confirm — would you like ${labeled[0]}?`;
+  if (labeled.length === 2) return `I offered ${labeled[0]} and ${labeled[1]}. Which one would you like?`;
+  return `Which of these works: ${labeled.join(", ")}?`;
 }
 
 export function maintenanceDuplicateMessage(input: {

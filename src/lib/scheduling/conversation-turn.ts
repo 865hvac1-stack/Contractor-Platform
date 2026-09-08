@@ -11,12 +11,18 @@ export type OfferedSlot = {
   endMinutes: number;
 };
 
+export type SlotSelectionResult =
+  | { kind: "match"; slot: OfferedSlot }
+  | { kind: "ambiguous"; candidates: OfferedSlot[] }
+  | { kind: "none" };
+
 export type SchedulingTurnAction =
   | { action: "ignore" }
   | { action: "close" }
   | { action: "handoff"; reason: string }
   | { action: "ask"; missing: NonNullable<SchedulingIntent["missingField"]> }
   | { action: "offer_slots"; slots: OfferedSlot[]; todayWasFull: boolean; requestedLabel: string | null }
+  | { action: "clarify_slots"; slots: OfferedSlot[] }
   | { action: "book"; date: string; windowId: string }
   | { action: "suggest"; date: string; windowId: string };
 
@@ -25,6 +31,9 @@ const AVAILABILITY_QUESTION =
 
 const DECLINE_SESSION =
   /\b(never mind|nevermind|don'?t schedule|do not schedule|don'?t need it( anymore)?|i('ll| will) call back|stop scheduling|i changed my mind)\b/;
+
+const REJECT_OFFERED =
+  /\b(none of (those|them|these)|neither|something else|different (day|time|one)|what else|any others?|later than that|another (day|time)|not those)\b/;
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -42,6 +51,10 @@ export function isAvailabilityQuestion(text: string) {
 
 export function isDeclineScheduling(text: string) {
   return DECLINE_SESSION.test(text.trim().toLowerCase());
+}
+
+export function isRejectOfferedSlots(text: string) {
+  return REJECT_OFFERED.test(text.trim().toLowerCase());
 }
 
 export function isSchedulingTurn(intent: SchedulingIntent) {
@@ -65,13 +78,38 @@ export function shouldSearchAvailability(input: {
   intent: SchedulingIntent;
   previousMissing?: string | null;
   previousStatus?: string | null;
+  text?: string;
 }) {
+  if (input.intent.declineIntent || input.intent.cancelIntent || input.intent.humanRequested) return false;
   if (input.intent.availabilityAsk || input.intent.availabilitySearchRequested) return true;
+  if (input.text && isRejectOfferedSlots(input.text)) return true;
+  if (input.previousMissing === "slot_selection") return false;
+  if (input.previousMissing === "name" || input.previousMissing === "address" || input.previousMissing === "property") {
+    return false;
+  }
   if (input.intent.requestedDate || input.intent.requestedWindowId || input.intent.requestedStartMinutes != null) {
     return false;
   }
-  if (input.intent.declineIntent || input.intent.cancelIntent || input.intent.humanRequested) return false;
-  return input.previousMissing === "date" || input.previousMissing === "slot_selection";
+  return input.previousMissing === "date";
+}
+
+export function shouldFetchNextAvailability(input: {
+  intent: SchedulingIntent;
+  previousMissing?: string | null;
+  offeredSlots?: OfferedSlot[];
+  text?: string;
+  selectedSlot?: OfferedSlot | null;
+}) {
+  if (input.selectedSlot) return false;
+  if (input.previousMissing === "name" || input.previousMissing === "address" || input.previousMissing === "property") {
+    return false;
+  }
+  if (input.previousMissing === "slot_selection" && (input.offeredSlots?.length ?? 0) > 0) {
+    if (input.intent.availabilityAsk || input.intent.availabilitySearchRequested) return true;
+    if (input.text && isRejectOfferedSlots(input.text)) return true;
+    return false;
+  }
+  return shouldSearchAvailability(input);
 }
 
 export function ownsSchedulingInbound(input: {
@@ -139,35 +177,97 @@ export function parseOfferedSlots(value: unknown): OfferedSlot[] {
   });
 }
 
-export function matchOfferedSlot(text: string, offers: OfferedSlot[]): OfferedSlot | null {
-  if (!offers.length) return null;
-  const lower = text.trim().toLowerCase();
-  if (/\b(first|1st|that first one|the first one)\b/.test(lower)) return offers[0] ?? null;
-  if (/\b(second|2nd|the second)\b/.test(lower)) return offers[1] ?? null;
-  if (/\b(third|3rd|the third)\b/.test(lower)) return offers[2] ?? null;
-  if (/\b(last one|the last)\b/.test(lower)) return offers[offers.length - 1] ?? null;
+function parseClockStart(text: string): number | null {
+  const start = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (!start) return null;
+  let hours = Number(start[1]);
+  const minutes = Number(start[2] ?? 0);
+  const period = start[3];
+  if (period === "pm" && hours < 12) hours += 12;
+  if (period === "am" && hours === 12) hours = 0;
+  if (!period && hours >= 1 && hours <= 7) hours += 12;
+  return hours * 60 + minutes;
+}
 
-  const weekdayHits = Object.entries(WEEKDAY_INDEX).filter(([name]) => new RegExp(`\\b${name}\\b`).test(lower));
-  let matches = offers;
-  if (weekdayHits.length === 1) {
-    const weekday = weekdayHits[0]![1];
-    matches = offers.filter((slot) => weekdayFromDateKey(slot.date) === weekday);
+function filterByWeekday(offers: OfferedSlot[], text: string) {
+  const weekdayHits = Object.entries(WEEKDAY_INDEX).filter(([name]) => new RegExp(`\\b${name}\\b`).test(text));
+  if (weekdayHits.length !== 1) return offers;
+  const weekday = weekdayHits[0]![1];
+  return offers.filter((slot) => weekdayFromDateKey(slot.date) === weekday);
+}
+
+function filterByDaypart(offers: OfferedSlot[], text: string) {
+  if (/\b(morning|am)\b/.test(text) && !/\b\d{1,2}\b/.test(text)) {
+    return offers.filter((slot) => slot.startMinutes < 12 * 60);
   }
-  const start = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
-  if (start && matches.length) {
-    let hours = Number(start[1]);
-    const minutes = Number(start[2] ?? 0);
-    const period = start[3];
-    if (period === "pm" && hours < 12) hours += 12;
-    if (period === "am" && hours === 12) hours = 0;
-    if (!period && hours >= 1 && hours <= 7) hours += 12;
-    const startMinutes = hours * 60 + minutes;
-    const byTime = matches.filter((slot) => startMinutes >= slot.startMinutes && startMinutes < slot.endMinutes);
-    if (byTime.length === 1) return byTime[0] ?? null;
-    if (byTime.length > 1) return byTime[0] ?? null;
+  if (/\b(afternoon|evening|pm)\b/.test(text) && !/\b\d{1,2}\b/.test(text)) {
+    return offers.filter((slot) => slot.startMinutes >= 12 * 60);
   }
-  if (matches.length === 1) return matches[0] ?? null;
-  return null;
+  return offers;
+}
+
+export function resolveOfferedSlotSelection(text: string, offers: OfferedSlot[]): SlotSelectionResult {
+  if (!offers.length) return { kind: "none" };
+  const lower = text.trim().toLowerCase();
+
+  if (/\b(first|1st|that first one|the first one)\b/.test(lower)) {
+    return offers[0] ? { kind: "match", slot: offers[0] } : { kind: "none" };
+  }
+  if (/\b(second|2nd|the second|second option)\b/.test(lower)) {
+    return offers[1] ? { kind: "match", slot: offers[1] } : { kind: "none" };
+  }
+  if (/\b(third|3rd|the third)\b/.test(lower)) {
+    return offers[2] ? { kind: "match", slot: offers[2] } : { kind: "none" };
+  }
+  if (/\b(last one|the last)\b/.test(lower)) {
+    const last = offers[offers.length - 1];
+    return last ? { kind: "match", slot: last } : { kind: "none" };
+  }
+
+  const affirmation =
+    /\b(that one|that works|sounds good|yes|yeah|yep|yup|sure|ok|okay|let'?s do (it|that)|book it|perfect|works for me)\b/.test(
+      lower
+    );
+  if (affirmation && !/\b(first|second|third|morning|afternoon|evening|tuesday|wednesday|thursday|friday|monday|saturday|sunday|\d)\b/.test(lower)) {
+    if (offers.length === 1) return { kind: "match", slot: offers[0]! };
+    return { kind: "ambiguous", candidates: offers };
+  }
+
+  let matches = filterByDaypart(filterByWeekday(offers, lower), lower);
+
+  const range = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:to|-|–|—)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (range) {
+    let startHours = Number(range[1]);
+    const startMinutes = Number(range[2] ?? 0);
+    const period = range[5];
+    if (period === "pm" && startHours < 12) startHours += 12;
+    if (period === "am" && startHours === 12) startHours = 0;
+    if (!period && startHours >= 1 && startHours <= 7) startHours += 12;
+    const start = startHours * 60 + startMinutes;
+    const byStart = matches.filter((slot) => slot.startMinutes === start || (start >= slot.startMinutes && start < slot.endMinutes));
+    if (byStart.length === 1) return { kind: "match", slot: byStart[0]! };
+    if (byStart.length > 1) return { kind: "ambiguous", candidates: byStart };
+  }
+
+  const start = parseClockStart(lower);
+  if (start != null && /\b\d{1,2}\b/.test(lower)) {
+    const byTime = matches.filter((slot) => start >= slot.startMinutes && start < slot.endMinutes);
+    if (byTime.length === 1) return { kind: "match", slot: byTime[0]! };
+    if (byTime.length > 1) return { kind: "ambiguous", candidates: byTime };
+  }
+
+  if (matches.length === 1) return { kind: "match", slot: matches[0]! };
+  if (matches.length > 1 && matches.length < offers.length) return { kind: "ambiguous", candidates: matches };
+  return { kind: "none" };
+}
+
+export function matchOfferedSlot(text: string, offers: OfferedSlot[]): OfferedSlot | null {
+  const result = resolveOfferedSlotSelection(text, offers);
+  return result.kind === "match" ? result.slot : null;
+}
+
+function decideBookOrSuggest(canAutoBook: boolean, date: string, windowId: string): SchedulingTurnAction {
+  return canAutoBook ? { action: "book", date, windowId } : { action: "suggest", date, windowId };
 }
 
 export function resolveSchedulingTurn(input: {
@@ -186,11 +286,18 @@ export function resolveSchedulingTurn(input: {
   if (intent.humanRequested) return { action: "handoff", reason: "human_requested" };
 
   const offered = input.offeredSlots ?? [];
-  const picked = input.text ? matchOfferedSlot(input.text, offered) : null;
-  if (picked) {
-    return input.canAutoBook
-      ? { action: "book", date: picked.date, windowId: picked.windowId }
-      : { action: "suggest", date: picked.date, windowId: picked.windowId };
+  const awaitingSlot = input.previous?.missingField === "slot_selection" && offered.length > 0;
+  const selection = input.text ? resolveOfferedSlotSelection(input.text, offered) : { kind: "none" as const };
+  const rejectOffered = Boolean(input.text && isRejectOfferedSlots(input.text));
+
+  if (awaitingSlot && !intent.availabilityAsk && !intent.availabilitySearchRequested && !rejectOffered) {
+    if (selection.kind === "match") return decideBookOrSuggest(input.canAutoBook, selection.slot.date, selection.slot.windowId);
+    if (selection.kind === "ambiguous") return { action: "clarify_slots", slots: selection.candidates };
+    if (selection.kind === "none") return { action: "clarify_slots", slots: offered };
+  }
+
+  if (selection.kind === "match") {
+    return decideBookOrSuggest(input.canAutoBook, selection.slot.date, selection.slot.windowId);
   }
 
   if (intent.requestedWindowId && intent.requestedDate) {
@@ -206,18 +313,12 @@ export function resolveSchedulingTurn(input: {
         requestedLabel: intent.requestedDate,
       };
     }
-    return input.canAutoBook
-      ? { action: "book", date: intent.requestedDate, windowId: intent.requestedWindowId }
-      : { action: "suggest", date: intent.requestedDate, windowId: intent.requestedWindowId };
+    return decideBookOrSuggest(input.canAutoBook, intent.requestedDate, intent.requestedWindowId);
   }
 
   if (intent.requestedWindowId && !intent.requestedDate) {
     const match = [...input.todaySlots, ...input.nextSlots].find((slot) => slot.windowId === intent.requestedWindowId);
-    if (match) {
-      return input.canAutoBook
-        ? { action: "book", date: match.date, windowId: match.windowId }
-        : { action: "suggest", date: match.date, windowId: match.windowId };
-    }
+    if (match) return decideBookOrSuggest(input.canAutoBook, match.date, match.windowId);
     if (!input.nextSlots.length) return { action: "handoff", reason: "no_availability" };
     return {
       action: "offer_slots",
@@ -231,6 +332,7 @@ export function resolveSchedulingTurn(input: {
     intent,
     previousMissing: input.previous?.missingField,
     previousStatus: input.previous?.status,
+    text: input.text,
   });
 
   if (search) {
@@ -254,9 +356,7 @@ export function resolveSchedulingTurn(input: {
 
   const slots = input.requestedSlots.length ? input.requestedSlots : input.nextSlots;
   if (slots.length === 1) {
-    return input.canAutoBook
-      ? { action: "book", date: slots[0]!.date, windowId: slots[0]!.windowId }
-      : { action: "suggest", date: slots[0]!.date, windowId: slots[0]!.windowId };
+    return decideBookOrSuggest(input.canAutoBook, slots[0]!.date, slots[0]!.windowId);
   }
   if (slots.length > 1) {
     return {

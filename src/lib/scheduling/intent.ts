@@ -185,7 +185,9 @@ export function mergeSchedulingIntent(previous: SchedulingIntent, next: Scheduli
   const requestedDaypart = searching ? next.requestedDaypart ?? null : next.requestedDaypart ?? previous.requestedDaypart;
   const requestedWindowId = next.requestedWindowId ?? (searching ? null : previous.requestedWindowId);
   let missingField: SchedulingIntent["missingField"] = null;
-  if (searching && !requestedWindowId) missingField = null;
+  if (previous.missingField === "slot_selection" && !searching && !next.requestedWindowId) {
+    missingField = "slot_selection";
+  } else if (searching && !requestedWindowId) missingField = null;
   else if (!requestedDate && !next.cancelIntent && !next.declineIntent) missingField = "date";
   else if (!requestedDaypart && !requestedWindowId && !next.requestedStartMinutes) missingField = "daypart";
   return {

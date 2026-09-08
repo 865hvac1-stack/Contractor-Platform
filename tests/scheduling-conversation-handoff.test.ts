@@ -405,9 +405,14 @@ describe("handoff security and idempotency wiring", () => {
   it("keeps booking behind the canonical transaction and inbound message id", () => {
     const conversation = readFileSync(resolve("src/lib/scheduling/conversation.ts"), "utf8");
     const booking = readFileSync(resolve("src/lib/scheduling/booking.ts"), "utf8");
-    expect(conversation).toMatch(/idempotencyKey: `inbound:\${input.messageId}`/);
+    expect(conversation).toMatch(/idempotencyKey: `inbound:\${(?:input\.)?messageId}`/);
     expect(conversation).toMatch(/getAvailability/);
     expect(conversation).toMatch(/findNextAvailableOptions/);
+    expect(conversation).toMatch(/shouldFetchNextAvailability/);
+    expect(conversation).toMatch(/resolveSchedulingCustomer/);
+    expect(conversation).toMatch(/propertyId: input.propertyId/);
+    expect(conversation).toMatch(/jobDescriptionFromConcern/);
+    expect(conversation).not.toMatch(/if \(!input\.customerId\)/);
     expect(booking).toMatch(/pg_advisory_xact_lock/);
     expect(booking).toMatch(/sendCompanyCommunication/);
   });

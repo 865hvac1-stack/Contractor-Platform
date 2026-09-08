@@ -3144,6 +3144,9 @@ model ConversationSchedulingState {
   lastInboundMessageId String?
   missingField         String?
   offeredSlots         Json?
+  propertyId           String?
+  customerConcern      String?
+  intake               Json?
   suggestedJobId       String?
   bookedJobId          String?
   paused               Boolean                       @default(false)
