@@ -197,7 +197,12 @@ export default async function MarketingHubPage({
                 {bySource.map((row) => (
                   <tr key={row.source} className="border-b border-[var(--border)] last:border-0">
                     <td className="py-3 pr-3 font-medium text-[var(--cy-navy)]">
-                      {LEAD_SOURCE_LABELS[row.source as LeadSource] ?? row.source}
+                      <Link
+                        href={`/marketing/leads?source=${row.source}`}
+                        className="hover:underline"
+                      >
+                        {LEAD_SOURCE_LABELS[row.source as LeadSource] ?? row.source}
+                      </Link>
                     </td>
                     <td className="py-3 pr-3 tabular-nums">{row.leads}</td>
                     <td className="py-3 pr-3 tabular-nums">{row.booked}</td>

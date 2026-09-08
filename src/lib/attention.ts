@@ -298,7 +298,7 @@ registerAttentionDetector(async (companyId) => {
     id: `lead-unanswered-${lead.id}`,
     type: "lead_unanswered",
     title: "Unanswered lead",
-    description: `${lead.firstName} ${lead.lastName}`,
+    description: `${lead.firstName} ${lead.lastName} · ${lead.source.replaceAll("_", " ")}`,
     severity: "warning" as const,
     href: `/marketing/leads/${lead.id}`,
     entityType: "Lead",
@@ -307,6 +307,35 @@ registerAttentionDetector(async (companyId) => {
     amountCents: lead.estimatedOpportunityCents,
     customerName: `${lead.firstName} ${lead.lastName}`.trim(),
     recommendedAction: "Contact this lead today.",
+    category: "sales" as const,
+  }));
+});
+
+registerAttentionDetector(async (companyId) => {
+  const now = new Date();
+  const leads = await prisma.lead.findMany({
+    where: {
+      companyId,
+      nextActionAt: { lt: now },
+      firstRespondedAt: { not: null },
+      status: { notIn: ["WON", "LOST", "SPAM"] },
+    },
+    orderBy: { nextActionAt: "asc" },
+    take: 25,
+  });
+  return leads.map((lead) => ({
+    id: `lead-next-${lead.id}`,
+    type: "lead_next_action_overdue",
+    title: "Lead next action overdue",
+    description: `${lead.firstName} ${lead.lastName}${lead.nextAction ? ` · ${lead.nextAction}` : ""}`,
+    severity: "warning" as const,
+    href: `/marketing/leads/${lead.id}`,
+    entityType: "Lead",
+    entityId: lead.id,
+    createdAt: lead.nextActionAt ?? lead.receivedAt,
+    amountCents: lead.estimatedOpportunityCents,
+    customerName: `${lead.firstName} ${lead.lastName}`.trim(),
+    recommendedAction: lead.nextAction || "Complete the next action.",
     category: "sales" as const,
   }));
 });

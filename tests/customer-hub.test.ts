@@ -41,12 +41,13 @@ describe("Customer Hub interaction wiring", () => {
 
   it("filters destination lists to the exact hub records", () => {
     const leads = readFileSync(resolve("src/app/(app)/marketing/leads/page.tsx"), "utf8");
+    const leadSearch = readFileSync(resolve("src/lib/leads/search.ts"), "utf8");
     const estimates = readFileSync(resolve("src/app/(app)/estimates/page.tsx"), "utf8");
     const invoices = readFileSync(resolve("src/app/(app)/invoices/page.tsx"), "utf8");
     const comms = readFileSync(resolve("src/app/(app)/marketing/communications/page.tsx"), "utf8");
     const query = readFileSync(resolve("src/lib/finance/query.ts"), "utf8");
     expect(leads).toMatch(/needsResponse/);
-    expect(leads).toMatch(/firstRespondedAt: null/);
+    expect(leadSearch).toMatch(/firstRespondedAt: null/);
     expect(estimates).toMatch(/view\?: string/);
     expect(estimates).toMatch(/open value/);
     expect(invoices).toMatch(/status === "overdue"/);
@@ -333,8 +334,9 @@ describe("Customer Hub V2", () => {
     const comms = readFileSync(resolve("src/app/(app)/marketing/communications/page.tsx"), "utf8");
     expect(comms).toMatch(/filter === "missed"/);
     const leads = readFileSync(resolve("src/app/(app)/marketing/leads/page.tsx"), "utf8");
+    const leadSearch = readFileSync(resolve("src/lib/leads/search.ts"), "utf8");
     expect(leads).toMatch(/needsResponse/);
-    expect(leads).toMatch(/firstRespondedAt: null/);
+    expect(leadSearch).toMatch(/firstRespondedAt: null/);
     const hub = readFileSync(resolve("src/lib/office/hub.ts"), "utf8");
     expect(hub).toMatch(/\/marketing\/communications\?filter=today/);
     expect(hub).toMatch(/\/attention\?filter=follow_ups/);

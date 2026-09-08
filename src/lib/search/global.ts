@@ -2,12 +2,14 @@ import { prisma } from "@/lib/db";
 import { can, type Permission } from "@/lib/permissions";
 import type { CompanyRole } from "@prisma/client";
 import { customerSearchWhere } from "@/lib/customers/search";
+import { leadSearchWhere } from "@/lib/leads/search";
+import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS } from "@/lib/leads/sources";
 import { jobAccessFilter } from "@/lib/tenant";
 import { customerLabel } from "@/lib/tech/today";
 import { scoreAddressMatch, scoreCodeMatch, scoreNameMatch, scorePhoneMatch } from "@/lib/search/rank";
 
 export type GlobalSearchHit = {
-  type: "customer" | "job" | "estimate" | "invoice" | "property";
+  type: "customer" | "job" | "estimate" | "invoice" | "property" | "lead";
   href: string;
   title: string;
   detail: string;
@@ -100,6 +102,43 @@ export async function globalSearch(input: {
         items: topCustomers,
         moreHref: customerHits.length > GROUP_LIMIT ? `/customers?q=${encodeURIComponent(q)}` : null,
       });
+    }
+
+    if (can(input.role, "leads:view") && !assignedOnly) {
+      const leads = await prisma.lead.findMany({
+        where: leadSearchWhere(input.companyId, q),
+        take: 12,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          source: true,
+          status: true,
+          phone: true,
+          email: true,
+        },
+      });
+      const leadHits = leads
+        .map((lead) => {
+          const name = `${lead.firstName} ${lead.lastName}`.trim();
+          return {
+            type: "lead" as const,
+            href: `/marketing/leads/${lead.id}`,
+            title: name,
+            detail: `${LEAD_SOURCE_LABELS[lead.source]} · ${LEAD_STATUS_LABELS[lead.status]}`,
+            score: Math.max(scoreNameMatch(q, name), scorePhoneMatch(q, lead.phone), scoreNameMatch(q, lead.email)),
+          };
+        })
+        .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+      const topLeads = leadHits.slice(0, GROUP_LIMIT);
+      if (topLeads.length) {
+        groups.push({
+          type: "lead",
+          label: "Leads",
+          items: topLeads,
+          moreHref: leadHits.length > GROUP_LIMIT ? `/marketing/leads?q=${encodeURIComponent(q)}` : null,
+        });
+      }
     }
 
     if (can(input.role, "customers:view")) {

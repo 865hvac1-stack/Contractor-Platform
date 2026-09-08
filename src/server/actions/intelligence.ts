@@ -8,6 +8,8 @@ import { can } from "@/lib/permissions";
 import { writeAudit } from "@/lib/audit";
 import { askContractorYou } from "@/lib/intelligence/service";
 import { writeProfessionalCopy } from "@/lib/intelligence/writing";
+import { loadLead360 } from "@/lib/leads/lead-360";
+import { buildVerifiedLeadNotes } from "@/lib/leads/insights";
 import { refreshCompanyInsights } from "@/lib/intelligence/generate";
 import { identifyEstimateFollowups } from "@/lib/actions/read";
 import { formatMoney } from "@/lib/money";
@@ -68,7 +70,56 @@ export type WritingState = ActionResult & {
   style?: string;
   usedJobContext?: boolean;
   unavailable?: boolean;
+  mode?: string;
 };
+
+export async function writeLeadAssistantAction(
+  _prev: WritingState | null,
+  formData: FormData
+): Promise<WritingState> {
+  try {
+    const ctx = await requirePermission("leads:view");
+    const leadId = String(formData.get("leadId") || "");
+    const mode = String(formData.get("mode") || "summarize");
+    const extraNotes = String(formData.get("notes") || "").trim();
+    const workspace = await loadLead360(ctx.company.id, leadId);
+    if (!workspace) return { ok: false, error: "Lead not found." };
+
+    if (mode === "summarize") {
+      return { ok: true, text: workspace.summary, mode };
+    }
+
+    const notes = [buildVerifiedLeadNotes(workspace.facts), extraNotes ? `Additional verified note: ${extraNotes}` : ""]
+      .filter(Boolean)
+      .join("\n\n");
+    const result = await writeProfessionalCopy({
+      companyId: ctx.company.id,
+      userId: ctx.user.id,
+      purpose: "customer_followup",
+      notes,
+      style: "professional",
+    });
+    if (!result.ok) {
+      return { ok: false, error: result.error, unavailable: result.unavailable, mode };
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "intelligence.lead_draft_generated",
+      entityType: "Lead",
+      entityId: leadId,
+      metadata: { mode },
+    });
+    return { ok: true, text: result.text, style: result.style, mode };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    return {
+      ok: false,
+      unavailable: true,
+      error: "AI writing is unavailable right now. Lead 360 is still usable.",
+    };
+  }
+}
 
 export async function writeInvoiceDescriptionAction(
   _prev: WritingState | null,

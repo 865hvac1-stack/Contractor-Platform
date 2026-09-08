@@ -30,6 +30,7 @@ export function NewJobForm({
   defaultCustomer,
   defaultPropertyId,
   returnTo,
+  leadId,
   canAssign = true,
   canCreateCustomer = false,
   submitLabel = "Create job",
@@ -40,6 +41,7 @@ export function NewJobForm({
   defaultCustomer?: JobPickerCustomer | null;
   defaultPropertyId?: string;
   returnTo?: string;
+  leadId?: string;
   canAssign?: boolean;
   canCreateCustomer?: boolean;
   submitLabel?: string;
@@ -47,6 +49,7 @@ export function NewJobForm({
   return (
     <ActionForm action={createJobFormAction} className="space-y-4">
       {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
+      {leadId ? <input type="hidden" name="leadId" value={leadId} /> : null}
       <CustomerJobPicker
         defaultCustomer={defaultCustomer}
         defaultPropertyId={defaultPropertyId}

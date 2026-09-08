@@ -17,6 +17,7 @@ const HEADLINES: Record<string, string> = {
   invoice_awaiting_payment: "Invoice awaiting payment",
   payment_failed: "Payment failed",
   lead_unanswered: "Lead needs a reply",
+  lead_next_action_overdue: "Lead next action overdue",
   missed_call_no_follow_up: "Missed call",
 };
 
@@ -30,6 +31,7 @@ const ACTIONS: Record<string, string> = {
   invoice_overdue: "Collect",
   invoice_awaiting_payment: "Collect",
   lead_unanswered: "Contact",
+  lead_next_action_overdue: "Follow Up",
   missed_call_no_follow_up: "Call Back",
 };
 

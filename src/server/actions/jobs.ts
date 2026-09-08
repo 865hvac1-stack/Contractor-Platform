@@ -113,6 +113,20 @@ export async function createJobAction(
       metadata: { jobNumber, status },
     });
 
+    const leadId = String(formData.get("leadId") || "").trim();
+    if (leadId) {
+      const { linkLeadToJob } = await import("@/lib/leads/link-work");
+      await linkLeadToJob({
+        companyId: ctx.company.id,
+        actorId: ctx.user.id,
+        leadId,
+        jobId: job.id,
+        jobNumber,
+        scheduled: Boolean(scheduledStart),
+      });
+      revalidatePath(`/marketing/leads/${leadId}`);
+    }
+
     revalidatePath("/jobs");
     revalidatePath("/schedule");
     revalidatePath("/dashboard");

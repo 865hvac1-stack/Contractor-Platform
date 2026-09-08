@@ -20,7 +20,7 @@ export function attentionCardActions(type: string, entityId: string): AttentionC
       { label: "Prepare follow-ups", prepare: true },
     ];
   }
-  if (type === "lead_unanswered") {
+  if (type === "lead_unanswered" || type === "lead_next_action_overdue") {
     return [
       { label: "Respond", href: `/marketing/leads/${entityId}` },
       { label: "Review", href: `/marketing/leads/${entityId}` },

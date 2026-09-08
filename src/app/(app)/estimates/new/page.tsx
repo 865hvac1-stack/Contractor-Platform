@@ -17,13 +17,20 @@ import { customerLabel } from "@/lib/tech/today";
 export default async function NewEstimatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; leadId?: string }>;
 }) {
   const ctx = await requirePermission("estimates:manage");
-  const { customerId } = await searchParams;
-  const selectedCustomer = customerId
+  const { customerId, leadId } = await searchParams;
+  const lead = leadId
+    ? await prisma.lead.findFirst({
+        where: { id: leadId, companyId: ctx.company.id },
+        select: { id: true, customerId: true, firstName: true, lastName: true },
+      })
+    : null;
+  const customerFromLead = !customerId && lead?.customerId ? lead.customerId : customerId;
+  const selectedCustomer = customerFromLead
     ? await prisma.customer.findFirst({
-        where: { id: customerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
+        where: { id: customerFromLead, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
         select: {
           id: true,
           firstName: true,
@@ -60,6 +67,13 @@ export default async function NewEstimatePage({
         action={createEstimateAction}
         className="space-y-6 rounded-xl border border-[var(--border)] bg-white p-6"
       >
+        {lead ? <input type="hidden" name="leadId" value={lead.id} /> : null}
+        {lead && !selectedCustomer ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Creating an estimate from lead {lead.firstName} {lead.lastName}. Choose or create a
+            customer first.
+          </p>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <CustomerJobFields

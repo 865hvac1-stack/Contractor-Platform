@@ -10,19 +10,26 @@ import { customerLabel } from "@/lib/tech/today";
 export default async function NewJobPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string; returnTo?: string }>;
+  searchParams: Promise<{ customerId?: string; returnTo?: string; leadId?: string }>;
 }) {
   const ctx = await requirePermission("jobs:manage");
-  const { customerId, returnTo } = await searchParams;
+  const { customerId, returnTo, leadId } = await searchParams;
+  const lead = leadId
+    ? await prisma.lead.findFirst({
+        where: { id: leadId, companyId: ctx.company.id },
+        select: { id: true, customerId: true },
+      })
+    : null;
+  const resolvedCustomerId = customerId || lead?.customerId || undefined;
 
   await ensureCompanyServiceTypes(prisma, ctx.company.id, ctx.company.industry);
   const [customerCount, selectedCustomer, memberships, playbooks, serviceTypes] = await Promise.all([
     prisma.customer.count({
       where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
     }),
-    customerId
+    resolvedCustomerId
       ? prisma.customer.findFirst({
-          where: { id: customerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
+          where: { id: resolvedCustomerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
           include: {
             properties: { orderBy: [{ isPrimary: "desc" }, { address: "asc" }] },
           },
@@ -84,6 +91,7 @@ export default async function NewJobPage({
                   : null
               }
               returnTo={returnTo === "dispatch" || returnTo === "office" ? returnTo : undefined}
+              leadId={lead?.id}
               canAssign={can(ctx.role, "schedule:manage")}
               canCreateCustomer={can(ctx.role, "customers:manage")}
               submitLabel={returnTo === "dispatch" || returnTo === "office" ? "Create and send to Dispatch" : "Create job"}

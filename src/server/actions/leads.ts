@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { leadSchema, leadStatusSchema } from "@/lib/validators";
 import { findDuplicateLead, matchCustomerForLead } from "@/lib/leads/matching";
 import { recordAttribution } from "@/lib/attribution/engine";
@@ -193,7 +194,11 @@ export async function updateLeadStatusAction(
       action: "lead.status_changed",
       entityType: "Lead",
       entityId: existing.id,
-      metadata: { from: existing.status, to: parsed.data.status },
+      metadata: {
+        from: existing.status,
+        to: parsed.data.status,
+        lostReason: parsed.data.status === "LOST" ? emptyToNull(parsed.data.lostReason) : undefined,
+      },
     });
 
     revalidatePath("/marketing");
@@ -206,63 +211,208 @@ export async function updateLeadStatusAction(
   }
 }
 
+export type ConvertLeadResult = ActionResult & {
+  matchId?: string;
+  matchName?: string;
+};
+
+async function attachLeadCustomer(input: {
+  companyId: string;
+  actorId: string;
+  leadId: string;
+  customerId: string;
+  source: LeadSource;
+  campaignId?: string | null;
+  body: string;
+}) {
+  await prisma.lead.update({
+    where: { id: input.leadId },
+    data: { customerId: input.customerId },
+  });
+  await recordAttribution({
+    companyId: input.companyId,
+    leadId: input.leadId,
+    customerId: input.customerId,
+    model: "PRIMARY_SOURCE",
+    source: input.source,
+    campaignId: input.campaignId ?? undefined,
+    note: "Lead linked to customer.",
+  });
+  await prisma.leadActivity.create({
+    data: {
+      companyId: input.companyId,
+      leadId: input.leadId,
+      actorId: input.actorId,
+      kind: "SYSTEM",
+      body: input.body,
+    },
+  });
+}
+
+export async function linkLeadToCustomerAction(
+  _prev: ConvertLeadResult | null,
+  formData: FormData
+): Promise<ConvertLeadResult> {
+  try {
+    const ctx = await requirePermission("leads:manage");
+    const leadId = String(formData.get("leadId") || "");
+    const customerId = String(formData.get("customerId") || "");
+    const lead = await prisma.lead.findFirst({
+      where: scopedCompanyWhere(ctx.company.id, { id: leadId }),
+    });
+    if (!lead) return { ok: false, error: "Lead not found." };
+    if (lead.customerId) return { ok: false, error: "This lead is already linked to a customer." };
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
+    });
+    if (!customer) return { ok: false, error: "Select an existing customer to link." };
+
+    await attachLeadCustomer({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      leadId: lead.id,
+      customerId: customer.id,
+      source: lead.source,
+      campaignId: lead.campaignId,
+      body: `Linked to existing customer ${customer.firstName} ${customer.lastName}.`,
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "lead.customer_linked",
+      entityType: "Lead",
+      entityId: lead.id,
+      metadata: { customerId: customer.id },
+    });
+    revalidatePath("/customers");
+    revalidatePath("/office");
+    revalidatePath("/marketing/leads");
+    revalidatePath(`/marketing/leads/${lead.id}`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
 export async function convertLeadToCustomerAction(
+  _prev: ConvertLeadResult | null,
+  formData: FormData
+): Promise<ConvertLeadResult> {
+  try {
+    const ctx = await requirePermission("leads:manage");
+    if (!can(ctx.role, "customers:manage")) {
+      return { ok: false, error: "You do not have permission to create customers." };
+    }
+    const leadId = String(formData.get("leadId") || "");
+    const confirmCreate = String(formData.get("confirmCreate") || "") === "1";
+    const lead = await prisma.lead.findFirst({
+      where: scopedCompanyWhere(ctx.company.id, { id: leadId }),
+    });
+    if (!lead) return { ok: false, error: "Lead not found." };
+    if (lead.customerId) return { ok: false, error: "This lead is already linked to a customer." };
+
+    const firstName = emptyToNull(String(formData.get("firstName") || "")) || lead.firstName;
+    const lastName = emptyToNull(String(formData.get("lastName") || "")) || lead.lastName;
+    const phone = emptyToNull(String(formData.get("phone") || "")) ?? lead.phone;
+    const email = emptyToNull(String(formData.get("email") || "")) ?? lead.email;
+    const businessName = emptyToNull(String(formData.get("businessName") || ""));
+
+    const match = await matchCustomerForLead(ctx.company.id, { email, phone });
+    if (match && !confirmCreate) {
+      return {
+        ok: false,
+        error: `A customer already matches this ${match.matchedOn}. Link them instead of creating a duplicate.`,
+        matchId: match.customer.id,
+        matchName: `${match.customer.firstName} ${match.customer.lastName}`.trim(),
+      };
+    }
+
+    const customer = await prisma.customer.create({
+      data: {
+        companyId: ctx.company.id,
+        firstName,
+        lastName,
+        email,
+        phone,
+        businessName,
+        status: "LEAD",
+        source: lead.source,
+      },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "customer.created",
+      entityType: "Customer",
+      entityId: customer.id,
+      metadata: { fromLeadId: lead.id, confirmedDespiteMatch: confirmCreate && Boolean(match) },
+    });
+
+    await attachLeadCustomer({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      leadId: lead.id,
+      customerId: customer.id,
+      source: lead.source,
+      campaignId: lead.campaignId,
+      body: "Converted to a new customer record.",
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "lead.converted",
+      entityType: "Lead",
+      entityId: lead.id,
+      metadata: { customerId: customer.id },
+    });
+
+    revalidatePath("/customers");
+    revalidatePath("/office");
+    revalidatePath("/marketing/leads");
+    revalidatePath(`/marketing/leads/${lead.id}`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export async function setLeadNextActionAction(
   _prev: ActionResult | null,
   formData: FormData
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("leads:manage");
     const leadId = String(formData.get("leadId") || "");
+    const nextAction = emptyToNull(String(formData.get("nextAction") || ""));
+    const assignedUserId = emptyToNull(String(formData.get("assignedUserId") || ""));
+    const note = emptyToNull(String(formData.get("note") || ""));
+    const dueRaw = emptyToNull(String(formData.get("nextActionAt") || ""));
+    const nextActionAt = dueRaw ? new Date(dueRaw) : null;
+    if (nextActionAt && Number.isNaN(nextActionAt.getTime())) {
+      return { ok: false, error: "Due date is not valid." };
+    }
+
     const lead = await prisma.lead.findFirst({
       where: scopedCompanyWhere(ctx.company.id, { id: leadId }),
     });
     if (!lead) return { ok: false, error: "Lead not found." };
 
-    let customerId = lead.customerId;
-    if (!customerId) {
-      const match = await matchCustomerForLead(ctx.company.id, {
-        email: lead.email,
-        phone: lead.phone,
+    if (assignedUserId) {
+      const member = await prisma.membership.findFirst({
+        where: { companyId: ctx.company.id, userId: assignedUserId, status: "ACTIVE" },
       });
-      if (match) {
-        customerId = match.customer.id;
-      } else {
-        const customer = await prisma.customer.create({
-          data: {
-            companyId: ctx.company.id,
-            firstName: lead.firstName,
-            lastName: lead.lastName,
-            email: lead.email,
-            phone: lead.phone,
-            status: "LEAD",
-            source: lead.source,
-          },
-        });
-        customerId = customer.id;
-        await writeAudit({
-          companyId: ctx.company.id,
-          actorId: ctx.user.id,
-          action: "customer.created",
-          entityType: "Customer",
-          entityId: customer.id,
-          metadata: { fromLeadId: lead.id },
-        });
-      }
+      if (!member) return { ok: false, error: "Assigned user is not on this team." };
     }
 
     await prisma.lead.update({
       where: { id: lead.id },
-      data: { customerId },
-    });
-
-    await recordAttribution({
-      companyId: ctx.company.id,
-      leadId: lead.id,
-      customerId,
-      model: "PRIMARY_SOURCE",
-      source: lead.source,
-      campaignId: lead.campaignId,
-      note: "Lead linked to customer.",
+      data: {
+        nextAction,
+        nextActionAt,
+        assignedUserId,
+      },
     });
 
     await prisma.leadActivity.create({
@@ -270,14 +420,28 @@ export async function convertLeadToCustomerAction(
         companyId: ctx.company.id,
         leadId: lead.id,
         actorId: ctx.user.id,
-        kind: "SYSTEM",
-        body: "Linked to a customer record.",
+        kind: "NEXT_ACTION",
+        body: [
+          nextAction ? `Next action: ${nextAction}` : "Next action cleared.",
+          nextActionAt ? `Due ${nextActionAt.toISOString()}` : null,
+          note,
+        ]
+          .filter(Boolean)
+          .join(" · "),
       },
     });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "lead.next_action_set",
+      entityType: "Lead",
+      entityId: lead.id,
+      metadata: { nextAction, nextActionAt, assignedUserId },
+    });
 
-    revalidatePath("/customers");
     revalidatePath("/marketing/leads");
     revalidatePath(`/marketing/leads/${lead.id}`);
+    revalidatePath("/attention");
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

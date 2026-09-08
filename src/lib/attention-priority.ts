@@ -21,6 +21,7 @@ export const OFFICE_FOLLOW_UP_TYPES = new Set([
   "estimate_not_followed_up",
   "approved_estimate_not_scheduled",
   "lead_unanswered",
+  "lead_next_action_overdue",
   "missed_call_no_follow_up",
   "membership_needs_review",
   "invoice_awaiting_payment",
@@ -50,6 +51,7 @@ const TYPE_BASE: Record<string, number> = {
   estimate_not_followed_up: 22,
   approved_estimate_not_scheduled: 28,
   lead_unanswered: 30,
+  lead_next_action_overdue: 26,
   job_missing_technician: 36,
   job_running_behind: 42,
   missed_call_no_follow_up: 28,
@@ -78,6 +80,7 @@ const TYPE_CATEGORY: Record<string, AttentionCategory> = {
   estimate_not_followed_up: "sales",
   approved_estimate_not_scheduled: "sales",
   lead_unanswered: "sales",
+  lead_next_action_overdue: "sales",
   job_missing_technician: "operations",
   job_running_behind: "operations",
   job_missing_invoice: "operations",
@@ -105,6 +108,7 @@ const TYPE_ACTION: Record<string, string> = {
   estimate_not_followed_up: "Follow up on this estimate.",
   approved_estimate_not_scheduled: "Schedule the approved work.",
   lead_unanswered: "Contact this lead today.",
+  lead_next_action_overdue: "Complete the next action.",
   job_missing_technician: "Assign a technician.",
   job_running_behind: "Check dispatch and the next appointment.",
   job_missing_invoice: "Create the invoice for completed work.",
@@ -170,7 +174,7 @@ export function scoreAttentionItem(item: AttentionItem, now = new Date()): Ranke
   if (item.type === "invoice_overdue") score += Math.min(20, days);
   else if (item.type === "estimate_not_followed_up" || item.type === "approved_estimate_not_scheduled") {
     score += Math.min(12, Math.floor(days / 2));
-  } else if (item.type === "lead_unanswered") {
+  } else if (item.type === "lead_unanswered" || item.type === "lead_next_action_overdue") {
     score += Math.min(16, days * 2);
   } else if (item.type === "job_running_behind" || item.type === "job_missing_technician") {
     score += 8;

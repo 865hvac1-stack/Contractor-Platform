@@ -124,6 +124,19 @@ export async function createEstimateAction(
       metadata: { estimateNumber, totalCents },
     });
 
+    const leadId = String(formData.get("leadId") || "").trim();
+    if (leadId) {
+      const { linkLeadToEstimate } = await import("@/lib/leads/link-work");
+      await linkLeadToEstimate({
+        companyId: ctx.company.id,
+        actorId: ctx.user.id,
+        leadId,
+        estimateId: estimate.id,
+        estimateNumber,
+      });
+      revalidatePath(`/marketing/leads/${leadId}`);
+    }
+
     revalidatePath("/estimates");
     revalidatePath("/dashboard");
     redirect(`/estimates/${estimate.id}`);

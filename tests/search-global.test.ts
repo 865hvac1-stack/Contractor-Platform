@@ -33,6 +33,7 @@ describe("global search wiring", () => {
     const api = readFileSync(resolve("src/app/api/search/route.ts"), "utf8");
     expect(search).toContain("companyId");
     expect(search).toContain("can(input.role, \"customers:view\")");
+    expect(search).toContain("can(input.role, \"leads:view\")");
     expect(search).toContain("can(input.role, \"invoices:view\"");
     expect(search).toContain("assignedOnly");
     expect(search).toContain("customerIdsByNormalizedPhone");
