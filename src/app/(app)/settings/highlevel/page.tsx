@@ -15,6 +15,7 @@ import { formatTokenTypeDiagnostic, type HighLevelTokenTypeDiagnostic } from "@/
 import { formatOauthInstallDiagnostic, type FreshOauthLocationResolution } from "@/lib/highlevel/oauth-location";
 import { highlevelSettingsHealth } from "@/lib/highlevel/settings-health";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
+import { AgentToolSettings } from "@/components/highlevel/agent-tool-settings";
 import { ConversationOwnerForm } from "@/components/highlevel/conversation-owner-form";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { parseCustomerConversationOwner } from "@/lib/comms/conversation-owner";
@@ -77,9 +78,20 @@ export default async function HighLevelSettingsPage({
 }) {
   const ctx = await requirePermission("marketing:manage");
   const { error, connected, test_connected: testConnected } = await searchParams;
-  const [testGrantRow, sandboxEnabled] = await Promise.all([
+  const [testGrantRow, sandboxEnabled, agentToolKeys, agentToolCalls] = await Promise.all([
     getHighLevelTestGrant(prisma, ctx.company.id),
     companyAllowsExternalIntegrationTesting(ctx.company.id, prisma),
+    prisma.agentToolCredential.findMany({
+      where: { companyId: ctx.company.id, revokedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, lastFour: true, lastUsedAt: true, createdAt: true },
+    }),
+    prisma.agentToolCall.findMany({
+      where: { companyId: ctx.company.id },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { id: true, tool: true, success: true, errorCode: true, customerId: true, jobId: true, createdAt: true },
+    }),
   ]);
   const testGrant = toHighLevelTestGrantView(testGrantRow);
   const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
@@ -352,6 +364,23 @@ export default async function HighLevelSettingsPage({
       </Card>
 
       <ConversationOwnerForm value={parseCustomerConversationOwner(ctx.company.customerConversationOwner)} />
+      <AgentToolSettings
+        keys={agentToolKeys.map((row) => ({
+          id: row.id,
+          lastFour: row.lastFour,
+          lastUsedAt: row.lastUsedAt ? formatDateTime(row.lastUsedAt) : null,
+          createdAt: formatDateTime(row.createdAt),
+        }))}
+        recentCalls={agentToolCalls.map((row) => ({
+          id: row.id,
+          tool: row.tool,
+          success: row.success,
+          errorCode: row.errorCode,
+          customerId: row.customerId,
+          jobId: row.jobId,
+          createdAt: formatDateTime(row.createdAt),
+        }))}
+      />
 
       <HighLevelSettingsForm
         oauthReady={highlevelOAuthConfigured()}

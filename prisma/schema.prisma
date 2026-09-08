@@ -624,6 +624,8 @@ model Company {
   conversationSchedulingStates ConversationSchedulingState[]
   maintenanceVisits MaintenanceVisit[]
   schedulingBookings SchedulingBooking[]
+  agentToolCredentials AgentToolCredential[]
+  agentToolCalls AgentToolCall[]
 
   @@index([status])
   @@index([industry])
@@ -3231,4 +3233,49 @@ model SchedulingBooking {
   @@index([companyId, localDate, windowId])
   @@index([companyId, technicianUserId, localDate])
   @@index([companyId, maintenanceVisitId])
+}
+
+model AgentToolCredential {
+  id         String    @id @default(cuid())
+  companyId  String
+  name       String    @default("HighLevel Agent Studio")
+  keyPrefix  String
+  keyHash    String
+  lastFour   String
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  calls   AgentToolCall[]
+
+  @@index([companyId, revokedAt])
+  @@index([keyPrefix])
+}
+
+model AgentToolCall {
+  id             String   @id @default(cuid())
+  companyId      String
+  credentialId   String?
+  tool           String
+  success        Boolean
+  errorCode      String?
+  httpStatus     Int
+  locationId     String?
+  contactId      String?
+  conversationId String?
+  customerId     String?
+  propertyId     String?
+  serviceTypeId  String?
+  jobId          String?
+  bookingId      String?
+  durationMs     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  company    Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  credential AgentToolCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, tool, createdAt])
 }
