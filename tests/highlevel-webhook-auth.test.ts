@@ -24,6 +24,8 @@ function headerMap(entries: Record<string, string>) {
 describe("HighLevel Marketplace webhook authentication", () => {
   it("does not require a session or Authorization header to reach the webhook path", () => {
     expect(isPublicPath(HIGHLEVEL_WEBHOOK_ROUTE)).toBe(true);
+    expect(isPublicPath("/api/agent-tools/check-availability")).toBe(true);
+    expect(isPublicPath("/api/agent-tools/book-appointment")).toBe(true);
     expect(
       middlewareAuthDecision({
         pathname: HIGHLEVEL_WEBHOOK_ROUTE,

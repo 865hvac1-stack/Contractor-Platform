@@ -33,6 +33,7 @@ export function isPublicPath(pathname: string) {
     pathname.startsWith("/api/forms/") ||
     pathname.startsWith("/api/payments/") ||
     pathname.startsWith("/api/webhooks/") ||
+    pathname.startsWith("/api/agent-tools/") ||
     (pathname.startsWith("/api/integrations/") && pathname.includes("/callback"))
   );
 }

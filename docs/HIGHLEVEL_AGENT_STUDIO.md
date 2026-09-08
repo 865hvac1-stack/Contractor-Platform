@@ -23,6 +23,8 @@ Content-Type: application/json
 
 The key belongs to one ContractorYou company. It cannot be used for another tenant.
 
+These routes are exempt from the ContractorYou session cookie so Agent Studio can call them. They are still rejected without a valid Agent Tool bearer key.
+
 Optional booking header:
 
 ```

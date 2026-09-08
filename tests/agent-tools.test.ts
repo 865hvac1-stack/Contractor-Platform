@@ -10,6 +10,7 @@ import { httpStatusForCode, toolError, toolOk } from "@/lib/agent-tools/envelope
 import { checkAgentToolRateLimit, resetAgentToolRateLimit } from "@/lib/agent-tools/rate-limit";
 import { signSlotToken, verifySlotToken } from "@/lib/agent-tools/slot-token";
 import { parseRequestedDaypart } from "@/lib/agent-tools/context";
+import { isPublicPath, middlewareAuthDecision } from "@/lib/auth-session";
 
 describe("Agent Tool authentication and tokens", () => {
   it("hashes keys and reads a bearer token without logging it", () => {
@@ -35,6 +36,19 @@ describe("Agent Tool authentication and tokens", () => {
     expect(httpStatusForCode("LOCATION_MISMATCH")).toBe(403);
     expect(httpStatusForCode("RATE_LIMITED")).toBe(429);
     expect(httpStatusForCode("SLOT_NO_LONGER_AVAILABLE")).toBe(409);
+  });
+
+  it("lets Agent Studio reach the tools without a ContractorYou session cookie", () => {
+    expect(isPublicPath("/api/agent-tools/check-availability")).toBe(true);
+    expect(isPublicPath("/api/agent-tools/book-appointment")).toBe(true);
+    expect(isPublicPath("/settings/highlevel")).toBe(false);
+    expect(
+      middlewareAuthDecision({
+        pathname: "/api/agent-tools/check-availability",
+        hasSessionCookie: false,
+        signedOut: false,
+      })
+    ).toEqual({ allow: true, redirectTo: null, clearSessionCookie: false });
   });
 
   it("signs slot tokens to a company and rejects tampering", () => {
