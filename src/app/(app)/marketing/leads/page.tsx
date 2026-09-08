@@ -14,18 +14,23 @@ import { formatMoney } from "@/lib/money";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; source?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; source?: string; needsResponse?: string }>;
 }) {
   const ctx = await requirePermission("leads:view");
-  const { q, status, source } = await searchParams;
+  const { q, status, source, needsResponse } = await searchParams;
   const query = q?.trim() || "";
+  const unanswered = needsResponse === "1";
   const statusFilter = LEAD_STATUSES.includes(status as LeadStatus) ? (status as LeadStatus) : undefined;
   const sourceFilter = LEAD_SOURCES.includes(source as LeadSource) ? (source as LeadSource) : undefined;
 
   const leads = await prisma.lead.findMany({
     where: {
       companyId: ctx.company.id,
-      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(unanswered
+        ? { firstRespondedAt: null, status: { in: ["NEW", "CONTACTED"] } }
+        : statusFilter
+          ? { status: statusFilter }
+          : {}),
       ...(sourceFilter ? { source: sourceFilter } : {}),
       ...(query
         ? {
@@ -60,7 +65,26 @@ export default async function LeadsPage({
         </Link>
       </div>
 
-      <form
+      {unanswered ? (
+        <div className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">
+              Needs a response
+            </p>
+            <p className="mt-0.5 text-sm text-[var(--cy-navy)]">
+              Leads that have not received a first response.
+            </p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--cy-navy)]">
+              {leads.length} lead{leads.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <Link href="/office" className="text-sm font-medium text-[var(--cy-navy)] underline-offset-4 hover:underline">
+            Back to Customer Hub
+          </Link>
+        </div>
+      ) : null}
+
+      <form>
         method="get"
         className="grid gap-2 rounded-2xl border border-[var(--border)] bg-white p-3 sm:grid-cols-[1fr_auto_auto_auto]"
       >
@@ -95,6 +119,7 @@ export default async function LeadsPage({
             </option>
           ))}
         </select>
+        {unanswered ? <input type="hidden" name="needsResponse" value="1" /> : null}
         <Button type="submit" className="h-10 px-5">
           Filter
         </Button>

@@ -7,6 +7,7 @@ import { AuthError } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { writeAudit } from "@/lib/audit";
 import { askContractorYou } from "@/lib/intelligence/service";
+import { writeProfessionalCopy } from "@/lib/intelligence/writing";
 import { refreshCompanyInsights } from "@/lib/intelligence/generate";
 import { identifyEstimateFollowups } from "@/lib/actions/read";
 import { formatMoney } from "@/lib/money";
@@ -59,6 +60,41 @@ export async function askContractorYouAction(
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
     throw e;
+  }
+}
+
+export type WritingState = ActionResult & {
+  text?: string;
+  style?: string;
+  usedJobContext?: boolean;
+  unavailable?: boolean;
+};
+
+export async function writeInvoiceDescriptionAction(
+  _prev: WritingState | null,
+  formData: FormData
+): Promise<WritingState> {
+  try {
+    const ctx = await requirePermission("invoices:manage");
+    const result = await writeProfessionalCopy({
+      companyId: ctx.company.id,
+      userId: ctx.user.id,
+      purpose: "invoice_description",
+      notes: String(formData.get("notes") || ""),
+      style: String(formData.get("style") || "professional"),
+      jobId: String(formData.get("jobId") || "") || null,
+    });
+    if (!result.ok) {
+      return { ok: false, error: result.error, unavailable: result.unavailable };
+    }
+    return { ok: true, text: result.text, style: result.style, usedJobContext: result.usedJobContext };
+  } catch (e) {
+    if (e instanceof AuthError) return { ok: false, error: e.message };
+    return {
+      ok: false,
+      unavailable: true,
+      error: "AI writing is unavailable right now. You can continue using your description.",
+    };
   }
 }
 

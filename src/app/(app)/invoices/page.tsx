@@ -65,9 +65,19 @@ export default async function InvoicesPage({
 
       {copy ? (
         <FinanceFilterContext
-          title={copy.title}
-          detail={copy.detail}
-          amount={invoices.length > 0 ? formatMoney(totalCents) : undefined}
+          title={query.status === "overdue" || finance.view === "overdue" ? "Overdue invoices" : copy.title}
+          detail={
+            query.status === "overdue" || finance.view === "overdue"
+              ? `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}`
+              : copy.detail
+          }
+          amount={
+            invoices.length > 0
+              ? query.status === "overdue" || finance.view === "overdue"
+                ? `${formatMoney(totalCents)} overdue`
+                : formatMoney(totalCents)
+              : undefined
+          }
           backHref={finance.backHref}
         />
       ) : null}
@@ -132,7 +142,12 @@ export default async function InvoicesPage({
                     ) : null}
                   </TableCell>
                   <TableCell>
-                    {inv.customer.firstName} {inv.customer.lastName}
+                    <Link
+                      href={`/office/customers/${inv.customer.id}`}
+                      className="text-[var(--cy-navy)] underline-offset-2 hover:underline"
+                    >
+                      {inv.customer.firstName} {inv.customer.lastName}
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={inv.status} />

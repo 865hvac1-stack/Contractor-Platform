@@ -41,7 +41,7 @@ export function parseFinanceSearch(input: {
     source: input.source?.trim() || undefined,
     range,
     needsInvoice: input.needsInvoice === "1" || input.needsInvoice === "true",
-    backHref: homeRangeHref(range),
+    backHref: input.source === "hub" ? "/office" : homeRangeHref(range),
   };
 }
 
@@ -117,6 +117,18 @@ export function financeFilterCopy(query: FinanceSearch): { title: string; detail
   }
   if (query.view === "revenue" || query.status === "PAID") {
     return { title: "Revenue", detail: `Paid invoices for ${financeRangeDetail(query)}.` };
+  }
+  if (query.status === "followup" || query.view === "followup") {
+    return {
+      title: "Estimates needing follow-up",
+      detail: "Sent and viewed estimates that still need a follow-up.",
+    };
+  }
+  if (query.view === "schedule" || (query.status === "approved" && query.source === "hub")) {
+    return {
+      title: "Approved — not scheduled",
+      detail: "Approved estimates that still need to be scheduled.",
+    };
   }
   if (query.status === "open") {
     return { title: "Open estimates", detail: "Draft, sent, and viewed estimates that have not been decided." };

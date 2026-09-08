@@ -91,7 +91,13 @@ export default async function NewInvoicePage() {
               <Input id="tax" name="tax" type="number" min="0" step="0.01" defaultValue="0" />
             </div>
             <div className="sm:col-span-2">
-              <ServiceTypePicker types={serviceTypes} descriptionName="notes" descriptionLabel="Description" />
+              <ServiceTypePicker
+                types={serviceTypes}
+                descriptionName="notes"
+                descriptionLabel="Description"
+                writingAssist
+                jobFieldId="jobId"
+              />
             </div>
           </div>
 

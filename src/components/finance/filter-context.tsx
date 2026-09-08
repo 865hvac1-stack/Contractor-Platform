@@ -19,7 +19,7 @@ export function FinanceFilterContext({
         {amount ? <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--cy-navy)]">{amount}</p> : null}
       </div>
       <Link href={backHref} className="text-sm font-medium text-[var(--cy-navy)] underline-offset-4 hover:underline">
-        Back to Home
+        {backHref.startsWith("/office") ? "Back to Customer Hub" : "Back to Home"}
       </Link>
     </div>
   );

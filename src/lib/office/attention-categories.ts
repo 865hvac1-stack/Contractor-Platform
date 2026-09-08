@@ -38,7 +38,7 @@ const CATEGORY_DEFS: Record<
   estimate_follow_up: {
     id: "estimate_follow_up",
     label: "Estimate follow-up",
-    href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
+    href: "/estimates?status=followup&source=hub&view=followup",
     actionLabel: "Review",
     prepareType: "estimate_not_followed_up",
     askQuestion: "Which estimates should we call?",
@@ -47,7 +47,7 @@ const CATEGORY_DEFS: Record<
   approved_not_scheduled: {
     id: "approved_not_scheduled",
     label: "Approved — not scheduled",
-    href: "/estimates?status=approved",
+    href: "/estimates?status=approved&source=hub&view=schedule",
     actionLabel: "Schedule",
     prepareType: "approved_estimate_not_scheduled",
     askQuestion: "What approved work needs scheduling?",
@@ -56,7 +56,7 @@ const CATEGORY_DEFS: Record<
   overdue_invoices: {
     id: "overdue_invoices",
     label: "Overdue invoices",
-    href: "/invoices?status=overdue",
+    href: "/invoices?status=overdue&source=hub&view=overdue",
     actionLabel: "Review",
     prepareType: "invoice_overdue",
     askQuestion: "Who owes us money?",
@@ -65,9 +65,9 @@ const CATEGORY_DEFS: Record<
   unanswered_leads: {
     id: "unanswered_leads",
     label: "Unanswered leads",
-    href: "/marketing/leads?status=NEW",
+    href: "/marketing/leads?needsResponse=1",
     actionLabel: "Respond",
-    askQuestion: "Which leads have not been answered?",
+    askQuestion: "Why have these leads not received a response?",
     tone: "neutral",
   },
   missed_calls: {

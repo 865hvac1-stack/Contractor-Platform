@@ -90,7 +90,10 @@ export default async function OfficeHubPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <OfficeIntelligenceSection items={data.intelligence} />
+        <OfficeIntelligenceSection
+          items={data.intelligence}
+          canAsk={can(ctx.role, "intelligence:view")}
+        />
         <OfficeCommunicationsSection
           items={data.communications}
           unreadThreads={data.commsSummary.unreadThreads}

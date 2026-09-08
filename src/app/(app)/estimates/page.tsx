@@ -22,7 +22,7 @@ import {
 export default async function EstimatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; source?: string; range?: string }>;
+  searchParams: Promise<{ status?: string; source?: string; range?: string; view?: string }>;
 }) {
   const ctx = await requirePermission("estimates:view");
   const params = await searchParams;
@@ -86,11 +86,19 @@ export default async function EstimatesPage({
       {(() => {
         const copy = financeFilterCopy({ ...finance, status: status ?? finance.status });
         const openTotal = estimates.reduce((sum, estimate) => sum + estimate.totalCents, 0);
+        const countLabel = `${estimates.length} estimate${estimates.length === 1 ? "" : "s"}`;
+        const hubView = status === "followup" || status === "approved";
         return copy ? (
           <FinanceFilterContext
             title={copy.title}
-            detail={copy.detail}
-            amount={status === "open" && estimates.length > 0 ? formatMoney(openTotal) : undefined}
+            detail={hubView ? countLabel : copy.detail}
+            amount={
+              estimates.length > 0 && (hubView || status === "open")
+                ? hubView
+                  ? `${formatMoney(openTotal)} open value`
+                  : formatMoney(openTotal)
+                : undefined
+            }
             backHref={finance.backHref}
           />
         ) : null;
@@ -148,7 +156,12 @@ export default async function EstimatesPage({
                     </Link>
                   </TableCell>
                   <TableCell>
-                    {est.customer.firstName} {est.customer.lastName}
+                    <Link
+                      href={`/office/customers/${est.customer.id}`}
+                      className="text-[var(--cy-navy)] underline-offset-2 hover:underline"
+                    >
+                      {est.customer.firstName} {est.customer.lastName}
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={est.status} />

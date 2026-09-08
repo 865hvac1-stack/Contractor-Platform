@@ -309,15 +309,19 @@ export function OfficeRecentCustomersSection({ customers }: { customers: OfficeR
       ) : (
         <ul className="mt-4 divide-y divide-[var(--border)]">
           {customers.map((customer) => (
-            <li key={customer.id} className="py-3 first:pt-0 last:pb-0">
-              <div className="flex items-start gap-3">
-                <Link
-                  href={`/office/customers/${customer.id}`}
+            <li key={customer.id} className="relative py-3 first:pt-0 last:pb-0">
+              <Link
+                href={`/office/customers/${customer.id}`}
+                className="absolute inset-0"
+                aria-label={`Open ${customer.name}`}
+              />
+              <div className="relative z-10 flex items-start gap-3">
+                <span
                   className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--cy-navy)] text-[11px] font-semibold text-white"
                   aria-hidden
                 >
                   {customerInitials(customer.name)}
-                </Link>
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-0.5">
@@ -348,7 +352,7 @@ export function OfficeRecentCustomersSection({ customers }: { customers: OfficeR
                       {customer.phone ? (
                         <a
                           href={`tel:${customer.phone.replace(/[^\d+]/g, "")}`}
-                          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 text-xs font-medium text-[var(--cy-navy)] transition-colors duration-200 hover:border-[var(--cy-navy)]/20"
+                          className="relative z-10 inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 text-xs font-medium text-[var(--cy-navy)] transition-colors duration-200 hover:border-[var(--cy-navy)]/20"
                         >
                           <Phone className="size-3.5" aria-hidden />
                           Call
@@ -357,7 +361,7 @@ export function OfficeRecentCustomersSection({ customers }: { customers: OfficeR
                       {customer.phone ? (
                         <Link
                           href={`/marketing/communications?compose=1&customerId=${customer.id}&to=${encodeURIComponent(customer.phone)}`}
-                          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 text-xs font-medium text-[var(--cy-navy)] transition-colors duration-200 hover:border-[var(--cy-navy)]/20"
+                          className="relative z-10 inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 text-xs font-medium text-[var(--cy-navy)] transition-colors duration-200 hover:border-[var(--cy-navy)]/20"
                         >
                           <MessageSquare className="size-3.5" aria-hidden />
                           Text
@@ -408,8 +412,9 @@ export function OfficeUpcomingSection({ jobs }: { jobs: OfficeUpcomingJob[] }) {
                   : "TBD";
             const status = jobStatusPresentation(job);
             return (
-              <li key={job.id} className="rounded-xl border border-[var(--border)] px-3 py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <li key={job.id} className="relative rounded-xl border border-[var(--border)] px-3 py-3 hover:border-[var(--cy-navy)]/20 hover:shadow-sm">
+                <Link href={`/jobs/${job.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open job ${job.jobNumber}`} />
+                <div className="relative z-10 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold tabular-nums text-[var(--cy-navy)]">{timeLabel}</p>
@@ -417,33 +422,31 @@ export function OfficeUpcomingSection({ jobs }: { jobs: OfficeUpcomingJob[] }) {
                         {status.label}
                       </span>
                     </div>
-                    <Link href={`/office/customers/${job.customer.id}`} className="block font-semibold text-[var(--cy-navy)] hover:underline">
+                    <Link href={`/office/customers/${job.customer.id}`} className="relative z-10 block font-semibold text-[var(--cy-navy)] hover:underline">
                       {job.customer.name}
                     </Link>
-                    <Link href={`/jobs/${job.id}`} className="block text-sm text-[var(--cy-text-secondary)] hover:underline">
+                    <p className="text-sm text-[var(--cy-text-secondary)]">
                       {job.jobType || job.jobNumber}
-                    </Link>
+                    </p>
                     {job.property ? (
                       <Link
                         href={`/office/customers/${job.customer.id}?propertyId=${job.property.id}`}
-                        className="block text-sm text-[var(--muted-foreground)] hover:underline"
+                        className="relative z-10 block text-sm text-[var(--muted-foreground)] hover:underline"
                       >
                         {job.property.label}
                       </Link>
                     ) : null}
                     {job.technician ? (
-                      <Link href="/team" className="block text-sm text-[var(--muted-foreground)] hover:underline">
-                        {job.technician.name}
-                      </Link>
+                      <p className="text-sm text-[var(--muted-foreground)]">{job.technician.name}</p>
                     ) : (
-                      <Link href={job.dispatchHref} className="block text-sm text-[var(--cy-orange)] hover:underline">
+                      <Link href={job.dispatchHref} className="relative z-10 block text-sm text-[var(--cy-orange)] hover:underline">
                         Unassigned · Dispatch
                       </Link>
                     )}
                   </div>
                   <Link
                     href={job.dispatchHref}
-                    className="inline-flex min-h-11 shrink-0 items-center text-sm font-medium text-[var(--cy-orange)] hover:underline"
+                    className="relative z-10 inline-flex min-h-11 shrink-0 items-center text-sm font-medium text-[var(--cy-orange)] hover:underline"
                   >
                     Open dispatch →
                   </Link>
@@ -494,36 +497,41 @@ export function OfficeCommunicationsSection({
           {items.map((item) => {
             const Icon = communicationIcon(item.channel);
             return (
-              <li key={item.id} className="flex min-h-11 items-start gap-3 rounded-xl px-2 py-2 transition-colors duration-200 hover:bg-[var(--cy-gray)]">
-                <Link href={item.href} className="flex min-w-0 flex-1 items-start gap-3">
+              <li key={item.id} className="relative rounded-xl transition-colors duration-200 hover:bg-[var(--cy-gray)]">
+                <Link
+                  href={item.href}
+                  className="absolute inset-0 cursor-pointer rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cy-navy)]"
+                  aria-label={`Open conversation with ${item.name}`}
+                />
+                <div className="pointer-events-none relative z-10 flex min-h-11 items-start gap-3 px-2 py-2">
                   <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cy-gray)] text-[var(--cy-navy)]">
                     <Icon className="size-3.5" aria-hidden />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-[var(--cy-navy)]">{item.name}</span>
+                      {item.customerId ? (
+                        <Link
+                          href={`/office/customers/${item.customerId}`}
+                          className="pointer-events-auto truncate font-semibold text-[var(--cy-navy)] hover:underline"
+                        >
+                          {item.name}
+                        </Link>
+                      ) : (
+                        <span className="truncate font-semibold text-[var(--cy-navy)]">{item.name}</span>
+                      )}
                       {item.unread ? (
                         <span className="size-1.5 shrink-0 rounded-full bg-[var(--cy-orange)]" aria-label="Unread" />
                       ) : null}
+                      <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)]" aria-hidden />
                     </span>
                     {item.preview ? (
                       <span className="mt-0.5 block truncate text-sm text-[var(--muted-foreground)]">{item.preview}</span>
                     ) : null}
                   </span>
-                </Link>
-                <span className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
-                  <span className="text-[11px] text-[var(--cy-text-muted)]">
+                  <span className="pt-0.5 text-[11px] text-[var(--cy-text-muted)]">
                     {formatDistanceToNow(item.lastActivityAt, { addSuffix: true })}
                   </span>
-                  {item.customerId ? (
-                    <Link
-                      href={`/office/customers/${item.customerId}`}
-                      className="text-[11px] font-medium text-[var(--cy-orange)] hover:underline"
-                    >
-                      Customer
-                    </Link>
-                  ) : null}
-                </span>
+                </div>
               </li>
             );
           })}
@@ -533,7 +541,13 @@ export function OfficeCommunicationsSection({
   );
 }
 
-export function OfficeIntelligenceSection({ items }: { items: OfficeIntelligenceItem[] }) {
+export function OfficeIntelligenceSection({
+  items,
+  canAsk = false,
+}: {
+  items: OfficeIntelligenceItem[];
+  canAsk?: boolean;
+}) {
   if (items.length === 0) {
     return (
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
@@ -558,19 +572,27 @@ export function OfficeIntelligenceSection({ items }: { items: OfficeIntelligence
       <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--cy-navy)]">What needs a decision</h2>
       <ul className="mt-4 space-y-3">
         {items.map((item) => (
-          <li key={item.id} className="rounded-xl bg-[var(--cy-gray)] px-3 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">{item.label}</p>
-            <p className="mt-1 text-sm text-[var(--cy-navy)]">{item.summary}</p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <Link href={item.href} className="text-sm font-medium text-[var(--cy-orange)] hover:underline">
+          <li key={item.id} className="relative rounded-xl bg-[var(--cy-gray)] px-3 py-3">
+            <Link
+              href={item.href}
+              className="block cursor-pointer rounded-lg outline-none hover:bg-white/60 focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]/40"
+              aria-label={`View ${item.label}`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">{item.label}</p>
+              <p className="mt-1 text-sm text-[var(--cy-navy)]">{item.summary}</p>
+            </Link>
+            <div className="relative z-10 mt-2 flex flex-wrap gap-3">
+              <Link href={item.actionHref} className="text-sm font-medium text-[var(--cy-orange)] hover:underline">
                 {item.actionLabel} →
               </Link>
-              <Link
-                href={`/intelligence?ask=${encodeURIComponent(item.askQuestion)}`}
-                className="text-sm text-[var(--muted-foreground)] hover:text-[var(--cy-navy)] hover:underline"
-              >
-                Ask why
-              </Link>
+              {canAsk ? (
+                <Link
+                  href={`/intelligence?ask=${encodeURIComponent(item.askQuestion)}`}
+                  className="text-sm text-[var(--muted-foreground)] hover:text-[var(--cy-navy)] hover:underline"
+                >
+                  Ask why
+                </Link>
+              ) : null}
             </div>
           </li>
         ))}

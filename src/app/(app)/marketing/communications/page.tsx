@@ -46,6 +46,14 @@ export default async function CommunicationsPage({
     where: {
       companyId: ctx.company.id,
       ...(filter === "today" ? { lastActivityAt: { gte: dayStart, lte: dayEnd } } : {}),
+      ...(filter === "needs-response"
+        ? {
+            lead: {
+              firstRespondedAt: null,
+              status: { in: ["NEW", "CONTACTED"] },
+            },
+          }
+        : {}),
     },
     orderBy: { lastActivityAt: "desc" },
     take: 80,
@@ -122,6 +130,25 @@ export default async function CommunicationsPage({
           </Link>
         ))}
       </div>
+
+      {filter === "needs-response" ? (
+        <div className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">
+              Needs a response
+            </p>
+            <p className="mt-0.5 text-sm text-[var(--cy-navy)]">
+              Conversations for leads that have not received a first response.
+            </p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--cy-navy)]">
+              {threads.length} conversation{threads.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <Link href="/office" className="text-sm font-medium text-[var(--cy-navy)] underline-offset-4 hover:underline">
+            Back to Customer Hub
+          </Link>
+        </div>
+      ) : null}
 
       {smsTo ? (
         <section className="rounded-2xl border border-[var(--border)] bg-white p-4">

@@ -36,19 +36,19 @@ export function buildOfficePipeline(input: {
       id: "estimate_follow_up",
       label: "Estimate follow-up",
       count: input.estimateFollowUp,
-      href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
+      href: "/estimates?status=followup&source=hub&view=followup",
     },
     {
       id: "approved_scheduling",
       label: "Approved / needs scheduling",
       count: input.approvedNotScheduled,
-      href: "/estimates?status=approved",
+      href: "/estimates?status=approved&source=hub&view=schedule",
     },
     {
       id: "payment_follow_up",
       label: "Payment follow-up",
       count: input.paymentFollowUp,
-      href: "/invoices?status=overdue",
+      href: "/invoices?status=overdue&source=hub&view=overdue",
     },
   ];
 }

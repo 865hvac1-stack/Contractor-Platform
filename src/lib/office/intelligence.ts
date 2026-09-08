@@ -5,8 +5,11 @@ export type OfficeIntelligenceItem = {
   label: string;
   summary: string;
   href: string;
+  actionHref: string;
   actionLabel: string;
   askQuestion: string;
+  count: number;
+  amountCents: number | null;
 };
 
 export function buildOfficeIntelligence(input: {
@@ -25,9 +28,12 @@ export function buildOfficeIntelligence(input: {
       id: "sales_opportunity",
       label: "Sales opportunity",
       summary: `${input.followUpCount} estimate${input.followUpCount === 1 ? "" : "s"} totaling ${formatMoney(input.followUpValueCents)} need follow-up.`,
-      href: "/attention?filter=follow_ups&type=estimate_not_followed_up",
+      href: "/estimates?status=followup&source=hub&view=followup",
+      actionHref: "/attention?filter=follow_ups&type=estimate_not_followed_up",
       actionLabel: "Prepare follow-ups",
-      askQuestion: "Which estimates should we call?",
+      askQuestion: "Why are these estimates considered follow-up opportunities?",
+      count: input.followUpCount,
+      amountCents: input.followUpValueCents,
     });
   }
 
@@ -37,11 +43,14 @@ export function buildOfficeIntelligence(input: {
       label: "Scheduling opportunity",
       summary:
         input.approvedValueCents > 0
-          ? `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} (${formatMoney(input.approvedValueCents)}) have not been scheduled.`
+          ? `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} totaling ${formatMoney(input.approvedValueCents)} have not been scheduled.`
           : `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} have not been scheduled.`,
-      href: "/estimates?status=approved",
+      href: "/estimates?status=approved&source=hub&view=schedule",
+      actionHref: "/dispatch",
       actionLabel: "Schedule",
-      askQuestion: "What approved work needs scheduling?",
+      askQuestion: "Why do these approved estimates still need scheduling?",
+      count: input.approvedNotScheduled,
+      amountCents: input.approvedValueCents > 0 ? input.approvedValueCents : null,
     });
   }
 
@@ -49,10 +58,13 @@ export function buildOfficeIntelligence(input: {
     rows.push({
       id: "collection_risk",
       label: "Collection risk",
-      summary: `${formatMoney(input.overdueBalanceCents)} is overdue across ${input.overdueCount} invoice${input.overdueCount === 1 ? "" : "s"}.`,
-      href: "/invoices?status=overdue",
+      summary: `${formatMoney(input.overdueBalanceCents)} overdue across ${input.overdueCount} invoice${input.overdueCount === 1 ? "" : "s"}.`,
+      href: "/invoices?status=overdue&source=hub&view=overdue",
+      actionHref: "/invoices?status=overdue&source=hub&view=overdue",
       actionLabel: "Review",
-      askQuestion: "Who owes us money?",
+      askQuestion: "Why is this overdue A/R a collection risk?",
+      count: input.overdueCount,
+      amountCents: input.overdueBalanceCents,
     });
   }
 
@@ -61,9 +73,12 @@ export function buildOfficeIntelligence(input: {
       id: "customer_response",
       label: "Customer response",
       summary: `${input.unansweredLeads} lead${input.unansweredLeads === 1 ? "" : "s"} have not received a response.`,
-      href: "/marketing/leads?status=NEW",
+      href: "/marketing/leads?needsResponse=1",
+      actionHref: "/marketing/communications?filter=needs-response",
       actionLabel: "Respond",
-      askQuestion: "Which leads have not been answered?",
+      askQuestion: "Why have these leads not received a response?",
+      count: input.unansweredLeads,
+      amountCents: null,
     });
   }
 

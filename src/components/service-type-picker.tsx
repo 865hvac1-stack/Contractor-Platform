@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ProfessionalWriter } from "@/components/intelligence/professional-writer";
 
 export type ServiceTypeOption = {
   id: string;
@@ -21,6 +22,8 @@ export function ServiceTypePicker({
   defaultDescription = "",
   showPlaybookField = false,
   descriptionLabel = "Description",
+  writingAssist = false,
+  jobFieldId = "jobId",
 }: {
   types: ServiceTypeOption[];
   defaultTypeId?: string;
@@ -28,6 +31,8 @@ export function ServiceTypePicker({
   defaultDescription?: string;
   showPlaybookField?: boolean;
   descriptionLabel?: string;
+  writingAssist?: boolean;
+  jobFieldId?: string;
 }) {
   const [selectedId, setSelectedId] = useState(defaultTypeId);
   const [description, setDescription] = useState(defaultDescription);
@@ -98,6 +103,9 @@ export function ServiceTypePicker({
           placeholder="You can edit this after choosing a service type."
         />
       </div>
+      {writingAssist ? (
+        <ProfessionalWriter notes={description} jobFieldId={jobFieldId} onUse={setDescription} />
+      ) : null}
     </div>
   );
 }
