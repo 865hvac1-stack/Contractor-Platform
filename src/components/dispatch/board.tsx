@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { countActiveDispatchFilters, matchesDispatchFilters, uniqueCities, type DispatchPulse } from "@/lib/dispatch/filters";
 import { TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchBoardData, DispatchCard, DispatchLane } from "@/lib/dispatch/types";
+import { formatTime } from "@/lib/datetime";
 
 function hoursLabel(minutes: number) {
   if (!minutes) return "0 scheduled hrs";
@@ -23,7 +24,7 @@ function hoursLabel(minutes: number) {
 
 function nextLabel(value: Date | string | null) {
   if (!value) return null;
-  return `Available ${new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  return `Available ${formatTime(value)}`;
 }
 
 export function DispatchBoard({
@@ -663,7 +664,7 @@ function JobList({
           <li key={job.id}>
             {showNow ? (
               <p className="my-1 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-                ──── Now {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ────
+                ──── Now {formatTime(new Date())} ────
               </p>
             ) : null}
             <DispatchJobCard job={job} density={density} selected={selectedId === job.id} onSelect={onSelect} asItem={false} />
@@ -672,7 +673,7 @@ function JobList({
       })}
       {nowAfterAll && !marker ? (
         <li className="text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-          ──── Now {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} ────
+          ──── Now {formatTime(new Date())} ────
         </li>
       ) : null}
     </ul>

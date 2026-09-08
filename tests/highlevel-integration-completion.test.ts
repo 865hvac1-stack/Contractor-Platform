@@ -30,8 +30,8 @@ describe("HighLevel production integration completion", () => {
     expect(lead360).toContain("/marketing/communications");
     expect(lead360).toContain("NO CONTACT ATTEMPT");
     expect(customer).toContain("compose=1");
-    expect(customer).toContain("/marketing/communications/${thread.id}");
-    expect(customer).toContain("CompanySmsForm");
+    expect(customer).toContain("/marketing/communications/${latestComms.thread.id}");
+    expect(customer).not.toContain("CompanySmsForm");
     expect(inboxPage).toContain("CompanySmsForm");
     expect(hub).toContain("isHighLevelConnected");
   });

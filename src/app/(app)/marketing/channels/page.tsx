@@ -7,6 +7,7 @@ import { actionLabel, oauthStartHref } from "@/lib/integrations/oauth-href";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/datetime";
 
 export default async function ChannelsPage({
   searchParams,
@@ -80,7 +81,7 @@ export default async function ChannelsPage({
                       <div>
                         <dt className="text-[var(--cy-text-muted)]">Last sync</dt>
                         <dd className="mt-0.5">
-                          {card.lastSyncAt ? card.lastSyncAt.toLocaleString() : "Never"}
+                          {card.lastSyncAt ? formatDateTime(card.lastSyncAt, ctx.company.timezone) : "Never"}
                         </dd>
                       </div>
                       <div className="col-span-2">

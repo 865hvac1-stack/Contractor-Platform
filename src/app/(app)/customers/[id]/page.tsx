@@ -3,7 +3,6 @@ import { can } from "@/lib/permissions";
 import { requirePermission } from "@/lib/tenant";
 import { getCustomer360 } from "@/lib/customers/workspace";
 import { Customer360View } from "@/components/customers/customer-360-view";
-import { CustomerRecordEditor } from "@/components/customers/customer-record-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -39,25 +38,8 @@ export default async function CustomerDetailPage({
         canAsk={can(ctx.role, "intelligence:view")}
         jobBase="/jobs"
         selfHref={`/customers/${workspace.customer.id}`}
+        timeZone={ctx.company.timezone}
       />
-      {can(ctx.role, "customers:manage") ? (
-        <CustomerRecordEditor
-          customerId={workspace.customer.id}
-          firstName={workspace.customer.firstName}
-          lastName={workspace.customer.lastName}
-          businessName={workspace.customer.businessName}
-          phone={workspace.customer.phone}
-          secondaryPhone={workspace.customer.secondaryPhone}
-          email={workspace.customer.email}
-          notes={workspace.customer.notes}
-          preferredContactMethod={workspace.customer.preferredContactMethod}
-          propertyId={workspace.selectedProperty?.id}
-          address={workspace.selectedProperty?.address}
-          city={workspace.selectedProperty?.city}
-          propertyState={workspace.selectedProperty?.state}
-          zip={workspace.selectedProperty?.zip}
-        />
-      ) : null}
     </div>
   );
 }

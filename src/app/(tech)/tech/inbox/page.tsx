@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
 import { technicianInbox, technicianInboxEmptyCopy } from "@/lib/tech/inbox";
+import { formatDate, formatDayTime } from "@/lib/datetime";
 
-function timeLabel(value: Date) {
-  const sameDay = new Date().toDateString() === value.toDateString();
-  return sameDay
-    ? value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : value.toLocaleDateString();
+function timeLabel(value: Date, timeZone?: string | null) {
+  return formatDayTime(value, timeZone) || formatDate(value, timeZone);
 }
 
 export default async function TechInboxPage() {
@@ -37,7 +35,7 @@ export default async function TechInboxPage() {
                       <p className="text-xs text-[var(--muted-foreground)]">{item.jobContext}</p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-xs text-[var(--muted-foreground)]">{timeLabel(item.createdAt)}</p>
+                      <p className="text-xs text-[var(--muted-foreground)]">{timeLabel(item.createdAt, ctx.company.timezone)}</p>
                       {item.unread ? (
                         <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--cy-orange)]">
                           Unread

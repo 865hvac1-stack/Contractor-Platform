@@ -1,18 +1,20 @@
 import Link from "next/link";
-import { format } from "date-fns";
 import { AskContractorYou } from "@/components/ask-contractoryou";
-import { JobPhotoUpload } from "@/components/tech/job-photos";
 import { StatusBadge } from "@/components/status-badge";
-import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
-import { AddCustomerNoteForm } from "@/components/customers/add-customer-note";
-import { CustomerPhotoGallery } from "@/components/customers/photo-gallery";
-import { CustomerTimeline } from "@/components/customers/customer-timeline";
 import { formatMoney } from "@/lib/money";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
 import type { Customer360 } from "@/lib/customers/workspace";
 import { CustomerWaitingBanner } from "@/components/waiting/customer-waiting-banner";
 import type { CompanyRole } from "@prisma/client";
 import { formatUsPhoneDisplay } from "@/lib/phone";
+import { formatDate, formatDayTime, formatDurationSeconds } from "@/lib/datetime";
+import {
+  Customer360Actions,
+  CustomerNoteTrigger,
+  CustomerPropertyTrigger,
+} from "@/components/customers/customer-360-actions";
+import { CustomerHistoryTabs } from "@/components/customers/customer-history-tabs";
+import { CustomerTimeline } from "@/components/customers/customer-timeline";
 
 function telHref(phone: string | null) {
   return phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
@@ -35,6 +37,7 @@ export function Customer360View({
   jobBase = "/jobs",
   newJobHref,
   selfHref,
+  timeZone,
 }: {
   workspace: Customer360;
   role: CompanyRole;
@@ -47,535 +50,531 @@ export function Customer360View({
   jobBase?: string;
   newJobHref?: string;
   selfHref: string;
+  timeZone?: string | null;
 }) {
   const { customer, selectedProperty, properties } = workspace;
   const call = telHref(customer.phone);
   const text = smsHref(customer.id, customer.phone);
-  const propertyQuery = selectedProperty ? `?propertyId=${selectedProperty.id}` : "";
-  const propertyTypeLabel = (selectedProperty?.propertyType ?? "RESIDENTIAL").replaceAll("_", " ").toLowerCase();
+  const jobHref =
+    newJobHref ??
+    `${jobBase}/new?customerId=${customer.id}${selectedProperty ? `&propertyId=${selectedProperty.id}` : ""}`;
+  const editorProps = {
+    customerId: customer.id,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    businessName: customer.businessName,
+    phone: customer.phone,
+    secondaryPhone: customer.secondaryPhone,
+    email: customer.email,
+    notes: customer.notes,
+    preferredContactMethod: customer.preferredContactMethod,
+    propertyId: selectedProperty?.id,
+    address: selectedProperty?.address,
+    city: selectedProperty?.city,
+    propertyState: selectedProperty?.state,
+    zip: selectedProperty?.zip,
+  };
+  const latestThread = workspace.communications.threads[0] ?? null;
+  const latestCall = workspace.communications.calls[0] ?? null;
+  const latestComms =
+    latestThread && latestCall
+      ? new Date(latestThread.at).getTime() >= new Date(latestCall.at).getTime()
+        ? { kind: "thread" as const, thread: latestThread, call: null }
+        : { kind: "call" as const, thread: null, call: latestCall }
+      : latestThread
+        ? { kind: "thread" as const, thread: latestThread, call: null }
+        : latestCall
+          ? { kind: "call" as const, thread: null, call: latestCall }
+          : null;
+  const topEquipment = workspace.equipment[0] ?? null;
+  const glance = workspace.glance;
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-4">
+    <div className="space-y-5 pb-4">
+      <header className="rounded-2xl border border-[var(--border)] bg-white p-4 md:p-5">
         <Link href={backHref} className="text-sm text-[var(--muted-foreground)] hover:text-[var(--cy-navy)]">
           ← {backLabel}
         </Link>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
-              Customer 360
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-4xl">
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-3xl">
                 {customer.displayName}
               </h1>
               <StatusBadge status={customer.status} />
             </div>
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Customer since {format(customer.createdAt, "yyyy")}
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Customer since {formatDate(customer.createdAt, timeZone)}
               {workspace.membership ? ` · ${workspace.membership.planName}` : ""}
             </p>
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Primary phone</dt>
-                <dd className="mt-1 text-[var(--cy-navy)]">
-                  {formatUsPhoneDisplay(customer.phone) || customer.phone || "—"}
+                <dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">Phone</dt>
+                <dd className="mt-0.5 text-[var(--cy-navy)]">
+                  {call ? (
+                    <a href={call} className="hover:underline">
+                      {formatUsPhoneDisplay(customer.phone) || customer.phone}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
                 </dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Email</dt>
-                <dd className="mt-1 text-[var(--cy-navy)]">{customer.email || "—"}</dd>
+                <dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">Email</dt>
+                <dd className="mt-0.5 text-[var(--cy-navy)]">
+                  {customer.email ? (
+                    <a href={`mailto:${customer.email}`} className="hover:underline">
+                      {customer.email}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Preferred contact</dt>
-                <dd className="mt-1 text-[var(--cy-navy)]">{customer.preferredContactMethod}</dd>
+                <dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">Preferred</dt>
+                <dd className="mt-0.5 text-[var(--cy-navy)]">{customer.preferredContactMethod}</dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">Membership</dt>
-                <dd className="mt-1 text-[var(--cy-navy)]">{workspace.membership?.planName || "None"}</dd>
+                <dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">Membership</dt>
+                <dd className="mt-0.5 text-[var(--cy-navy)]">
+                  {workspace.membership ? (
+                    <Link href="/memberships" className="hover:underline">
+                      {workspace.membership.planName}
+                    </Link>
+                  ) : (
+                    "None"
+                  )}
+                </dd>
               </div>
             </dl>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {call ? (
-              <a href={call} className="rounded-xl bg-[var(--cy-navy)] px-4 py-2.5 text-sm font-medium text-white">
-                Call
-              </a>
-            ) : null}
-            {text ? (
-              <a href={text} className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-medium">
-                Text
-              </a>
-            ) : null}
-            {canJob ? (
-              <Link
-                href={
-                  newJobHref ??
-                  `${jobBase}/new?customerId=${customer.id}${selectedProperty ? `&propertyId=${selectedProperty.id}` : ""}`
-                }
-                className="rounded-xl bg-[var(--cy-orange)] px-4 py-2.5 text-sm font-medium text-white"
-              >
-                New job
-              </Link>
-            ) : null}
-            {canManage ? (
-              <a
-                href="#edit-customer"
-                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-medium"
-              >
-                Edit customer
-              </a>
-            ) : null}
-            {canManage ? (
-              <Link
-                href={`/estimates/new?customerId=${customer.id}`}
-                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-medium"
-              >
-                New estimate
-              </Link>
-            ) : null}
-            {canPay && workspace.activeWork.invoices[0] ? (
-              <Link
-                href={`/invoices/${workspace.activeWork.invoices[0].id}`}
-                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-medium"
-              >
-                Take payment
-              </Link>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      <CustomerWaitingBanner items={workspace.activeWaiting} timezone="America/New_York" />
-
-      {selectedProperty ? (
-        <section className="overflow-hidden rounded-[28px] bg-[var(--cy-navy)] text-white">
-          <div className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="relative min-h-[220px] bg-white/6">
-              {selectedProperty.image.path ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selectedProperty.image.path}
-                  alt={selectedProperty.image.label}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full min-h-[220px] items-end p-6">
-                  <p className="text-sm text-white/55">No property photo on file</p>
+            <div className="mt-3">
+              {selectedProperty ? (
+                <Link href={`${selfHref}?propertyId=${selectedProperty.id}`} className="block text-sm hover:underline">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">
+                    {selectedProperty.isPrimary ? "Primary property" : "Property"}
+                  </p>
+                  <p className="mt-0.5 font-medium text-[var(--cy-navy)]">{selectedProperty.address}</p>
+                  <p className="text-[var(--muted-foreground)]">
+                    {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zip}
+                  </p>
+                </Link>
+              ) : canManage ? (
+                <div className="text-sm">
+                  <p className="text-[var(--muted-foreground)]">No property</p>
+                  <CustomerPropertyTrigger editorProps={editorProps} compact />
                 </div>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">No property</p>
               )}
-              <p className="absolute bottom-3 left-4 right-4 text-[11px] text-white/70">{selectedProperty.image.label}</p>
-            </div>
-            <div className="space-y-4 p-6 md:p-8">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
-                {selectedProperty.isPrimary ? "Primary property" : selectedProperty.propertyClass?.replaceAll("_", " ") || "Property"}
-              </p>
-              <h2 className="text-2xl font-semibold tracking-tight">
-                {selectedProperty.address}
-                <span className="mt-1 block text-base font-normal text-white/70">
-                  {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zip}
+              {properties.length > 1 ? (
+                <Link href="#properties" className="mt-1 inline-block text-sm text-[var(--cy-orange)] hover:underline">
+                  Properties ({properties.length})
+                </Link>
+              ) : selectedProperty && canManage ? (
+                <span className="mt-1 inline-flex gap-3">
+                  <Link href={`${selfHref}?propertyId=${selectedProperty.id}`} className="text-sm text-[var(--cy-orange)] hover:underline">
+                    View property
+                  </Link>
+                  <CustomerPropertyTrigger editorProps={editorProps} compact />
                 </span>
-              </h2>
-              <p className="text-sm text-white/65">{propertyTypeLabel}</p>
-              <p className="text-xs text-white/45">{selectedProperty.enrichmentLabel}</p>
-              {workspace.mapsConfigured ? (
-                <a
-                  href={`https://maps.google.com/?q=${encodeURIComponent(`${selectedProperty.address}, ${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zip}`)}`}
-                  className="inline-block text-sm text-[var(--cy-orange)] hover:underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open in maps
-                </a>
               ) : null}
             </div>
           </div>
-        </section>
-      ) : (
-        <p className="text-sm text-[var(--muted-foreground)]">No property on file yet.</p>
-      )}
+          <Customer360Actions
+            {...editorProps}
+            callHref={call}
+            textHref={text}
+            newJobHref={jobHref}
+            newEstimateHref={`/estimates/new?customerId=${customer.id}`}
+            canManage={canManage}
+            canJob={canJob}
+            canPay={canPay}
+            takePaymentHref={workspace.activeWork.invoices[0] ? `/invoices/${workspace.activeWork.invoices[0].id}` : null}
+          />
+        </div>
+      </header>
+
+      <CustomerWaitingBanner items={workspace.activeWaiting} timezone={timeZone || "America/New_York"} />
+
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+        <GlanceCard
+          label="Open jobs"
+          value={String(glance.openJobs)}
+          href="#active-work"
+          empty={glance.openJobs === 0}
+        />
+        <GlanceCard
+          label="Open estimates"
+          value={
+            glance.openEstimateCents != null && glance.openEstimates > 0
+              ? `${glance.openEstimates} · ${formatMoney(glance.openEstimateCents)}`
+              : String(glance.openEstimates)
+          }
+          href="#history"
+          empty={glance.openEstimates === 0}
+        />
+        {canPay ? (
+          <GlanceCard
+            label="Balance due"
+            value={formatMoney(glance.balanceDueCents ?? 0)}
+            href="#active-work"
+            empty={!glance.balanceDueCents}
+          />
+        ) : null}
+        {canPay ? (
+          <GlanceCard
+            label="Lifetime value"
+            value={formatMoney(glance.lifetimeValueCents ?? 0)}
+            href="#financial"
+            empty={!glance.lifetimeValueCents}
+          />
+        ) : null}
+        <GlanceCard
+          label="Membership"
+          value={glance.membershipName || "None"}
+          href="/memberships"
+          empty={!glance.membershipName}
+        />
+      </section>
 
       {properties.length > 1 ? (
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[var(--cy-text-muted)]">
-            Properties — {properties.length}
-          </h2>
-          <ul className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {properties.map((property) => {
-              const active = property.id === selectedProperty?.id;
-              return (
-                <li key={property.id}>
-                  <Link
-                    href={active ? selfHref : `${selfHref}?propertyId=${property.id}`}
-                    className={`block min-w-[11rem] rounded-2xl border px-4 py-3 text-sm ${
-                      active
-                        ? "border-[var(--cy-navy)] bg-[var(--cy-navy)] text-white"
-                        : "border-[var(--border)] bg-white text-[var(--cy-navy)]"
-                    }`}
-                  >
-                    <p className="font-medium">{property.address}</p>
-                    <p className={active ? "text-white/70" : "text-[var(--muted-foreground)]"}>
-                      {property.propertyClass?.replaceAll("_", " ") ||
-                        (property.isPrimary ? "Primary residence" : (property.propertyType ?? "RESIDENTIAL").replaceAll("_", " "))}
-                    </p>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
-
-      {workspace.snapshot.length > 0 ? (
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {workspace.snapshot.map((item) =>
-            item ? (
-              <div key={item.label} className="rounded-2xl border border-[var(--border)] bg-white px-4 py-3">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--cy-text-muted)]">{item.label}</p>
-                <p className="mt-1 font-semibold text-[var(--cy-navy)]">{item.value}</p>
-                <p className="mt-1 text-[11px] text-[var(--cy-text-muted)]">{item.source}</p>
-              </div>
-            ) : null
-          )}
+        <section id="properties" className="flex gap-2 overflow-x-auto">
+          {properties.map((property) => {
+            const active = property.id === selectedProperty?.id;
+            return (
+              <Link
+                key={property.id}
+                href={active ? selfHref : `${selfHref}?propertyId=${property.id}`}
+                className={`min-w-[10rem] rounded-xl border px-3 py-2 text-sm ${
+                  active ? "border-[var(--cy-navy)] bg-[var(--cy-navy)] text-white" : "border-[var(--border)] bg-white"
+                }`}
+              >
+                <p className="font-medium">{property.address}</p>
+                <p className={active ? "text-white/70" : "text-[var(--muted-foreground)]"}>
+                  {property.city}, {property.state}
+                </p>
+              </Link>
+            );
+          })}
         </section>
       ) : null}
 
       {workspace.attention.length > 0 ? (
-        <section>
-          <h2 className="text-xl font-semibold text-[var(--cy-navy)]">What needs attention</h2>
-          <ul className="mt-3 grid gap-3 md:grid-cols-2">
-            {workspace.attention.map((item) => (
-              <li key={item.id}>
-                <Link href={item.href} className="block rounded-2xl border border-[var(--border)] bg-white p-4 hover:border-[var(--cy-orange)]/40">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">
-                    {item.title}
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--cy-navy)]">{item.description}</p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {workspace.insights.length > 0 ? (
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <h2 className="text-xl font-semibold text-[var(--cy-navy)]">What ContractorYou noticed</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {workspace.insights.map((row) => (
-              <li key={row.id}>
-                <span className="font-medium text-[var(--cy-navy)]">{row.title}.</span>{" "}
-                <span className="text-[var(--muted-foreground)]">{row.detail}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section>
-        <h2 className="text-xl font-semibold text-[var(--cy-navy)]">Equipment / assets</h2>
-        {workspace.equipment.length === 0 ? (
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">No equipment recorded at this property.</p>
-        ) : (
-          <ul className="mt-3 grid gap-3 md:grid-cols-2">
-            {workspace.equipment.map((item) => (
-              <li key={item.id} className="rounded-2xl border border-[var(--border)] bg-white p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">
-                  {item.location || item.equipmentType || "Asset"}
-                </p>
-                <h3 className="mt-1 font-semibold text-[var(--cy-navy)]">
-                  {[item.manufacturer, item.name].filter(Boolean).join(" ")}
-                </h3>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  {item.model ? (
-                    <div>
-                      <dt className="text-[var(--cy-text-muted)]">Model</dt>
-                      <dd>{item.model}</dd>
-                    </div>
-                  ) : null}
-                  {item.serialNumber ? (
-                    <div>
-                      <dt className="text-[var(--cy-text-muted)]">Serial</dt>
-                      <dd>{item.serialNumber}</dd>
-                    </div>
-                  ) : null}
-                  <div>
-                    <dt className="text-[var(--cy-text-muted)]">Installed</dt>
-                    <dd>
-                      {item.installDate ? format(item.installDate, "yyyy") : "Unknown"}
-                      {item.ageYears != null ? ` · ~${item.ageYears} years` : ""}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[var(--cy-text-muted)]">Warranty</dt>
-                    <dd>{item.warrantyNotes || (item.warrantyExpiresAt ? format(item.warrantyExpiresAt, "MMM yyyy") : "Unknown")}</dd>
-                  </div>
-                </dl>
-                {item.repairs.length > 0 ? (
-                  <ul className="mt-3 space-y-1 text-sm text-[var(--muted-foreground)]">
-                    {item.repairs.map((repair) => (
-                      <li key={repair.id}>
-                        {repair.at ? format(repair.at, "MMM yyyy") : ""} · {repair.label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="text-xl font-semibold text-[var(--cy-navy)]">Active work</h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <WorkList
-            title="Jobs"
-            empty="No open jobs"
-            items={workspace.activeWork.jobs.map((job) => ({
-              href: `${jobBase}/${job.id}`,
-              title: `${job.jobNumber} · ${job.jobType || "Job"}`,
-              detail: [job.status.replaceAll("_", " "), job.when ? format(job.when, "MMM d") : null, job.technician]
-                .filter(Boolean)
-                .join(" · "),
-            }))}
-          />
-          <WorkList
-            title="Estimates"
-            empty="No open estimates"
-            items={workspace.activeWork.estimates.map((row) => ({
-              href: `/estimates/${row.id}`,
-              title: `${row.estimateNumber} · ${formatMoney(row.totalCents)}`,
-              detail: `${row.status} · ${row.daysOld} day${row.daysOld === 1 ? "" : "s"} old`,
-            }))}
-          />
-          {workspace.canSeeMoney ? (
-            <WorkList
-              title="Invoices"
-              empty="Nothing outstanding"
-              items={workspace.activeWork.invoices.map((row) => ({
-                href: `/invoices/${row.id}`,
-                title: `${row.invoiceNumber} · ${formatMoney(row.balanceCents)}`,
-                detail: row.status,
-              }))}
-            />
-          ) : null}
-        </div>
-      </section>
-
-      {workspace.canSeeMoney ? (
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <h2 className="text-xl font-semibold text-[var(--cy-navy)]">Financial relationship</h2>
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-            {"lifetimeInvoiced" in workspace.value ? (
-              <>
-                <MoneyStat label="Lifetime invoiced" value={workspace.value.lifetimeInvoiced ?? 0} />
-                <MoneyStat label="Lifetime collected" value={workspace.value.lifetimeCollected ?? 0} />
-                <MoneyStat label="Outstanding" value={workspace.value.outstanding ?? 0} />
-                <MoneyStat label="Overdue" value={workspace.value.overdue ?? 0} />
-              </>
-            ) : null}
-          </dl>
-        </section>
-      ) : null}
-
-      {workspace.membership ? (
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Membership</p>
-          <h2 className="mt-1 text-xl font-semibold text-[var(--cy-navy)]">{workspace.membership.planName}</h2>
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            {workspace.membership.status}
-            {workspace.membership.since ? ` · member since ${format(workspace.membership.since, "yyyy")}` : ""}
-            {workspace.membership.renewal ? ` · renews ${format(workspace.membership.renewal, "MMM d, yyyy")}` : ""}
-          </p>
-          {workspace.membership.benefits ? (
-            <p className="mt-2 text-sm text-[var(--cy-navy)]">{workspace.membership.benefits}</p>
-          ) : null}
-        </section>
-      ) : workspace.membershipOpportunity ? (
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <h2 className="font-semibold text-[var(--cy-navy)]">Membership opportunity</h2>
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            {workspace.membershipOpportunity.visits} service visits on file and no active membership.
-          </p>
-          <Link href="/memberships" className="mt-3 inline-block text-sm text-[var(--cy-orange)] hover:underline">
-            Review opportunity
-          </Link>
-        </section>
-      ) : null}
-
-      <section>
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="text-xl font-semibold text-[var(--cy-navy)]">Photos &amp; documents</h2>
-        </div>
-        <CustomerPhotoGallery photos={workspace.photos} />
-        {workspace.activeWork.jobs[0] || workspace.jobHistory[0] ? (
-          <div className="mt-4 rounded-2xl border border-dashed border-[var(--border)] bg-white p-4">
-            <p className="text-sm font-medium text-[var(--cy-navy)]">Add photo to latest job</p>
-            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              Attaches to this company, customer, property, and job.
-            </p>
-            <div className="mt-3">
-              <JobPhotoUpload
-                jobId={(workspace.activeWork.jobs[0] || workspace.jobHistory[0])!.id}
-                equipment={workspace.equipment.map((item) => ({ id: item.id, name: item.name }))}
-                defaultKind="BEFORE"
-              />
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section>
-        <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold text-[var(--cy-navy)]">Job history</h2>
-          <Link href={`${jobBase}?customerId=${customer.id}`} className="text-sm text-[var(--cy-orange)] hover:underline">
-            View full history
-          </Link>
-        </div>
-        {workspace.jobHistory.length === 0 ? (
-          <p className="mt-2 text-sm text-[var(--muted-foreground)]">No completed jobs at this property yet.</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {workspace.jobHistory.map((job) => (
-              <li key={job.id}>
-                <Link
-                  href={`${jobBase}/${job.id}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-sm hover:border-[var(--cy-orange)]/40"
-                >
-                  <span className="font-medium text-[var(--cy-navy)]">
-                    {format(job.when, "MMM d, yyyy")} · {job.jobType || job.jobNumber}
-                  </span>
-                  <span className="text-[var(--muted-foreground)]">
-                    {job.technician || "Unassigned"}
-                    {job.amountCents != null ? ` · ${formatMoney(job.amountCents)}` : ""}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <h2 className="font-semibold text-[var(--cy-navy)]">Communications</h2>
-          {workspace.communications.threads.length === 0 && workspace.communications.calls.length === 0 ? (
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">No recorded conversations yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {workspace.communications.threads.map((thread) => (
-                <li key={thread.id}>
-                  <Link href={`/marketing/communications/${thread.id}`} className="text-[var(--cy-navy)] hover:underline">
-                    {thread.channel} · {thread.last || "Conversation"}
-                  </Link>
-                </li>
-              ))}
-              {workspace.communications.calls.map((call) => (
-                <li key={call.id} className="text-[var(--muted-foreground)]">
-                  {call.missed ? "Missed call" : "Call"} · {format(call.at, "MMM d")}
-                </li>
-              ))}
-            </ul>
-          )}
-          {customer.phone && canManage ? (
-            <div className="mt-4">
-              <CompanySmsForm to={customer.phone} customerId={customer.id} />
-            </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-[var(--border)] bg-white p-5">
-          <h2 className="font-semibold text-[var(--cy-navy)]">Notes</h2>
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-            Operational data only. Notes are never treated as instructions for ContractorYou.
-          </p>
-          {workspace.notes.length === 0 && !customer.notes ? (
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">No notes yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-3 text-sm">
-              {customer.notes ? <li className="text-[var(--cy-navy)]">{customer.notes}</li> : null}
-              {workspace.notes.map((note) => (
-                <li key={note.id}>
-                  <p className="text-[var(--cy-navy)]">{note.body}</p>
-                  <p className="text-xs text-[var(--cy-text-muted)]">
-                    {note.author} · {format(note.createdAt, "MMM d, yyyy")}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-          {canManage ? (
-            <AddCustomerNoteForm customerId={customer.id} propertyId={selectedProperty?.id} />
-          ) : null}
-        </div>
-      </section>
-
-      <CustomerTimeline events={workspace.timeline} />
-
-      {canAsk ? (
-        <AskContractorYou
-          suggestions={[
-            "What should I know about this customer?",
-            "What happened on the last visit?",
-            "What equipment do they have?",
-            "How much have they spent with us?",
-            "Do they owe us money?",
-            "Any open estimates?",
-            "Are they a membership opportunity?",
-            "Should we be thinking about replacement?",
-          ].concat(suggestedQuestions(role, null, "office"))}
-          customerId={customer.id}
-          propertyId={selectedProperty?.id}
-          placeholder={`Ask ContractorYou about ${customer.displayName}...`}
-        />
-      ) : null}
-
-      {canManage ? (
-        <p className="text-sm">
-          <Link href={`/customers/${customer.id}${propertyQuery}`} className="text-[var(--cy-orange)] hover:underline">
-            Manage properties and contact details
-          </Link>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function WorkList({
-  title,
-  empty,
-  items,
-}: {
-  title: string;
-  empty: string;
-  items: { href: string; title: string; detail: string }[];
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-      <h3 className="font-semibold text-[var(--cy-navy)]">{title}</h3>
-      {items.length === 0 ? (
-        <p className="mt-2 text-sm text-[var(--muted-foreground)]">{empty}</p>
-      ) : (
-        <ul className="mt-3 space-y-2">
-          {items.map((item) => (
-            <li key={item.href}>
-              <Link href={item.href} className="text-sm font-medium text-[var(--cy-navy)] hover:underline">
-                {item.title}
+        <ul className="flex gap-2 overflow-x-auto">
+          {workspace.attention.slice(0, 3).map((item) => (
+            <li key={item.id}>
+              <Link
+                href={item.href}
+                className="block min-w-[14rem] rounded-xl border border-[var(--cy-orange)]/30 bg-white px-3 py-2 text-sm"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-orange)]">{item.title}</p>
+                <p className="mt-1 text-[var(--cy-navy)]">{item.description}</p>
               </Link>
-              <p className="text-xs text-[var(--muted-foreground)]">{item.detail}</p>
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,0.9fr)]">
+        <div className="space-y-5">
+          <section id="active-work" className="rounded-2xl border border-[var(--border)] bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Active work</h2>
+              {canJob && workspace.activeWork.jobs.length === 0 && workspace.activeWork.estimates.length === 0 ? (
+                <Link href={jobHref} className="text-sm text-[var(--cy-orange)] hover:underline">
+                  + New job
+                </Link>
+              ) : null}
+            </div>
+            {workspace.activeWork.jobs.length === 0 &&
+            workspace.activeWork.estimates.length === 0 &&
+            workspace.activeWork.invoices.length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                No active work.{" "}
+                {canJob ? (
+                  <Link href={jobHref} className="text-[var(--cy-orange)] hover:underline">
+                    + New job
+                  </Link>
+                ) : null}
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {workspace.activeWork.jobs.map((job) => (
+                  <li key={job.id}>
+                    <Link
+                      href={`${jobBase}/${job.id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-[var(--cy-gray)]"
+                    >
+                      <span>
+                        <span className="text-sm font-semibold text-[var(--cy-navy)]">
+                          Job {job.jobNumber}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                          {[job.jobType || "Job", job.when ? formatDayTime(job.when, timeZone) : "Unscheduled"]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                      <StatusBadge status={job.status} />
+                    </Link>
+                  </li>
+                ))}
+                {workspace.activeWork.estimates.map((row) => (
+                  <li key={row.id}>
+                    <Link
+                      href={`/estimates/${row.id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-[var(--cy-gray)]"
+                    >
+                      <span>
+                        <span className="text-sm font-semibold text-[var(--cy-navy)]">Estimate {row.estimateNumber}</span>
+                        <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                          {formatMoney(row.totalCents)}
+                        </span>
+                      </span>
+                      <StatusBadge status={row.status} />
+                    </Link>
+                  </li>
+                ))}
+                {workspace.activeWork.invoices.map((row) => (
+                  <li key={row.id}>
+                    <Link
+                      href={`/invoices/${row.id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-[var(--cy-gray)]"
+                    >
+                      <span>
+                        <span className="text-sm font-semibold text-[var(--cy-navy)]">Invoice {row.invoiceNumber}</span>
+                        <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                          {formatMoney(row.balanceCents)} due
+                        </span>
+                      </span>
+                      <StatusBadge status={row.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <CustomerHistoryTabs
+            jobBase={jobBase}
+            jobsHref={`${jobBase}?customerId=${customer.id}`}
+            estimatesHref={`/estimates?customerId=${customer.id}`}
+            invoicesHref={`/invoices?customerId=${customer.id}`}
+            paymentsHref={`/payments?customerId=${customer.id}`}
+            timeZone={timeZone}
+            canSeeMoney={workspace.canSeeMoney}
+            jobs={workspace.jobHistory}
+            estimates={workspace.estimates}
+            invoices={workspace.invoices}
+            payments={workspace.payments}
+            equipment={workspace.equipment}
+            photos={workspace.photos}
+            photoJobId={workspace.activeWork.jobs[0]?.id || workspace.jobHistory[0]?.id}
+          />
+
+          <CustomerTimeline events={workspace.timeline} timeZone={timeZone} />
+        </div>
+
+        <aside className="space-y-5">
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Communications</h2>
+              {text ? (
+                <Link href={text} className="text-sm text-[var(--cy-orange)] hover:underline">
+                  Text
+                </Link>
+              ) : null}
+            </div>
+            {!latestComms ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                No recorded conversations.{" "}
+                {text ? (
+                  <Link href={text} className="text-[var(--cy-orange)] hover:underline">
+                    Text
+                  </Link>
+                ) : null}
+              </p>
+            ) : latestComms.kind === "thread" && latestComms.thread ? (
+              <Link href={`/marketing/communications/${latestComms.thread.id}`} className="mt-2 block">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-orange)]">
+                  {latestComms.thread.channel} · {formatDayTime(latestComms.thread.at, timeZone)}
+                </p>
+                <p className="mt-1 text-sm text-[var(--cy-navy)]">
+                  “{latestComms.thread.last || "Conversation"}”
+                </p>
+                <p className="mt-2 text-sm text-[var(--cy-orange)]">Open conversation</p>
+              </Link>
+            ) : latestComms.call ? (
+              <Link
+                href={`/marketing/communications?filter=${latestComms.call.missed ? "missed" : "today"}`}
+                className="mt-2 block"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-orange)]">
+                  {latestComms.call.missed ? "Missed call" : "Call"} · {formatDayTime(latestComms.call.at, timeZone)}
+                </p>
+                {latestComms.call.durationSeconds != null && !latestComms.call.missed ? (
+                  <p className="mt-1 text-sm text-[var(--cy-navy)]">
+                    {formatDurationSeconds(latestComms.call.durationSeconds)}
+                  </p>
+                ) : null}
+              </Link>
+            ) : null}
+          </section>
+
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Notes</h2>
+              {canManage ? <CustomerNoteTrigger customerId={customer.id} propertyId={selectedProperty?.id} /> : null}
+            </div>
+            {workspace.notes.length === 0 && !customer.notes ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">No notes yet.</p>
+            ) : (
+              <ul className="mt-2 space-y-2 text-sm">
+                {customer.notes ? <li className="text-[var(--cy-navy)]">{customer.notes}</li> : null}
+                {workspace.notes.slice(0, 3).map((note) => (
+                  <li key={note.id}>
+                    <p className="text-[var(--cy-navy)]">{note.body}</p>
+                    <p className="text-xs text-[var(--cy-text-muted)]">
+                      {note.author} · {formatDate(note.createdAt, timeZone)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section id="equipment" className="rounded-2xl border border-[var(--border)] bg-white p-4">
+            <h2 className="text-sm font-semibold text-[var(--cy-navy)]">
+              Equipment{workspace.equipment.length > 1 ? ` (${workspace.equipment.length})` : ""}
+            </h2>
+            {!topEquipment ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">No equipment</p>
+            ) : (
+              <div className="mt-2">
+                <p className="text-sm font-medium text-[var(--cy-navy)]">
+                  {[topEquipment.installDate ? new Date(topEquipment.installDate).getFullYear() : null, topEquipment.manufacturer, topEquipment.name || topEquipment.model]
+                    .filter(Boolean)
+                    .join(" ")}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {topEquipment.equipmentType || topEquipment.model || "Asset"}
+                </p>
+                <Link href="#history" className="mt-2 inline-block text-sm text-[var(--cy-orange)] hover:underline">
+                  View equipment →
+                </Link>
+              </div>
+            )}
+          </section>
+
+          {workspace.canSeeMoney ? (
+            <section id="financial" className="rounded-2xl border border-[var(--border)] bg-white p-4">
+              <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Financial relationship</h2>
+              {"lifetimeInvoiced" in workspace.value ? (
+                <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <MoneyLink label="Lifetime invoiced" value={workspace.value.lifetimeInvoiced ?? 0} href={`/invoices?customerId=${customer.id}`} />
+                  <MoneyLink label="Lifetime collected" value={workspace.value.lifetimeCollected ?? 0} href={`/payments?customerId=${customer.id}`} />
+                  <MoneyLink label="Outstanding" value={workspace.value.outstanding ?? 0} href={`/invoices?customerId=${customer.id}`} />
+                  <MoneyLink label="Overdue" value={workspace.value.overdue ?? 0} href={`/invoices?status=overdue&customerId=${customer.id}`} />
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
+
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-4 text-sm">
+            <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Customer details</h2>
+            <dl className="mt-3 space-y-2">
+              <Detail label="Preferred contact" value={customer.preferredContactMethod} />
+              <Detail label="Customer since" value={formatDate(customer.createdAt, timeZone)} />
+              <Detail label="Source" value={customer.source || "—"} />
+              <Detail
+                label="Membership"
+                value={workspace.membership?.planName || "None"}
+                href="/memberships"
+              />
+              <Detail
+                label="Primary property"
+                value={
+                  selectedProperty
+                    ? `${selectedProperty.address}, ${selectedProperty.city}`
+                    : "None"
+                }
+                href={selectedProperty ? `${selfHref}?propertyId=${selectedProperty.id}` : undefined}
+              />
+            </dl>
+          </section>
+
+          {canAsk ? (
+            <AskContractorYou
+              compact
+              variant="bar"
+              subtitle={`Ask anything about ${customer.displayName}.`}
+              suggestions={[
+                "What happened on the last visit?",
+                "Any open estimates?",
+                "Does this customer owe us money?",
+                "What equipment do they have?",
+                "Should we follow up?",
+              ].concat(suggestedQuestions(role, null, "office")).slice(0, 5)}
+              customerId={customer.id}
+              propertyId={selectedProperty?.id}
+              placeholder="What should I know about this customer?"
+            />
+          ) : null}
+        </aside>
+      </div>
     </div>
   );
 }
 
-function MoneyStat({ label, value }: { label: string; value: number }) {
+function GlanceCard({
+  label,
+  value,
+  href,
+  empty,
+}: {
+  label: string;
+  value: string;
+  href: string;
+  empty?: boolean;
+}) {
+  return (
+    <Link href={href} className="rounded-2xl border border-[var(--border)] bg-white px-3 py-3 hover:border-[var(--cy-orange)]/40">
+      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">{label}</p>
+      <p className={`mt-1 text-sm font-semibold text-[var(--cy-navy)] ${empty ? "text-[var(--muted-foreground)]" : ""}`}>
+        {value}
+      </p>
+    </Link>
+  );
+}
+
+function MoneyLink({ label, value, href }: { label: string; value: number; href: string }) {
   return (
     <div>
+      <dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">{label}</dt>
+      <dd className="mt-0.5">
+        <Link href={href} className="font-semibold text-[var(--cy-navy)] hover:underline">
+          {formatMoney(value)}
+        </Link>
+      </dd>
+    </div>
+  );
+}
+
+function Detail({ label, value, href }: { label: string; value: string; href?: string }) {
+  return (
+    <div className="flex justify-between gap-3">
       <dt className="text-[var(--cy-text-muted)]">{label}</dt>
-      <dd className="mt-1 text-lg font-semibold text-[var(--cy-navy)]">{formatMoney(value)}</dd>
+      <dd className="text-right text-[var(--cy-navy)]">
+        {href ? (
+          <Link href={href} className="hover:underline">
+            {value}
+          </Link>
+        ) : (
+          value
+        )}
+      </dd>
     </div>
   );
 }

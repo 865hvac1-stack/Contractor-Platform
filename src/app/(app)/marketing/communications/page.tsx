@@ -10,6 +10,7 @@ import { customerLabel } from "@/lib/tech/today";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { isDemoCompany } from "@/lib/demo/guard";
 import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
+import { formatDateTime } from "@/lib/datetime";
 
 const COMM_FILTERS = [
   { id: "inbox", label: "Inbox" },
@@ -206,7 +207,7 @@ export default async function CommunicationsPage({
                       {call.trackingNumber ? ` · ${call.trackingNumber}` : ""}
                       {status ? ` · ${status}` : ""}
                       {duration ? ` · ${duration}` : ""}
-                      {call.recordingRef ? " · Recording on file" : ""} · {call.startedAt.toLocaleString()}
+                      {call.recordingRef ? " · Recording on file" : ""} · {formatDateTime(call.startedAt, ctx.company.timezone)}
                     </p>
                   </div>
                   {call.customer ? (
@@ -282,7 +283,7 @@ export default async function CommunicationsPage({
                       <div className="text-right">
                         <StatusBadge status={isCall ? "Inbound Call" : thread.channel} />
                         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                          {thread.lastActivityAt.toLocaleString()}
+                          {formatDateTime(thread.lastActivityAt, ctx.company.timezone)}
                         </p>
                       </div>
                     </div>

@@ -18,6 +18,7 @@ import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { loadJob360 } from "@/lib/jobs/job-360";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDateTime } from "@/lib/datetime";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AskContractorYou } from "@/components/ask-contractoryou";
@@ -33,15 +34,9 @@ function toLocalInputValue(d: Date | null | undefined) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatDateTime(d: Date | null | undefined) {
+function formatJobDateTime(d: Date | null | undefined, timeZone?: string | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(d);
+  return formatDateTime(d, timeZone);
 }
 
 export default async function JobDetailPage({
@@ -146,7 +141,7 @@ export default async function JobDetailPage({
           jobId={view.job.id}
           playbookName={workflow.playbookName}
           customerName={view.customer.name}
-          scheduledLabel={formatDateTime(view.job.scheduledStart)}
+          scheduledLabel={formatJobDateTime(view.job.scheduledStart, ctx.company.timezone)}
           definition={workflow.definition}
           currentStageKey={workflow.currentStageKey}
           completedStepIds={workflow.completedStepIds}
@@ -200,7 +195,7 @@ export default async function JobDetailPage({
                   </p>
                 ) : null}
                 <p className="mb-4 text-sm text-[var(--muted-foreground)]">
-                  Current: {formatDateTime(view.job.scheduledStart)}
+                  Current: {formatJobDateTime(view.job.scheduledStart, ctx.company.timezone)}
                 </p>
                 <ActionForm action={scheduleJobAction} className="space-y-4" successMessage="Schedule updated.">
                   <input type="hidden" name="jobId" value={view.job.id} />

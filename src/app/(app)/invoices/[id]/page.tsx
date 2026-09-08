@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { formatMoney, lineTotalCents } from "@/lib/money";
+import { formatDateTime } from "@/lib/datetime";
 import {
   recordPaymentAction,
   updateInvoiceStatusAction,
@@ -325,7 +326,7 @@ export default async function InvoiceDetailPage({
               <li key={p.id} className="space-y-2 border-b border-[var(--border)] py-2 last:border-0">
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--muted-foreground)]">
-                    {p.paidAt.toLocaleString()} · {paymentLabel(p)}
+                    {formatDateTime(p.paidAt, ctx.company.timezone)} · {paymentLabel(p)}
                     {p.status === "DISPUTED" ? " · Payment disputed" : ""}
                     {p.refundedCents ? ` · Refunded ${formatMoney(p.refundedCents)}` : ""}
                   </span>

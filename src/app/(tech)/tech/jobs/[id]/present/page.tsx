@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAssignedJob } from "@/lib/tech/access";
 import { prisma } from "@/lib/db";
 import { formatMoney, lineTotalCents } from "@/lib/money";
+import { formatDateTime } from "@/lib/datetime";
 import { optionTotals } from "@/lib/estimates/totals";
 import { publicApproveEstimateAction } from "@/server/actions/public-billing";
 import { ActionForm } from "@/components/action-form";
@@ -62,7 +63,7 @@ export default async function TechPresentEstimatePage({
       </div>
       {estimate.status === "APPROVED" ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Approved {estimate.approvedAt ? `on ${estimate.approvedAt.toLocaleString()}` : ""}. This snapshot cannot be
+          Approved {estimate.approvedAt ? `on ${formatDateTime(estimate.approvedAt)}` : ""}. This snapshot cannot be
           changed here.
         </p>
       ) : null}

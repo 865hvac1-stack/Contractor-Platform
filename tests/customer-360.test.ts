@@ -435,13 +435,18 @@ describe("Customer 360 V2", () => {
     const ui = readFileSync(resolve("src/components/customers/customer-360-view.tsx"), "utf8");
     const photos = readFileSync(resolve("src/components/tech/job-photos.tsx"), "utf8");
     expect(photos).toMatch(/capture="environment"/);
-    expect(ui).toMatch(/Edit customer/);
-    expect(ui).toMatch(/#edit-customer/);
-    expect(ui).toMatch(/Ask ContractorYou about/);
-    expect(ui).toMatch(/JobPhotoUpload/);
+    expect(ui).toMatch(/Customer360Actions/);
+    expect(readFileSync(resolve("src/components/customers/customer-360-actions.tsx"), "utf8")).toMatch(/Edit customer/);
+    expect(ui).toMatch(/Customer360Actions/);
+    expect(ui).toMatch(/What should I know about this customer/);
+    expect(ui).toMatch(/#active-work/);
     expect(ui).toMatch(/flex-col/);
-    expect(ui).toMatch(/key=\{row\.id\}/);
     expect(ui).toMatch(/selfHref\}\?propertyId=/);
+    const history = readFileSync(resolve("src/components/customers/customer-history-tabs.tsx"), "utf8");
+    expect(history).toMatch(/JobPhotoUpload/);
+    const actions = readFileSync(resolve("src/components/customers/customer-360-actions.tsx"), "utf8");
+    expect(actions).toMatch(/#edit-customer|mode="profile"/);
+    expect(actions).toMatch(/Sheet/);
   });
 
   it("does not treat Summit demo facts as a live provider", async () => {

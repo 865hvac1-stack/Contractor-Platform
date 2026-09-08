@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { isRunningLate, TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchCard, DispatchLane } from "@/lib/dispatch/types";
+import { formatDateTime, formatTime } from "@/lib/datetime";
 
 function formatWhen(value: Date | string | null) {
   if (!value) return "Not scheduled";
-  return new Date(value).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  return formatDateTime(value) || "Not scheduled";
 }
 
 const STATUS_OPTIONS: JobStatus[] = ["SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELED"];
@@ -202,7 +203,7 @@ export function DispatchJobDrawer({
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {TECH_STATE_LABEL[lane.state]} · {lane.jobCount} jobs
                       {lane.nextAvailable
-                        ? ` · next ${new Date(lane.nextAvailable).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                        ? ` · next ${formatTime(lane.nextAvailable)}`
                         : ""}
                     </span>
                   </button>

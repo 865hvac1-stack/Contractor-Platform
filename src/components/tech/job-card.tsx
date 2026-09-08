@@ -4,6 +4,7 @@ import { customerLabel } from "@/lib/tech/today";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { updateFieldJobStatusAction } from "@/server/actions/field";
+import { formatTime } from "@/lib/datetime";
 
 export function TechJobCard({
   job,
@@ -25,11 +26,7 @@ export function TechJobCard({
   const address = propertyAddress(job.property);
   const name = customerLabel(job.customer);
   const window = job.scheduledStart
-    ? `${job.scheduledStart.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${
-        job.scheduledEnd
-          ? ` – ${job.scheduledEnd.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-          : ""
-      }`
+    ? `${formatTime(job.scheduledStart)}${job.scheduledEnd ? ` – ${formatTime(job.scheduledEnd)}` : ""}`
     : "Unscheduled";
 
   return (

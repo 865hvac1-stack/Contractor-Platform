@@ -6,6 +6,7 @@ import {
   reactivateCompanyAction,
   suspendCompanyAction,
 } from "@/server/actions/team";
+import { formatDateTime } from "@/lib/datetime";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +66,7 @@ export default async function PlatformCompanyPage({
           </h1>
           {company.isDemo ? <div className="mt-2"><DemoModeBadge /></div> : null}
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Created {company.createdAt.toLocaleString()} ·{" "}
+            Created {formatDateTime(company.createdAt)} ·{" "}
             {company.industry.replaceAll("_", " ")}
           </p>
         </div>
@@ -219,7 +220,7 @@ export default async function PlatformCompanyPage({
                   ) : null}
                 </div>
                 <span className="text-[var(--muted-foreground)]">
-                  {log.createdAt.toLocaleString()}
+                  {formatDateTime(log.createdAt)}
                 </span>
               </li>
             ))}

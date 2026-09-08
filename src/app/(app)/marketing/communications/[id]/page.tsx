@@ -6,6 +6,7 @@ import { isHighLevelConnected } from "@/lib/highlevel/connection";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
+import { formatDateTime } from "@/lib/datetime";
 
 export default async function CommunicationThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -108,7 +109,7 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
                   {duration ? ` · ${duration}` : ""}
                   {metadata.trackingSource ? ` · ${metadata.trackingSource}` : ""}
                   {" · "}
-                  {message.occurredAt.toLocaleString()}
+                  {formatDateTime(message.occurredAt, ctx.company.timezone)}
                 </p>
                 {metadata.fromNumber || metadata.toNumber ? (
                   <p className={`mt-1 text-xs ${outbound ? "text-white/70" : "text-[var(--muted-foreground)]"}`}>

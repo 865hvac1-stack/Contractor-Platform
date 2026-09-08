@@ -6,9 +6,11 @@ import { JOB_KIND_ACCENT, JOB_KIND_LABEL } from "@/lib/dispatch/job-type";
 import { isRunningLate, minutesLate } from "@/lib/dispatch/validate";
 import type { DispatchCard } from "@/lib/dispatch/types";
 
+import { formatTime as formatClock } from "@/lib/datetime";
+
 function formatTime(value: Date | string | null) {
   if (!value) return "TBD";
-  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatClock(value) || "TBD";
 }
 
 export function DispatchJobCard({

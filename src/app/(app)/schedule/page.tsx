@@ -4,22 +4,12 @@ import { getScheduleJobs } from "@/lib/dashboard";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
+import { formatDateTime, formatTime } from "@/lib/datetime";
 
-function formatTimeRange(start: Date | null, end: Date | null) {
+function formatScheduleRange(start: Date | null, end: Date | null, timeZone?: string | null) {
   if (!start) return "Unscheduled";
-  const time = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  if (!end) return time.format(start);
-  const endTime = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${time.format(start)} – ${endTime.format(end)}`;
+  if (!end) return formatDateTime(start, timeZone);
+  return `${formatDateTime(start, timeZone)} – ${formatTime(end, timeZone)}`;
 }
 
 export default async function SchedulePage({
@@ -107,7 +97,7 @@ export default async function SchedulePage({
                     )}
                   </div>
                   <p className="shrink-0 text-sm font-medium tabular-nums text-[var(--foreground)]">
-                    {formatTimeRange(job.scheduledStart, job.scheduledEnd)}
+                    {formatScheduleRange(job.scheduledStart, job.scheduledEnd, ctx.company.timezone)}
                   </p>
                 </Link>
               </li>

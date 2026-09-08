@@ -9,22 +9,7 @@ import { ShowMoreText } from "@/components/jobs/show-more-text";
 import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 import { cn } from "@/lib/utils";
-
-function formatDate(d: Date | null | undefined) {
-  if (!d) return null;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
-}
-
-function formatDateTime(d: Date | null | undefined) {
-  if (!d) return null;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(d);
-}
+import { formatDate, formatDateTime } from "@/lib/datetime";
 
 function Section({
   title,
@@ -348,9 +333,9 @@ export function Job360View({
       <Section title="Customer history">
         <Card>
           <CardContent className="space-y-2 pt-6 text-sm">
-            <p>Customer since: {formatDate(view.customer.since) ?? "—"}</p>
+            <p>Customer since: {formatDate(view.customer.since) || "—"}</p>
             <p>Jobs on file: {view.customer.jobCount}</p>
-            <p>Last service: {formatDate(view.customer.lastService) ?? "—"}</p>
+            <p>Last service: {formatDate(view.customer.lastService) || "—"}</p>
             <Link href={`/customers/${view.customer.id}`} className={cn(buttonVariants({ variant: "outline" }), "mt-2 h-9")}>
               View customer history
             </Link>

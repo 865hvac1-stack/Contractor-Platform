@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { formatTime } from "@/lib/datetime";
 import {
   Briefcase,
   CalendarDays,
@@ -406,9 +407,9 @@ export function OfficeUpcomingSection({ jobs }: { jobs: OfficeUpcomingJob[] }) {
           {jobs.map((job) => {
             const timeLabel =
               job.scheduledStart && job.scheduledEnd
-                ? `${format(job.scheduledStart, "h:mm")}–${format(job.scheduledEnd, "h:mm a")}`
+                ? `${formatTime(job.scheduledStart)}–${formatTime(job.scheduledEnd)}`
                 : job.scheduledStart
-                  ? format(job.scheduledStart, "h:mm a")
+                  ? formatTime(job.scheduledStart)
                   : "TBD";
             const status = jobStatusPresentation(job);
             return (

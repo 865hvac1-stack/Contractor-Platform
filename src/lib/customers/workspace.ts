@@ -1,13 +1,13 @@
 import { differenceInCalendarDays, differenceInMonths, format, subMonths } from "date-fns";
-import type { CompanyRole } from "@prisma/client";
+import type { CompanyRole, EstimateStatus, JobStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { getNeedsAttention } from "@/lib/attention";
 import { factLabel, propertyImagePriority } from "@/lib/properties/enrichment";
 import { JOB_PHOTO_KINDS } from "@/lib/tech/photos";
 
-const OPEN_JOB = ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"];
-const OPEN_ESTIMATE = ["DRAFT", "SENT", "VIEWED"];
+const OPEN_JOB: JobStatus[] = ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"];
+const OPEN_ESTIMATE: EstimateStatus[] = ["DRAFT", "SENT", "VIEWED"];
 const OPEN_INVOICE = ["SENT", "PARTIALLY_PAID", "OVERDUE"];
 
 function nameOf(customer: { firstName: string; lastName: string; businessName: string | null }) {
@@ -48,6 +48,8 @@ export async function getCustomer360(input: Customer360Options) {
     equipment,
     recentJobs,
     jobCount,
+    openJobCount,
+    openEstimateCount,
     completedCount,
     completedAtProperty,
     openEstimates,
@@ -79,6 +81,12 @@ export async function getCustomer360(input: Customer360Options) {
       },
     }),
     prisma.job.count({ where: { companyId: input.companyId, customerId: customer.id } }),
+    prisma.job.count({
+      where: { companyId: input.companyId, customerId: customer.id, status: { in: OPEN_JOB } },
+    }),
+    prisma.estimate.count({
+      where: { companyId: input.companyId, customerId: customer.id, status: { in: OPEN_ESTIMATE } },
+    }),
     prisma.job.count({
       where: { companyId: input.companyId, customerId: customer.id, status: "COMPLETED" },
     }),
@@ -342,6 +350,7 @@ export async function getCustomer360(input: Customer360Options) {
     notes,
     photos,
     calls,
+    threads,
     waiting: waitingRecords,
   }).slice(0, 40);
 
@@ -398,6 +407,14 @@ export async function getCustomer360(input: Customer360Options) {
         }
       : null,
     snapshot,
+    glance: {
+      openJobs: openJobCount,
+      openEstimates: openEstimateCount,
+      openEstimateCents: canSeeMoney ? openEstimateValue : null,
+      balanceDueCents: canSeeMoney ? outstanding : null,
+      lifetimeValueCents: canSeeMoney ? lifetimeCollected : null,
+      membershipName: activeMembership?.plan.name ?? null,
+    },
     membership: activeMembership
       ? {
           planName: activeMembership.plan.name,
@@ -506,6 +523,7 @@ export async function getCustomer360(input: Customer360Options) {
         missed: call.missed,
         at: call.startedAt,
         caller: call.caller,
+        durationSeconds: call.durationSeconds,
       })),
     },
     timeline,
@@ -563,16 +581,17 @@ function buildCustomerInsights(input: {
 }
 
 function buildTimeline(input: {
-  customer: { createdAt: Date; firstName: string };
-  properties: { createdAt: Date; address: string }[];
+  customer: { id: string; createdAt: Date; firstName: string };
+  properties: { id: string; createdAt: Date; address: string }[];
   jobs: { id: string; jobNumber: string; status: string; createdAt: Date; completedAt: Date | null; scheduledStart: Date | null }[];
   estimates: { id: string; estimateNumber: string; status: string; issueDate: Date }[];
   invoices: { id: string; invoiceNumber: string; status: string; createdAt: Date }[];
-  payments: { id: string; amountCents: number; paidAt: Date | null }[];
+  payments: { id: string; amountCents: number; paidAt: Date | null; invoiceId: string | null }[];
   memberships: { id: string; saleDate: Date; plan: { name: string } }[];
   notes: { id: string; createdAt: Date }[];
   photos: { id: string; createdAt: Date; job: { jobNumber: string } }[];
   calls: { id: string; startedAt: Date; missed: boolean | null }[];
+  threads?: Array<{ id: string; channel: string; lastActivityAt: Date; messages?: Array<{ body: string | null }> }>;
   waiting?: Array<{
     id: string;
     enteredAt: Date;
@@ -589,10 +608,16 @@ function buildTimeline(input: {
   }>;
 }) {
   const events: { id: string; at: Date; kind: string; title: string; href?: string }[] = [
-    { id: "created", at: input.customer.createdAt, kind: "customer", title: "Customer created" },
+    { id: "created", at: input.customer.createdAt, kind: "customer", title: "Customer created", href: `/customers/${input.customer.id}` },
   ];
   for (const property of input.properties) {
-    events.push({ id: `prop-${property.address}`, at: property.createdAt, kind: "property", title: `Property added · ${property.address}` });
+    events.push({
+      id: `prop-${property.id}`,
+      at: property.createdAt,
+      kind: "property",
+      title: `Property added · ${property.address}`,
+      href: `/customers/${input.customer.id}?propertyId=${property.id}`,
+    });
   }
   for (const job of input.jobs) {
     events.push({
@@ -628,6 +653,7 @@ function buildTimeline(input: {
       at: payment.paidAt,
       kind: "money",
       title: `Payment received · $${(payment.amountCents / 100).toLocaleString("en-US")}`,
+      href: payment.invoiceId ? `/invoices/${payment.invoiceId}` : "/payments",
     });
   }
   for (const membership of input.memberships) {
@@ -645,12 +671,22 @@ function buildTimeline(input: {
   for (const photo of input.photos) {
     events.push({ id: `photo-${photo.id}`, at: photo.createdAt, kind: "jobs", title: `Photo uploaded · ${photo.job.jobNumber}` });
   }
+  for (const thread of input.threads ?? []) {
+    events.push({
+      id: `thread-${thread.id}`,
+      at: thread.lastActivityAt,
+      kind: "communications",
+      title: `${thread.channel} · ${thread.messages?.[0]?.body ? thread.messages[0].body.slice(0, 80) : "Conversation"}`,
+      href: `/marketing/communications/${thread.id}`,
+    });
+  }
   for (const call of input.calls) {
     events.push({
       id: `call-${call.id}`,
       at: call.startedAt,
       kind: "communications",
       title: call.missed ? "Missed call" : "Call recorded",
+      href: `/marketing/communications?filter=${call.missed ? "missed" : "today"}`,
     });
   }
   for (const waiting of input.waiting ?? []) {

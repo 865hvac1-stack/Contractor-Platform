@@ -8,6 +8,7 @@ import { nextTechnicianAction } from "@/lib/playbooks/engine";
 import { loadJobWorkflowView } from "@/lib/playbooks/job-view";
 import { customerHasActiveMembership, unitPriceForCustomer, searchPricebookWhere } from "@/lib/pricebook/pricing";
 import { formatMoney } from "@/lib/money";
+import { formatDateTime, formatTime } from "@/lib/datetime";
 import { optionTotals } from "@/lib/estimates/totals";
 import { membershipPlanValueLines } from "@/lib/memberships/plans";
 import { customerLabel } from "@/lib/tech/today";
@@ -178,10 +179,8 @@ export default async function TechJobWorkspacePage({
         <p className="text-sm">{addr}</p>
         {full.scheduledStart ? (
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {full.scheduledStart.toLocaleString()}
-            {full.scheduledEnd
-              ? ` – ${full.scheduledEnd.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-              : ""}
+            {formatDateTime(full.scheduledStart, ctx.company.timezone)}
+            {full.scheduledEnd ? ` – ${formatTime(full.scheduledEnd, ctx.company.timezone)}` : ""}
           </p>
         ) : null}
         {full.description ? <p className="mt-2 text-sm">{full.description}</p> : null}

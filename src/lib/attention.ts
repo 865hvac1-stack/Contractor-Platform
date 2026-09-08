@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
 import { detectWaitingAttention } from "@/lib/waiting/attention";
+import { formatDateTime } from "@/lib/datetime";
 
 /**
  * Reusable Needs Attention architecture.
@@ -395,9 +396,7 @@ registerAttentionDetector(async (companyId) => {
     },
   });
   return jobs.map((job) => {
-    const when = job.scheduledStart
-      ? job.scheduledStart.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
-      : null;
+    const when = job.scheduledStart ? formatDateTime(job.scheduledStart) : null;
     const context = [when, job.serviceType?.name || job.jobType].filter(Boolean).join(" · ");
     return {
       id: `job-unassigned-${job.id}`,

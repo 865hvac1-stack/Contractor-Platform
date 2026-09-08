@@ -1,4 +1,5 @@
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { formatDateTime } from "@/lib/datetime";
 import type { LeadSource, LeadStatus } from "@prisma/client";
 import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS } from "@/lib/leads/sources";
 
@@ -14,12 +15,12 @@ export function leadAgeShort(receivedAt: Date) {
   return `${leadAgeLabel(receivedAt)} old`;
 }
 
-export function formatLeadStamp(value: Date) {
-  return format(value, "MMM d · h:mm a");
+export function formatLeadStamp(value: Date, timeZone?: string | null) {
+  return formatDateTime(value, timeZone);
 }
 
-export function formatLeadDateTime(value: Date) {
-  return format(value, "MMM d, yyyy h:mm a");
+export function formatLeadDateTime(value: Date, timeZone?: string | null) {
+  return formatDateTime(value, timeZone);
 }
 
 export function leadSourceLabel(source: LeadSource) {

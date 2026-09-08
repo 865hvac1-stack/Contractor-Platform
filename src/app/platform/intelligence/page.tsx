@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePlatformAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { openaiConfigured, INTELLIGENCE_MODELS } from "@/lib/intelligence/config";
+import { formatDateTime } from "@/lib/datetime";
 
 export default async function PlatformIntelligencePage() {
   await requirePlatformAdmin();
@@ -59,7 +60,7 @@ export default async function PlatformIntelligencePage() {
           <ul className="mt-2 space-y-2 text-sm">
             {errors.map((row) => (
               <li key={row.id}>
-                {row.createdAt.toLocaleString()} · {row.feature} · {row.errorKind}
+                {formatDateTime(row.createdAt)} · {row.feature} · {row.errorKind}
               </li>
             ))}
           </ul>

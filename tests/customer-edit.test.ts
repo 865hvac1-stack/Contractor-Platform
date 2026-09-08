@@ -9,7 +9,8 @@ describe("Customer 360 edit", () => {
     const action = readFileSync(resolve("src/server/actions/customers.ts"), "utf8");
     const office = readFileSync(resolve("src/app/(app)/office/customers/[id]/page.tsx"), "utf8");
     const page = readFileSync(resolve("src/app/(app)/customers/[id]/page.tsx"), "utf8");
-    expect(view).toMatch(/Edit customer/);
+    expect(view).toMatch(/Customer360Actions/);
+    expect(readFileSync(resolve("src/components/customers/customer-360-actions.tsx"), "utf8")).toMatch(/Edit customer/);
     expect(editor).toMatch(/updateCustomerProfileAction/);
     expect(editor).toMatch(/businessName/);
     expect(editor).toMatch(/secondaryPhone/);
@@ -19,9 +20,11 @@ describe("Customer 360 edit", () => {
     expect(action).toMatch(/companyId: ctx\.company\.id/);
     expect(action).toMatch(/where: \{ id: customer\.id \}/);
     expect(action).toMatch(/confirmSharedPhone/);
-    expect(office).toMatch(/CustomerRecordEditor/);
-    expect(page).toMatch(/CustomerRecordEditor/);
+    expect(office).toMatch(/Customer360View/);
+    expect(page).toMatch(/Customer360View/);
     expect(page).toMatch(/can\(ctx\.role, "customers:manage"\)/);
+    expect(editor).toMatch(/mode = "full"/);
+    expect(readFileSync(resolve("src/components/customers/customer-360-actions.tsx"), "utf8")).toMatch(/Sheet/);
   });
 
   it("normalizes create and edit phones to the same canonical value", () => {

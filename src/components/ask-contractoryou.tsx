@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import { askContractorYouAction, type AskState } from "@/server/actions/intelligence";
 import { Button } from "@/components/ui/button";
 import { ActionCard, KindBadge } from "@/components/action-card";
+import { formatDateTime } from "@/lib/datetime";
 
 export function AskContractorYou({
   suggestions,
@@ -16,6 +17,7 @@ export function AskContractorYou({
   initialQuestion = "",
   autoSubmit = false,
   placeholder,
+  subtitle,
 }: {
   suggestions: string[];
   jobId?: string;
@@ -26,6 +28,7 @@ export function AskContractorYou({
   initialQuestion?: string;
   autoSubmit?: boolean;
   placeholder?: string;
+  subtitle?: string;
 }) {
   const [question, setQuestion] = useState(initialQuestion);
   const [conversationId, setConversationId] = useState("");
@@ -52,9 +55,12 @@ export function AskContractorYou({
           {jobId ? <input type="hidden" name="jobId" value={jobId} /> : null}
           {customerId ? <input type="hidden" name="customerId" value={customerId} /> : null}
           {propertyId ? <input type="hidden" name="propertyId" value={propertyId} /> : null}
-          <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-            Ask ContractorYou
-          </p>
+          <div className="shrink-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+              Ask ContractorYou
+            </p>
+            {subtitle ? <p className="mt-0.5 text-[11px] text-white/55">{subtitle}</p> : null}
+          </div>
           <label htmlFor={jobId ? `ask-cy-${jobId}` : "ask-cy"} className="sr-only">
             Ask ContractorYou
           </label>
@@ -157,7 +163,7 @@ export function AskContractorYou({
             <p className="mt-3 text-xs text-white/45">
               Data used: {state.grounding.sources.join(", ")}
               {state.grounding.lastUpdated
-                ? ` · Updated ${new Date(state.grounding.lastUpdated).toLocaleString()}`
+                ? ` · Updated ${formatDateTime(state.grounding.lastUpdated)}`
                 : ""}
               {state.providerConfigured ? "" : " · From ContractorYou records (language model off)"}
             </p>

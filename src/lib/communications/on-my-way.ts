@@ -7,6 +7,7 @@ import { resolveCommunicationProvider, sendCompanyCommunication } from "@/lib/co
 import { isHistoricalImport } from "@/lib/imports/safety";
 import { customerLabel } from "@/lib/tech/today";
 import { propertyAddress } from "@/lib/tech/access";
+import { formatDate, formatTime } from "@/lib/datetime";
 
 /**
  * Send the playbook On My Way SMS only when Communications is actually configured.
@@ -82,12 +83,10 @@ export async function maybeSendOnMyWayMessage(input: {
     "company.phone": job.company.phone ?? "",
     "technician.firstName": input.actorFirstName,
     "technician.fullName": `${input.actorFirstName} ${input.actorLastName}`.trim(),
-    "job.date": job.scheduledStart ? job.scheduledStart.toLocaleDateString() : "",
-    "job.time": job.scheduledStart
-      ? job.scheduledStart.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      : "",
+    "job.date": job.scheduledStart ? formatDate(job.scheduledStart, job.company.timezone) : "",
+    "job.time": job.scheduledStart ? formatTime(job.scheduledStart, job.company.timezone) : "",
     "job.arrivalWindow": job.arrivalWindowStart
-      ? job.arrivalWindowStart.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      ? formatTime(job.arrivalWindowStart, job.company.timezone)
       : "",
     "property.address": propertyAddress(job.property),
   };

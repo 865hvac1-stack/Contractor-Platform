@@ -28,6 +28,7 @@ export function CustomerRecordEditor({
   city,
   propertyState,
   zip,
+  mode = "full",
 }: {
   customerId: string;
   firstName: string;
@@ -43,12 +44,12 @@ export function CustomerRecordEditor({
   city?: string | null;
   propertyState?: string | null;
   zip?: string | null;
+  mode?: "full" | "profile" | "property";
 }) {
   const [state, action, pending] = useActionState(updateCustomerProfileAction, null as ActionResult | null);
 
-  return (
-    <div id="edit-customer" className="grid gap-6 scroll-mt-24 lg:grid-cols-2">
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+  const profile = (
+      <section className={mode === "full" ? "rounded-2xl border border-[var(--border)] bg-white p-5" : undefined}>
         <h2 className="font-semibold text-[var(--cy-navy)]">Edit customer</h2>
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           Updates this customer only. Jobs, invoices, properties, and communications stay attached.
@@ -136,8 +137,10 @@ export function CustomerRecordEditor({
           {state?.ok ? <p className="text-sm text-emerald-800">Customer saved.</p> : null}
         </form>
       </section>
+  );
 
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+  const property = (
+      <section className={mode === "full" ? "rounded-2xl border border-[var(--border)] bg-white p-5" : undefined}>
         <h2 className="font-semibold text-[var(--cy-navy)]">Add property</h2>
         <ActionForm action={createPropertyAction} className="mt-4 space-y-3">
           <input type="hidden" name="customerId" value={customerId} />
@@ -183,6 +186,15 @@ export function CustomerRecordEditor({
           <Button type="submit">Add property</Button>
         </ActionForm>
       </section>
+  );
+
+  return (
+    <div
+      id={mode === "property" ? "add-property" : "edit-customer"}
+      className={mode === "full" ? "grid gap-6 scroll-mt-24 lg:grid-cols-2" : undefined}
+    >
+      {mode === "property" ? property : profile}
+      {mode === "full" ? property : null}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
+import { formatDateTime } from "@/lib/datetime";
 import { getHighLevelTestGrant, toHighLevelTestGrantView } from "@/lib/highlevel/test-grant";
 import { companyAllowsExternalIntegrationTesting } from "@/lib/demo/guard";
 
@@ -274,15 +275,15 @@ export default async function HighLevelSettingsPage({
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Connected</dt>
-              <dd>{connection?.updatedAt ? connection.updatedAt.toLocaleString() : "—"}</dd>
+              <dd>{connection?.updatedAt ? formatDateTime(connection.updatedAt, ctx.company.timezone) : "—"}</dd>
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Last successful sync</dt>
-              <dd>{connection?.lastSyncAt ? connection.lastSyncAt.toLocaleString() : "Never"}</dd>
+              <dd>{connection?.lastSyncAt ? formatDateTime(connection.lastSyncAt, ctx.company.timezone) : "Never"}</dd>
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Last webhook</dt>
-              <dd>{lastEvent ? `${lastEvent.eventType} · ${lastEvent.receivedAt.toLocaleString()}` : "None"}</dd>
+              <dd>{lastEvent ? `${lastEvent.eventType} · ${formatDateTime(lastEvent.receivedAt, ctx.company.timezone)}` : "None"}</dd>
             </div>
             <div>
               <dt className="text-[var(--muted-foreground)]">Failed events</dt>
@@ -296,7 +297,7 @@ export default async function HighLevelSettingsPage({
               <dt className="text-[var(--muted-foreground)]">Last communications sync</dt>
               <dd>
                 {lastCommsSync?.finishedAt
-                  ? `${lastCommsSync.finishedAt.toLocaleString()} · ${commsSummaryText(
+                  ? `${formatDateTime(lastCommsSync.finishedAt, ctx.company.timezone)} · ${commsSummaryText(
                       lastCommsSync.summary,
                       `${lastCommsSync.recordsIn} conversations / ${lastCommsSync.recordsOut} messages`
                     )}`

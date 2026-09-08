@@ -7,6 +7,7 @@ import { describeSavedQuickBooksApp } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY, quickbooksConfigured, quickbooksSetupSnapshot } from "@/lib/quickbooks/config";
 import { getQuickBooksSettings } from "@/lib/quickbooks/connection";
 import { INVOICE_TRIGGER_COPY, QUICKBOOKS_STATUS_COPY, publicQuickBooksStatus } from "@/lib/quickbooks/status";
+import { formatDateTime } from "@/lib/datetime";
 import {
   clearQuickBooksAppAction,
   disconnectQuickBooksAction,
@@ -82,7 +83,7 @@ export default async function QuickBooksSettingsPage({
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-[var(--muted-foreground)]">Last successful sync</dt>
-            <dd className="mt-0.5">{connection?.lastSyncAt ? connection.lastSyncAt.toLocaleString() : "Never"}</dd>
+            <dd className="mt-0.5">{connection?.lastSyncAt ? formatDateTime(connection.lastSyncAt, ctx.company.timezone) : "Never"}</dd>
           </div>
           <div>
             <dt className="text-[var(--muted-foreground)]">Last error</dt>
@@ -261,7 +262,7 @@ export default async function QuickBooksSettingsPage({
                 </div>
                 <div className="text-right">
                   <StatusBadge status={event.status} />
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">{event.createdAt.toLocaleString()}</p>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">{formatDateTime(event.createdAt, ctx.company.timezone)}</p>
                 </div>
               </li>
             ))}

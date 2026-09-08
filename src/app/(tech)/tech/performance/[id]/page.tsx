@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { formatDateTime } from "@/lib/datetime";
 import { customerLabel } from "@/lib/tech/today";
 import { compensationUserFilter } from "@/lib/compensation/access";
 
@@ -59,7 +60,7 @@ export default async function TechIncentiveDetailPage({
         </p>
         <p>
           <span className="block text-xs text-[var(--muted-foreground)]">Date</span>
-          {event.earnedAt.toLocaleString()}
+          {formatDateTime(event.earnedAt, ctx.company.timezone)}
         </p>
         <p>
           <span className="block text-xs text-[var(--muted-foreground)]">Why it was generated</span>

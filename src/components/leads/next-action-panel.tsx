@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { setLeadNextActionAction } from "@/server/actions/leads";
+import { formatDateTime } from "@/lib/datetime";
 
 const NEXT_ACTION_PRESETS = [
   "Call customer",
@@ -46,7 +47,7 @@ export function NextActionPanel({
       </p>
       {nextActionAt ? (
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Due {nextActionAt.toLocaleString()}
+          Due {formatDateTime(nextActionAt)}
         </p>
       ) : null}
 

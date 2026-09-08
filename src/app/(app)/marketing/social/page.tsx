@@ -8,6 +8,7 @@ import { publishSocialPostAction } from "@/server/actions/social";
 import { createHighLevelSocialPostAction, refreshHighLevelSocialAccountsAction } from "@/server/actions/highlevel";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
+import { formatDateTime } from "@/lib/datetime";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -199,12 +200,12 @@ export default async function SocialPage() {
               <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted-foreground)]">{post.body}</p>
               {post.scheduledAt ? (
                 <p className="mt-1 text-xs text-[var(--cy-text-muted)]">
-                  Scheduled {post.scheduledAt.toLocaleString()}
+                  Scheduled {formatDateTime(post.scheduledAt, ctx.company.timezone)}
                 </p>
               ) : null}
               {post.publishedAt ? (
                 <p className="mt-1 text-xs text-[var(--cy-text-muted)]">
-                  Published {post.publishedAt.toLocaleString()}
+                  Published {formatDateTime(post.publishedAt, ctx.company.timezone)}
                 </p>
               ) : null}
               {post.publications.map((publication) => (
