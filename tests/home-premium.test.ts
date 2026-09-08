@@ -66,6 +66,12 @@ describe("home premium surface", () => {
     expect(hero).toContain("Here&apos;s your business today");
     expect(hero).toContain("Today&apos;s status");
     expect(hero).toContain("View Dispatch");
+    expect(hero).toContain("Today");
+    expect(hero).toContain("finance.periodLabel");
+    expect(hero).toContain("finance.metrics.map");
+    expect(hero).toContain("We&apos;re building your business picture.");
+    expect(hero).not.toContain("$36,924");
+    expect(hero).not.toContain("RevenueChart");
     expect(needs).toContain("View all");
     expect(snapshot).toContain("We&apos;re building your business picture.");
     expect(snapshot).toContain("Revenue & collections");

@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { homeRangeHref } from "@/lib/finance/hrefs";
 import { FINANCE_RANGES, type FinanceRange } from "@/lib/finance/period";
+import { financialKpiRow } from "@/lib/finance/kpis";
 import type { FinancialSnapshot } from "@/lib/finance/snapshot";
 import { RevenueCollectionsChart, RevenueMixChart } from "@/components/home/finance-charts";
 
@@ -39,26 +40,16 @@ export function BusinessSnapshot({
     );
   }
 
-  const grossValue = !canCosts
-    ? "Restricted"
-    : snapshot.grossProfitAvailable && snapshot.grossProfitCents != null
-      ? formatMoney(snapshot.grossProfitCents)
-      : "Not enough cost data";
+  const kpis = financialKpiRow(snapshot, canCosts);
 
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-white px-5 py-5 shadow-[0_8px_24px_rgba(11,18,32,0.04)] md:px-6">
       <Header snapshot={snapshot} canReports={canReports} />
 
       <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Kpi label="Revenue" value={formatMoney(snapshot.revenueCents)} href={snapshot.hrefs.revenue} />
-        <Kpi label="Collected" value={formatMoney(snapshot.collectedCents)} href={snapshot.hrefs.collected} />
-        <Kpi
-          label="Gross profit"
-          value={grossValue}
-          href={snapshot.hrefs.grossProfit}
-          muted={!snapshot.grossProfitAvailable || !canCosts}
-        />
-        <Kpi label="A/R" value={formatMoney(snapshot.arCents)} href={snapshot.hrefs.ar} />
+        {kpis.map((kpi) => (
+          <Kpi key={kpi.key} label={kpi.label} value={kpi.value} href={kpi.href} muted={kpi.muted} />
+        ))}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">

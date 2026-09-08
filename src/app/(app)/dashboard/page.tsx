@@ -4,6 +4,7 @@ import { isFieldRole } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
 import { landingPath } from "@/lib/workspaces";
 import { AskContractorYou } from "@/components/ask-contractoryou";
+import { financialKpiRow } from "@/lib/finance/kpis";
 import { parseFinanceRange } from "@/lib/finance/period";
 import { getHomeSummary } from "@/lib/home";
 import { CommandHero } from "@/components/home/command-hero";
@@ -33,6 +34,7 @@ export default async function DashboardPage({
   if (isFieldRole(ctx.role)) redirect(landingPath(ctx.role));
 
   const canSeeMoney = can(ctx.role, "invoices:view");
+  const canCosts = can(ctx.role, "job_costs:view");
   const canAsk = can(ctx.role, "intelligence:view");
   const range = parseFinanceRange((await searchParams).range);
   const data = await getHomeSummary(ctx.company.id, range);
@@ -70,6 +72,15 @@ export default async function DashboardPage({
         dateLabel={dateLabel}
         metrics={metrics}
         needsYouTotal={data.needsYouTotal}
+        finance={
+          canSeeMoney
+            ? {
+                periodLabel: data.snapshot.period.label,
+                hasData: data.snapshot.hasData,
+                metrics: financialKpiRow(data.snapshot, canCosts),
+              }
+            : null
+        }
       />
 
       <NeedsYou items={data.needsYou} total={data.needsYouTotal} />
@@ -82,7 +93,7 @@ export default async function DashboardPage({
         <BusinessSnapshot
           snapshot={data.snapshot}
           canReports={can(ctx.role, "reports:view")}
-          canCosts={can(ctx.role, "job_costs:view")}
+          canCosts={canCosts}
         />
       ) : null}
     </div>

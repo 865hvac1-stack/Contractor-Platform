@@ -14,8 +14,10 @@ import {
 } from "@/lib/finance/definitions";
 import { financeHref, homeRangeHref } from "@/lib/finance/hrefs";
 import { enumerateKeys, financePeriod, parseFinanceRange } from "@/lib/finance/period";
+import { financialKpiRow } from "@/lib/finance/kpis";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 import { loadFinancialSnapshot } from "@/lib/finance/snapshot";
+import { formatMoney } from "@/lib/money";
 import { invoicesWhere } from "@/lib/invoices/search";
 import { jobsWhere } from "@/lib/jobs/search";
 
@@ -132,16 +134,69 @@ describe("home snapshot surface", () => {
     expect(page).toContain('can(ctx.role, "invoices:view")');
     expect(page).toContain('can(ctx.role, "job_costs:view")');
     expect(page).toContain("parseFinanceRange");
-    expect(snapshot).toContain("href={snapshot.hrefs.revenue}");
-    expect(snapshot).toContain("href={snapshot.hrefs.collected}");
-    expect(snapshot).toContain("href={snapshot.hrefs.grossProfit}");
-    expect(snapshot).toContain("href={snapshot.hrefs.ar}");
+    expect(page).toContain("financialKpiRow");
+    expect(page).toContain("finance=");
+    expect(snapshot).toContain("financialKpiRow");
     expect(snapshot).toContain("href={snapshot.hrefs.openEstimates}");
     expect(snapshot).toContain("href={snapshot.hrefs.overdueAr}");
     expect(snapshot).toContain("href={snapshot.hrefs.averageTicket}");
-    expect(snapshot).toContain("Not enough cost data");
+    expect(readFileSync(resolve("src/lib/finance/kpis.ts"), "utf8")).toContain("Not enough cost data");
     expect(snapshot).not.toContain("payroll");
     expect(snapshot).not.toContain("technician scorecard");
+    const hero = readFileSync(resolve("src/components/home/command-hero.tsx"), "utf8");
+    expect(hero).toContain("aria-label={`View ${metric.label}`}");
+    expect(hero).toContain("grid-cols-2");
+    expect(hero).toContain("sm:grid-cols-4");
+    expect(hero).not.toContain("RevenueCollectionsChart");
+  });
+
+  it("formats hero and snapshot KPIs from the same snapshot", () => {
+    const snapshot = {
+      period: { range: "month" as const, start: new Date(), end: new Date(), label: "This month", grain: "day" as const },
+      hasData: true,
+      revenueCents: 3692400,
+      collectedCents: 0,
+      arCents: 1748000,
+      openEstimateCents: 0,
+      overdueArCents: 0,
+      averageTicketCents: 3692400,
+      readyToInvoiceCount: 0,
+      grossProfitCents: 1892300,
+      grossProfitAvailable: true,
+      costCoverageJobs: 1,
+      revenueJobs: 1,
+      trend: [],
+      mix: [],
+      hrefs: {
+        revenue: "/invoices?view=revenue",
+        collected: "/payments?view=collected",
+        grossProfit: "/reports?view=profit",
+        ar: "/invoices?view=ar",
+        openEstimates: "/estimates?status=open",
+        overdueAr: "/invoices?status=overdue",
+        averageTicket: "/invoices?view=ticket",
+        readyToInvoice: "/jobs?needsInvoice=1",
+        money: "/money",
+        reports: "/reports",
+      },
+      definitions: { revenue: "", collected: "", grossProfit: "", ar: "" },
+    };
+    const kpis = financialKpiRow(snapshot, true);
+    expect(kpis.map((kpi) => kpi.href)).toEqual([
+      snapshot.hrefs.revenue,
+      snapshot.hrefs.collected,
+      snapshot.hrefs.grossProfit,
+      snapshot.hrefs.ar,
+    ]);
+    expect(kpis.map((kpi) => kpi.value)).toEqual([
+      formatMoney(3692400),
+      formatMoney(0),
+      formatMoney(1892300),
+      formatMoney(1748000),
+    ]);
+    expect(financialKpiRow(snapshot, false).find((kpi) => kpi.key === "grossProfit")?.value).toBe("Restricted");
+    const missing = financialKpiRow({ ...snapshot, grossProfitAvailable: false, grossProfitCents: null }, true);
+    expect(missing.find((kpi) => kpi.key === "grossProfit")?.value).toBe("Not enough cost data");
   });
 });
 
