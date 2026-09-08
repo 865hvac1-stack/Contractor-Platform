@@ -16,8 +16,10 @@ import type { CompanyRole } from "@prisma/client";
 function telHref(phone: string | null) {
   return phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
 }
-function smsHref(phone: string | null) {
-  return phone ? `sms:${phone.replace(/[^\d+]/g, "")}` : null;
+function smsHref(customerId: string, phone: string | null) {
+  return phone
+    ? `/marketing/communications?compose=1&customerId=${encodeURIComponent(customerId)}&to=${encodeURIComponent(phone)}`
+    : null;
 }
 
 export function Customer360View({
@@ -47,7 +49,7 @@ export function Customer360View({
 }) {
   const { customer, selectedProperty, properties } = workspace;
   const call = telHref(customer.phone);
-  const text = smsHref(customer.phone);
+  const text = smsHref(customer.id, customer.phone);
   const propertyQuery = selectedProperty ? `?propertyId=${selectedProperty.id}` : "";
   const propertyTypeLabel = (selectedProperty?.propertyType ?? "RESIDENTIAL").replaceAll("_", " ").toLowerCase();
 
@@ -453,7 +455,7 @@ export function Customer360View({
             <ul className="mt-3 space-y-2 text-sm">
               {workspace.communications.threads.map((thread) => (
                 <li key={thread.id}>
-                  <Link href="/marketing/communications" className="text-[var(--cy-navy)] hover:underline">
+                  <Link href={`/marketing/communications/${thread.id}`} className="text-[var(--cy-navy)] hover:underline">
                     {thread.channel} · {thread.last || "Conversation"}
                   </Link>
                 </li>

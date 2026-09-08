@@ -520,6 +520,8 @@ export async function sendInboxSmsAction(
       metadata: { provider: result.provider, configured: result.ok ? true : result.configured },
     });
     revalidatePath("/marketing/communications");
+    if (customerId) revalidatePath(`/customers/${customerId}`);
+    if (leadId) revalidatePath(`/marketing/leads/${leadId}`);
     return result.ok
       ? { ok: true, message: `Text sent through ${result.provider} from the approved sender.` }
       : { ok: false, error: result.error };

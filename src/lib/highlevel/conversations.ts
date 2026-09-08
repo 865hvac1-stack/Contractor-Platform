@@ -259,7 +259,7 @@ export async function upsertConversationMessage(
           receivedAt: occurredAt,
           message: `Inbound ${kind.toLowerCase()} to ${input.toNumber || "HighLevel number"}`,
         });
-        leadId = ingested.lead.id;
+        leadId = ingested.lead?.id ?? leadId;
         leadCreated = ingested.created;
       }
       await prisma.callRecord.create({

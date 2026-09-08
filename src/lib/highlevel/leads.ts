@@ -35,6 +35,7 @@ export async function ingestHighLevelLead(
     campaignName?: string | null;
     contactId?: string | null;
     receivedAt?: Date;
+    role?: "contact" | "opportunity";
   }
 ) {
   const match = await matchHighLevelContact(prisma, {
@@ -50,6 +51,18 @@ export async function ingestHighLevelLead(
       customerId: match.customerId,
       contactId: input.contactId,
     });
+  }
+
+  const existingByExternal = await prisma.lead.findFirst({
+    where: { companyId: input.companyId, provider: HIGHLEVEL_PROVIDER_KEY, externalLeadId: input.externalId },
+  });
+  if (
+    !existingByExternal &&
+    match.customerId &&
+    match.kind !== "name_only_ignored" &&
+    (input.role ?? "contact") === "contact"
+  ) {
+    return { lead: null, created: false, customerId: match.customerId, matchKind: match.kind, skippedLead: true as const };
   }
 
   const result = await upsertExternalLead({

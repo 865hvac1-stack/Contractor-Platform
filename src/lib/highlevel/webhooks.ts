@@ -336,6 +336,7 @@ export async function processHighLevelWebhook(
   } else if (type.includes("opportunity")) {
     await ingestHighLevelLead(prisma, {
       companyId: input.companyId,
+      role: "opportunity",
       externalId: emptyToNull(text(data.id) || text(data.opportunityId)) || externalId,
       firstName: emptyToNull(text(data.firstName) || text(data.first_name)) || emptyToNull(text(data.contactName).split(" ")[0]),
       lastName: emptyToNull(text(data.lastName) || text(data.last_name)),

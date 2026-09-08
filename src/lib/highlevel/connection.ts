@@ -14,6 +14,7 @@ import {
 } from "@/lib/highlevel/client";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 import { HIGHLEVEL_OAUTH_MARKERS, logHighLevelOAuthDiagnostic } from "@/lib/highlevel/oauth-diagnostics";
+import { agreeHighLevelLocation, HIGHLEVEL_LOCATION_MISMATCH_REASON } from "@/lib/highlevel/location-agreement";
 
 const HIGHLEVEL_UNUSABLE_STATUSES = new Set(["DISABLED"]);
 const STALE_SYNCING_MS = 3 * 60 * 1000;
@@ -58,12 +59,14 @@ export type HighLevelResolvedConnection =
       status: string;
       tokenType: HighLevelTokenKind;
       locationAccessError: string | null;
+      scopes: string[];
     }
   | {
       connected: false;
       reason: string;
       connection: Awaited<ReturnType<typeof getHighLevelConnection>>;
       locationId: string | null;
+      needsReauthorization?: boolean;
     };
 
 /**
@@ -91,7 +94,27 @@ export async function resolveHighLevelConnection(
     providerKey: HIGHLEVEL_PROVIDER_KEY,
   });
   if (!tokens?.accessToken || !locationId) {
-    return { connected: false, reason: "HighLevel is not connected.", connection, locationId };
+    return {
+      connected: false,
+      reason: "HighLevel authorization expired. Reconnect this company.",
+      connection,
+      locationId,
+      needsReauthorization: true,
+    };
+  }
+  const agreement = agreeHighLevelLocation({
+    mappedLocationId: locationId,
+    storedTokenLocationId: tokens.locationId,
+    accessToken: tokens.accessToken,
+  });
+  if (!agreement.ok) {
+    return {
+      connected: false,
+      reason: agreement.reason,
+      connection,
+      locationId,
+      needsReauthorization: agreement.reason === HIGHLEVEL_LOCATION_MISMATCH_REASON,
+    };
   }
   const locationAccess = await ensureHighLevelLocationAccess({
     prisma,
@@ -100,6 +123,31 @@ export async function resolveHighLevelConnection(
     locationId,
     tokens,
   });
+  const afterAgreement = agreeHighLevelLocation({
+    mappedLocationId: locationId,
+    storedTokenLocationId: locationId,
+    accessToken: locationAccess.accessToken,
+  });
+  if (!afterAgreement.ok) {
+    return {
+      connected: false,
+      reason: afterAgreement.reason,
+      connection,
+      locationId,
+      needsReauthorization: true,
+    };
+  }
+  if (locationAccess.tokenType === "company" || locationAccess.sanitizedError) {
+    return {
+      connected: false,
+      reason:
+        locationAccess.sanitizedError ||
+        "HighLevel company token cannot be used until a location token is exchanged. Reconnect HighLevel.",
+      connection,
+      locationId,
+      needsReauthorization: true,
+    };
+  }
   return {
     connected: true,
     companyId,
@@ -109,7 +157,8 @@ export async function resolveHighLevelConnection(
     authMode: highlevelAuthMode(connection.scopes),
     status: connection.status,
     tokenType: locationAccess.tokenType,
-    locationAccessError: locationAccess.sanitizedError,
+    locationAccessError: null,
+    scopes: connection.scopes,
   };
 }
 

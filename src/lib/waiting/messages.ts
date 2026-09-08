@@ -280,18 +280,6 @@ export async function sendWaitingCommunication(input: {
     },
   });
 
-  await recordWaitingOutboundSms({
-    companyId: input.companyId,
-    customerId: record.customerId,
-    customerName: `${record.customer.firstName} ${record.customer.lastName}`.trim(),
-    to,
-    body,
-    provider: sent.provider,
-    providerResultId: sent.providerId ?? null,
-    waitingRecordId: record.id,
-    communicationId: communication.id,
-  });
-
   await db.waitingRecord.update({
     where: { id: record.id },
     data: {
@@ -321,61 +309,4 @@ export async function sendWaitingCommunication(input: {
   });
 
   return { ok: true, communicationId: communication.id };
-}
-
-async function recordWaitingOutboundSms(input: {
-  companyId: string;
-  customerId: string;
-  customerName: string;
-  to: string;
-  body: string;
-  provider: string;
-  providerResultId: string | null;
-  waitingRecordId: string;
-  communicationId: string;
-}) {
-  const externalThreadId = `waiting-${input.customerId}`;
-  const thread = await defaultPrisma.communicationThread.upsert({
-    where: {
-      companyId_provider_externalId: {
-        companyId: input.companyId,
-        provider: input.provider,
-        externalId: externalThreadId,
-      },
-    },
-    create: {
-      companyId: input.companyId,
-      provider: input.provider,
-      externalId: externalThreadId,
-      channel: "SMS",
-      customerId: input.customerId,
-      contactName: input.customerName,
-      phone: input.to,
-      lastPreview: input.body.slice(0, 240),
-      lastActivityAt: new Date(),
-    },
-    update: {
-      lastPreview: input.body.slice(0, 240),
-      lastActivityAt: new Date(),
-      customerId: input.customerId,
-    },
-  });
-  await defaultPrisma.communicationMessage.create({
-    data: {
-      companyId: input.companyId,
-      threadId: thread.id,
-      provider: input.provider,
-      externalId: input.providerResultId || `waiting-msg-${input.communicationId}`,
-      direction: "OUTBOUND",
-      channel: "SMS",
-      kind: "SMS",
-      body: input.body,
-      occurredAt: new Date(),
-      status: "SENT",
-      metadata: {
-        waitingRecordId: input.waitingRecordId,
-        waitingCommunicationId: input.communicationId,
-      },
-    },
-  });
 }

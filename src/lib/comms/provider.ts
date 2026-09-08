@@ -12,6 +12,18 @@ export async function resolveCommunicationProvider(companyId: string): Promise<"
   return "none";
 }
 
+export async function sendCustomerMessage(input: {
+  companyId: string;
+  channel: CommunicationChannel;
+  to: string;
+  body: string;
+  customerId?: string | null;
+  leadId?: string | null;
+  confirmExternalSend?: boolean;
+}) {
+  return sendCompanyCommunication(input);
+}
+
 export async function sendCompanyCommunication(input: {
   companyId: string;
   channel: CommunicationChannel;
@@ -35,10 +47,34 @@ export async function sendCompanyCommunication(input: {
       leadId: input.leadId,
       confirmExternalSend: input.confirmExternalSend,
     });
+    if (result.ok) {
+      const { recordCanonicalOutboundSms } = await import("@/lib/comms/outbound");
+      await recordCanonicalOutboundSms({
+        companyId: input.companyId,
+        provider,
+        to: input.to,
+        body: input.body,
+        providerId: result.providerId,
+        customerId: input.customerId,
+        leadId: input.leadId,
+      });
+    }
     return { ...result, provider };
   }
   if (provider === "twilio") {
     const result = await sendCompanySms({ to: input.to, body: input.body });
+    if (result.ok) {
+      const { recordCanonicalOutboundSms } = await import("@/lib/comms/outbound");
+      await recordCanonicalOutboundSms({
+        companyId: input.companyId,
+        provider,
+        to: input.to,
+        body: input.body,
+        providerId: result.providerId,
+        customerId: input.customerId,
+        leadId: input.leadId,
+      });
+    }
     return { ...result, provider };
   }
   return {

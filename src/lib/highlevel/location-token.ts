@@ -9,6 +9,7 @@ import {
 } from "@/lib/highlevel/oauth";
 import { sanitizeHighLevelErrorMessage } from "@/lib/highlevel/sanitize-error";
 import { inspectHighLevelTokenClaims } from "@/lib/highlevel/token-claims";
+import { agreeHighLevelLocation } from "@/lib/highlevel/location-agreement";
 import { saveConnectionTokens } from "@/lib/integrations/store";
 import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
 
@@ -258,6 +259,21 @@ export async function ensureHighLevelLocationAccess(input: {
   };
   const meta = metadataSnapshot(tokens, locationId);
   const kind = inferHighLevelTokenKind(tokens);
+  const agreement = agreeHighLevelLocation({
+    mappedLocationId: locationId,
+    storedTokenLocationId: tokens.locationId,
+    accessToken: tokens.accessToken,
+  });
+  if (!agreement.ok) {
+    return {
+      accessToken: tokens.accessToken,
+      tokenType: kind === "company" ? "company" : "location",
+      installed: null,
+      locationTokenExchangeHttpStatus: null,
+      sanitizedError: agreement.reason,
+      ...meta,
+    };
+  }
 
   if (kind === "location" || kind === "unknown") {
     const discoveredFromClaims = Boolean(claims.userType || claims.companyId || claims.locationId);
