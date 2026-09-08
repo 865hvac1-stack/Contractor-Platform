@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { writeInvoiceDescriptionAction, type WritingState } from "@/server/actions/intelligence";
 import { Button } from "@/components/ui/button";
-import { WRITING_STYLES, type WritingStyle } from "@/lib/intelligence/writing";
+import { WRITING_STYLES, type WritingStyle } from "@/lib/intelligence/writing-style";
 
 const STYLE_LABEL: Record<WritingStyle, string> = {
   concise: "Concise",

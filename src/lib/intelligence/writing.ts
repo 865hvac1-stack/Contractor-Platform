@@ -3,44 +3,25 @@ import { writeAudit } from "@/lib/audit";
 import { checkIntelligenceRateLimit } from "@/lib/intelligence/rate-limit";
 import { openaiConfigured } from "@/lib/intelligence/config";
 import { getAIProvider, wrapUntrustedData, type ChatMessage } from "@/lib/intelligence/provider";
+import {
+  PURPOSE_LABEL,
+  STYLE_GUIDE,
+  parseWritingStyle,
+  sanitizeWriterNotes,
+  type WritingPurpose,
+  type WritingStyle,
+} from "@/lib/intelligence/writing-style";
 import { loadJobImportSupplement } from "@/lib/jobs/imported-history";
 import { buildWorkSummary } from "@/lib/jobs/work-summary";
 
-export const WRITING_STYLES = ["concise", "professional", "detailed"] as const;
-export type WritingStyle = (typeof WRITING_STYLES)[number];
-
-export type WritingPurpose =
-  | "invoice_description"
-  | "estimate_description"
-  | "technician_notes"
-  | "job_summary"
-  | "customer_followup"
-  | "warranty_explanation"
-  | "recommended_repair"
-  | "completion_summary"
-  | "review_request";
-
-const PURPOSE_LABEL: Record<WritingPurpose, string> = {
-  invoice_description: "customer-facing invoice description",
-  estimate_description: "customer-facing estimate description",
-  technician_notes: "clear technician note",
-  job_summary: "customer-facing job summary",
-  customer_followup: "customer follow-up message draft",
-  warranty_explanation: "plain-language warranty explanation",
-  recommended_repair: "recommended repair explanation",
-  completion_summary: "work completion summary",
-  review_request: "review request message draft",
-};
-
-const STYLE_GUIDE: Record<WritingStyle, string> = {
-  concise: "Write one or two short sentences.",
-  professional: "Write two or three clear sentences a homeowner can understand.",
-  detailed: "Write a short paragraph. Still use only the supplied facts.",
-};
-
-export function parseWritingStyle(value?: string | null): WritingStyle {
-  return WRITING_STYLES.includes(value as WritingStyle) ? (value as WritingStyle) : "professional";
-}
+export {
+  PURPOSE_LABEL,
+  STYLE_GUIDE,
+  WRITING_STYLES,
+  parseWritingStyle,
+  sanitizeWriterNotes,
+} from "@/lib/intelligence/writing-style";
+export type { WritingPurpose, WritingStyle } from "@/lib/intelligence/writing-style";
 
 export type JobWriterContext = {
   serviceType: string | null;
@@ -49,10 +30,6 @@ export type JobWriterContext = {
   workNotes: string[];
   parts: string[];
 };
-
-export function sanitizeWriterNotes(notes: string) {
-  return notes.trim().slice(0, 2000);
-}
 
 export function buildWritingMessages(input: {
   purpose: WritingPurpose;
@@ -127,7 +104,8 @@ export async function loadJobWriterContext(companyId: string, jobId: string): Pr
   });
   if (!job) return null;
 
-  const supplement = await loadJobImportSupplement(prisma, companyId, {
+  const supplement = await loadJobImportSupplement(prisma, {
+    companyId,
     jobId: job.id,
     importMode: job.importMode,
     importSessionId: job.importSessionId,

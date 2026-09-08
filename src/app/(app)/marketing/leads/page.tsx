@@ -84,7 +84,7 @@ export default async function LeadsPage({
         </div>
       ) : null}
 
-      <form>
+      <form
         method="get"
         className="grid gap-2 rounded-2xl border border-[var(--border)] bg-white p-3 sm:grid-cols-[1fr_auto_auto_auto]"
       >
