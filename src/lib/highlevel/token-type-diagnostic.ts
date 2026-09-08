@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
-import { getHighLevelConnection } from "@/lib/highlevel/connection";
+import { getHighLevelConnection, resolveHighLevelConnection } from "@/lib/highlevel/connection";
 import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 import { ensureHighLevelLocationAccess } from "@/lib/highlevel/location-token";
 import { inspectHighLevelTokenClaims } from "@/lib/highlevel/token-claims";
@@ -48,8 +48,11 @@ export async function diagnoseHighLevelTokenType(
   prisma: PrismaClient,
   companyId: string
 ): Promise<HighLevelTokenTypeDiagnostic> {
-  const connection = await getHighLevelConnection(prisma, companyId);
-  const locationId = sanitizeHighLevelLocationId(connection?.externalAccountId);
+  const resolved = await resolveHighLevelConnection(prisma, companyId);
+  const connection = resolved.connection ?? (await getHighLevelConnection(prisma, companyId));
+  const locationId = sanitizeHighLevelLocationId(
+    resolved.connected ? resolved.locationId : connection?.externalAccountId
+  );
   if (!connection || !locationId) {
     throw new Error("HighLevel is not connected.");
   }

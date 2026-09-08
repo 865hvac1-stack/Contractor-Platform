@@ -5,6 +5,8 @@ import { HIGHLEVEL_DEEP_LINKS, HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/co
 import { highlevelOAuthConfigured, highlevelOAuthNotes, highlevelWebhookUrl } from "@/lib/highlevel/env";
 import { formatHighLevelCapabilityStatus, highlevelCapabilities } from "@/lib/highlevel/capabilities";
 import { highlevelAuthMode, resolveHighLevelConnection } from "@/lib/highlevel/connection";
+import { ensureCurrentHighLevelDiagnostics } from "@/lib/highlevel/current-diagnostics";
+import { sanitizeHighLevelLocationId } from "@/lib/highlevel/location-id";
 import {
   formatConversationsDiagnostic,
   type HighLevelConversationsDiagnostic,
@@ -77,9 +79,8 @@ export default async function HighLevelSettingsPage({
     companyAllowsExternalIntegrationTesting(ctx.company.id, prisma),
   ]);
   const testGrant = toHighLevelTestGrantView(testGrantRow);
-  const connection = await prisma.integrationConnection.findFirst({
-    where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
-  });
+  const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
+  const connection = resolved.connection;
   const lastEvent = connection
     ? await prisma.integrationEvent.findFirst({
         where: { companyId: ctx.company.id, connectionId: connection.id },
@@ -129,11 +130,23 @@ export default async function HighLevelSettingsPage({
         select: { id: true },
       })
     : null;
-  const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
   const connectionStatus = resolved.connected ? resolved.status : connection?.status ?? null;
+  const canonicalLocationId = resolved.connected
+    ? resolved.locationId
+    : sanitizeHighLevelLocationId(connection?.externalAccountId);
+  const currentDiagnostics =
+    connection && canonicalLocationId
+      ? await ensureCurrentHighLevelDiagnostics(prisma, ctx.company.id, {
+          connectionId: connection.id,
+          canonicalLocationId,
+          connected: resolved.connected,
+          lastConversations: lastConversationsDiagnostic,
+          lastTokenType: lastTokenTypeDiagnostic,
+        })
+      : { conversations: null, tokenType: null };
   const publicConnection = publicHighLevelConnectionView({
     status: connectionStatus ?? connection?.status,
-    externalAccountId: connection?.externalAccountId,
+    externalAccountId: canonicalLocationId ?? connection?.externalAccountId,
     accountLabel: connection?.accountLabel,
     hasCredential: Boolean(credential),
     companyEmail: ctx.company.email,
@@ -142,13 +155,14 @@ export default async function HighLevelSettingsPage({
   const oauth = highlevelOAuthNotes();
   const isConnected = resolved.connected;
   const authenticated = Boolean(isConnected || credential);
-  const conversationsDiagnostic = lastConversationsDiagnostic?.summary as HighLevelConversationsDiagnostic | null;
+  const conversationsDiagnostic = currentDiagnostics.conversations;
   const settingsHealth = highlevelSettingsHealth({
     authenticated,
     operationalTokens: isConnected,
     connectionStatus: connectionStatus ?? connection?.status ?? "NOT_CONNECTED",
     testGrant: Boolean(testGrant),
     diagnostic: conversationsDiagnostic,
+    canonicalLocationId,
     socialAccounts,
   });
   const connectionHealthStatus = settingsHealth.headerStatus;
@@ -301,14 +315,14 @@ export default async function HighLevelSettingsPage({
               })}
             </pre>
           ) : null}
-          {lastTokenTypeDiagnostic?.summary ? (
+          {currentDiagnostics.tokenType ? (
             <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
-              {formatTokenTypeDiagnostic(lastTokenTypeDiagnostic.summary as HighLevelTokenTypeDiagnostic)}
+              {formatTokenTypeDiagnostic(currentDiagnostics.tokenType)}
             </pre>
           ) : null}
-          {lastConversationsDiagnostic?.summary ? (
+          {currentDiagnostics.conversations ? (
             <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-[var(--cy-gray)] px-3 py-2 text-xs text-[var(--cy-navy)]">
-              {formatConversationsDiagnostic(lastConversationsDiagnostic.summary as HighLevelConversationsDiagnostic)}
+              {formatConversationsDiagnostic(currentDiagnostics.conversations)}
             </pre>
           ) : null}
         </CardContent>

@@ -29,6 +29,7 @@ describe("HighLevel settings health", () => {
       authenticated: true,
       operationalTokens: true,
       connectionStatus: "CONNECTED",
+      canonicalLocationId: "loc_inactive_oauth",
       diagnostic: inactiveConversationsDiagnostic(),
     });
     expect(health.operational).toBe(false);

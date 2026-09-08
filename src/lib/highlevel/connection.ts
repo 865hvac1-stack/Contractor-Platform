@@ -4,7 +4,9 @@ import {
   HIGHLEVEL_PROVIDER_KEY,
   type HighLevelAuthMode,
 } from "@/lib/highlevel/config";
-import { getCompanyConnection, getValidAccessToken } from "@/lib/integrations/store";
+import { getValidAccessToken } from "@/lib/integrations/store";
+import { pickCanonicalHighLevelConnection } from "@/lib/highlevel/canonical-connection";
+import { scopedCompanyWhere } from "@/lib/intelligence/scope";
 import { ensureHighLevelLocationAccess, type HighLevelTokenKind } from "@/lib/highlevel/location-token";
 import {
   inspectHighLevelContactsReachability,
@@ -20,7 +22,12 @@ const HIGHLEVEL_UNUSABLE_STATUSES = new Set(["DISABLED"]);
 const STALE_SYNCING_MS = 3 * 60 * 1000;
 
 export async function getHighLevelConnection(prisma: PrismaClient, companyId: string) {
-  return getCompanyConnection(companyId, HIGHLEVEL_PROVIDER_KEY);
+  const rows = await prisma.integrationConnection.findMany({
+    where: scopedCompanyWhere(companyId, { providerKey: HIGHLEVEL_PROVIDER_KEY }),
+    include: { accounts: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  return pickCanonicalHighLevelConnection(rows);
 }
 
 export function highLevelConnectionUsable(input: {
