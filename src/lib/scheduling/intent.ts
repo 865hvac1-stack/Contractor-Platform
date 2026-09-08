@@ -1,5 +1,6 @@
 import type { AppointmentDaypart } from "@prisma/client";
 import { daypartFromPhrase, windowsMatchingExactTime } from "@/lib/scheduling/daypart";
+import { isAvailabilityQuestion, isDeclineScheduling } from "@/lib/scheduling/conversation-turn";
 import { parseClockToMinutes, addLocalDays, companyTodayKey, firstOfMonthKey, lastOfMonthKey, weekdayFromDateKey } from "@/lib/scheduling/time";
 import type { SchedulingIntent } from "@/lib/scheduling/types";
 
@@ -51,7 +52,9 @@ export function interpretSchedulingIntent(input: {
   const lower = text.toLowerCase();
 
   const humanRequested = /\b(human|person|office|someone from the office|talk to (a )?person|speak to (a )?(human|person|rep)|representative|stop texting|real person)\b/.test(lower);
-  const cancelIntent = /\b(cancel|call off|don't need|do not need).*(appointment|visit|job)?|\bi need to cancel\b|\bcancel (my |the )?(appointment|visit|job)\b/.test(lower);
+  const cancelIntent = /\b(cancel|call off).*(appointment|visit|job)?|\bi need to cancel\b|\bcancel (my |the )?(appointment|visit|job)\b/.test(lower);
+  const declineIntent = isDeclineScheduling(lower);
+  const availabilityAsk = isAvailabilityQuestion(lower);
   const rescheduleIntent = /\b(reschedule|change (my |the )?appointment|move (me|it|my appointment)|can't do|cannot do|switch to)\b/.test(lower);
   const maintenanceIntent = /\b(maintenance|tune[- ]?up|comfort club|membership visit|fall maintenance|spring maintenance)\b/.test(lower);
   const urgency: SchedulingIntent["urgency"] = /\b(emergency|asap|right now|no (heat|cooling|ac)|urgent)\b/.test(lower)
@@ -66,7 +69,7 @@ export function interpretSchedulingIntent(input: {
   let requestedWindowId: string | null = null;
   let missingField: SchedulingIntent["missingField"] = null;
 
-  if (/\btoday\b/.test(lower)) requestedDate = today;
+  if (/\btoday\b/.test(lower) || /\bthis (morning|afternoon|evening)\b/.test(lower)) requestedDate = today;
   else if (/\btomorrow\b/.test(lower)) requestedDate = addLocalDays(today, 1);
   else if (/\bnext week\b/.test(lower)) {
     const daysUntilMonday = (8 - weekdayFromDateKey(today)) % 7 || 7;
@@ -100,7 +103,7 @@ export function interpretSchedulingIntent(input: {
   }
 
   const range = lower.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+and\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
-    ?? lower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*[-–to]+\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+    ?? lower.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-|–|—)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
   if (range) {
     requestedStartMinutes = parseWindowClock(range[1]);
     requestedEndMinutes = parseWindowClock(range[2]);
@@ -114,9 +117,13 @@ export function interpretSchedulingIntent(input: {
     if (matches.length === 1) requestedWindowId = matches[0].id;
   }
 
-  const schedulingAsk = /\b(come|schedule|appointment|available|book|send someone|get someone|can you|do you have)\b/.test(lower)
+  const schedulingAsk = /\b(come|schedule|appointment|available|book|send someone|get someone|can you|do you have|works)\b/.test(lower)
+    || availabilityAsk
+    || declineIntent
     || Boolean(requestedDate)
     || Boolean(requestedDaypart)
+    || requestedStartMinutes != null
+    || Boolean(requestedWindowId)
     || maintenanceIntent
     || rescheduleIntent
     || cancelIntent;
@@ -125,7 +132,9 @@ export function interpretSchedulingIntent(input: {
     return { confidence: "low", missingField: null };
   }
 
-  if (!requestedDate && !requestedDateEnd && !cancelIntent && !rescheduleIntent) {
+  if (availabilityAsk && !requestedDate && !requestedDateEnd && !requestedWindowId) {
+    missingField = null;
+  } else if (!requestedDate && !requestedDateEnd && !cancelIntent && !rescheduleIntent && !declineIntent && !availabilityAsk) {
     missingField = missingField ?? "date";
   } else if (requestedDate && !requestedDaypart && !requestedWindowId && !requestedStartMinutes && requestedDateEnd) {
     missingField = missingField ?? "daypart";
@@ -136,7 +145,9 @@ export function interpretSchedulingIntent(input: {
   }
 
   const confidence: SchedulingIntent["confidence"] =
-    humanRequested || cancelIntent || (requestedDate && (requestedDaypart || requestedWindowId)) ? "high" : "low";
+    humanRequested || cancelIntent || declineIntent || availabilityAsk || (requestedDate && (requestedDaypart || requestedWindowId))
+      ? "high"
+      : "low";
 
   return {
     requestedDate,
@@ -150,6 +161,8 @@ export function interpretSchedulingIntent(input: {
     urgency,
     rescheduleIntent,
     cancelIntent,
+    declineIntent,
+    availabilityAsk,
     humanRequested,
     missingField,
     confidence,
@@ -161,7 +174,8 @@ export function mergeSchedulingIntent(previous: SchedulingIntent, next: Scheduli
   const requestedDaypart = next.requestedDaypart ?? previous.requestedDaypart;
   const requestedWindowId = next.requestedWindowId ?? previous.requestedWindowId;
   let missingField: SchedulingIntent["missingField"] = null;
-  if (!requestedDate && !next.cancelIntent) missingField = "date";
+  if (next.availabilityAsk && !requestedWindowId) missingField = null;
+  else if (!requestedDate && !next.cancelIntent && !next.declineIntent) missingField = "date";
   else if (!requestedDaypart && !requestedWindowId && !next.requestedStartMinutes) missingField = "daypart";
   return {
     requestedDate,
@@ -175,6 +189,8 @@ export function mergeSchedulingIntent(previous: SchedulingIntent, next: Scheduli
     urgency: next.urgency ?? previous.urgency,
     rescheduleIntent: next.rescheduleIntent || previous.rescheduleIntent,
     cancelIntent: next.cancelIntent || previous.cancelIntent,
+    declineIntent: Boolean(next.declineIntent),
+    availabilityAsk: Boolean(next.availabilityAsk),
     humanRequested: next.humanRequested || previous.humanRequested,
     missingField,
     confidence: missingField ? "low" : "high",

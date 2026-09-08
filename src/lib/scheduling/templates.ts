@@ -1,4 +1,4 @@
-import { formatClockMinutes, formatLocalDateShort } from "@/lib/scheduling/time";
+import { formatClockMinutes, formatLocalDateShort, formatWindowChip } from "@/lib/scheduling/time";
 import type { SchedulingPolicyView } from "@/lib/scheduling/types";
 
 function applyVars(template: string, vars: Record<string, string>) {
@@ -89,4 +89,36 @@ export function cancelConfirmationMessage(when: string) {
 
 export function officeReviewMessage() {
   return "I’ve asked the office to take a look at your request. Someone from our team will text you back shortly.";
+}
+
+export function offerSlotsMessage(input: {
+  slots: Array<{ dateKey: string; startMinutes: number; endMinutes: number; timeZone: string }>;
+  todayKey: string;
+  todayWasFull?: boolean;
+  keepGoing?: boolean;
+}) {
+  const labeled = input.slots.map((row) => ({
+    ...row,
+    chip: formatWindowChip(row.startMinutes, row.endMinutes),
+    day: formatLocalDateShort(row.dateKey, row.timeZone),
+  }));
+  const prefix = input.keepGoing ? "I can finish getting you scheduled. " : "";
+  if (!labeled.length) {
+    return `${prefix}I don’t see an open window that matches that request yet. I’ll have the office help find the next opening.`;
+  }
+  const sameDay = labeled.every((row) => row.dateKey === labeled[0]?.dateKey);
+  if (sameDay && labeled[0]?.dateKey === input.todayKey) {
+    return `${prefix}We have ${labeled.map((row) => row.chip).join(" or ")} available today. Which works better?`;
+  }
+  if (sameDay && input.todayWasFull) {
+    return `${prefix}We’re full today, but I have ${labeled.map((row) => row.chip).join(" or ")} ${labeled[0]?.day}. Would either work?`;
+  }
+  if (sameDay) {
+    return `${prefix}I have ${labeled.map((row) => row.chip).join(" or ")} available ${labeled[0]?.day}. Which works better?`;
+  }
+  return `${prefix}I have ${labeled.map((row) => `${row.day} ${row.chip}`).join(" or ")} available. Which works better?`;
+}
+
+export function sessionClosedMessage() {
+  return "No problem — I won’t schedule anything. Text us when you want to get on the calendar.";
 }

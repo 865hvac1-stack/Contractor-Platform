@@ -21,9 +21,9 @@ export function inferFromStart(startMinutes: number): AppointmentDaypart {
 
 export function daypartFromPhrase(text: string): AppointmentDaypart | null {
   const value = text.toLowerCase();
-  if (/\bafter lunch\b|\bafternoon\b|\bafter noon\b/.test(value)) return "AFTERNOON";
+  if (/\blate afternoon\b|\bafter lunch\b|\bafternoon\b|\bafter noon\b/.test(value)) return "AFTERNOON";
   if (/\bevening\b|\btonight\b/.test(value)) return "EVENING";
-  if (/\bmorning\b|\bam\b/.test(value) && !/\bafternoon\b/.test(value)) return "MORNING";
+  if (/\b(late )?morning\b/.test(value) && !/\bafternoon\b/.test(value)) return "MORNING";
   return null;
 }
 

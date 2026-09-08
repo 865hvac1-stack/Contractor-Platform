@@ -101,6 +101,8 @@ export type SchedulingIntent = {
   urgency?: "normal" | "emergency" | null;
   rescheduleIntent?: boolean;
   cancelIntent?: boolean;
+  declineIntent?: boolean;
+  availabilityAsk?: boolean;
   humanRequested?: boolean;
   missingField?: "date" | "daypart" | "window" | "appointment" | "service" | null;
   confidence: "high" | "low";

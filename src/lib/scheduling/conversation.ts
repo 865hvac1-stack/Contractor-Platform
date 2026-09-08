@@ -11,16 +11,23 @@ import {
   noAvailabilityMessage,
   noPlanMessage,
   officeReviewMessage,
+  offerSlotsMessage,
+  sessionClosedMessage,
   suggestedBookingMessage,
 } from "@/lib/scheduling/templates";
-import { formatClockMinutes, formatLocalDateShort, formatWindowClock } from "@/lib/scheduling/time";
+import { addLocalDays, companyTodayKey, formatClockMinutes, formatLocalDateShort, formatWindowClock } from "@/lib/scheduling/time";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "@/lib/scheduling/booking";
 import { findOpenMaintenanceVisit } from "@/lib/scheduling/maintenance";
 import { conversationCanAutoBook } from "@/lib/scheduling/auto-book";
 import { ensureSchedulingSetup } from "@/lib/scheduling/ensure";
 import { matchesDaypart } from "@/lib/scheduling/daypart";
-
-const ACTIVE_STATES = ["OPEN", "CLARIFYING", "SUGGESTED", "NEEDS_REVIEW"] as const;
+import {
+  ACTIVE_SCHEDULING_STATUSES,
+  isSchedulingTurn,
+  ownsSchedulingInbound,
+  resolveSchedulingTurn,
+  uniqueWindowOffers,
+} from "@/lib/scheduling/conversation-turn";
 
 export async function processInboundScheduling(input: {
   companyId: string;
@@ -44,6 +51,16 @@ export async function processInboundScheduling(input: {
   });
   if (existingByMessage) return { handled: true as const, duplicate: true as const, stateId: existingByMessage.id };
 
+  const previous = await prisma.conversationSchedulingState.findFirst({
+    where: {
+      companyId: input.companyId,
+      threadId: input.threadId,
+      status: { in: [...ACTIVE_SCHEDULING_STATUSES] },
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
   const company = await prisma.company.findFirst({
     where: { id: input.companyId },
     select: { timezone: true },
@@ -54,21 +71,15 @@ export async function processInboundScheduling(input: {
     orderBy: { sortOrder: "asc" },
   });
   const fresh = interpretSchedulingIntent({ text: input.body, timeZone, windows });
-  if (fresh.confidence === "low" && !fresh.requestedDate && !fresh.requestedDaypart && !fresh.maintenanceIntent && !fresh.cancelIntent && !fresh.rescheduleIntent && !fresh.humanRequested) {
+  const route = ownsSchedulingInbound({
+    activeState: previous,
+    intent: fresh,
+  });
+  if (route === "ignore") {
     return { handled: false as const };
   }
 
-  const previous = await prisma.conversationSchedulingState.findFirst({
-    where: {
-      companyId: input.companyId,
-      threadId: input.threadId,
-      status: { in: [...ACTIVE_STATES] },
-      expiresAt: { gt: new Date() },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  if (previous?.paused && !fresh.humanRequested) {
+  if (previous?.paused && !fresh.humanRequested && !fresh.declineIntent) {
     return { handled: false as const, paused: true as const };
   }
 
@@ -83,6 +94,8 @@ export async function processInboundScheduling(input: {
         urgency: (previous.urgency as "normal" | "emergency" | null) ?? null,
         rescheduleIntent: previous.rescheduleIntent,
         cancelIntent: previous.cancelIntent,
+        declineIntent: false,
+        availabilityAsk: false,
         missingField: previous.missingField as "date" | "daypart" | "window" | "appointment" | "service" | null,
         confidence: "high" as const,
       }
@@ -144,6 +157,15 @@ export async function processInboundScheduling(input: {
     await markNeedsReview(state.id, input.companyId, "human_requested");
     await reply(input, officeReviewMessage());
     return { handled: true as const, stateId: state.id, outcome: "paused" as const };
+  }
+
+  if (intent.declineIntent && !intent.cancelIntent) {
+    await prisma.conversationSchedulingState.update({
+      where: { id: state.id },
+      data: { status: "CANCELED", cancelIntent: true },
+    });
+    await reply(input, sessionClosedMessage());
+    return { handled: true as const, stateId: state.id, outcome: "declined" as const };
   }
 
   const upcoming = await prisma.job.findMany({
@@ -232,15 +254,6 @@ export async function processInboundScheduling(input: {
     }
   }
 
-  if (intent.missingField === "date" || intent.missingField === "daypart" || intent.missingField === "service") {
-    await prisma.conversationSchedulingState.update({
-      where: { id: state.id },
-      data: { status: "CLARIFYING", missingField: intent.missingField },
-    });
-    await reply(input, clarificationMessage({ policy, missing: intent.missingField }));
-    return { handled: true as const, stateId: state.id, outcome: "clarify" as const };
-  }
-
   if (intent.rescheduleIntent) {
     if (upcoming.length !== 1) {
       await prisma.conversationSchedulingState.update({
@@ -262,22 +275,13 @@ export async function processInboundScheduling(input: {
     : null;
   const canAutoBook = conversationCanAutoBook(policy, rule);
 
-  const dates = intent.requestedDateEnd && intent.requestedDate
-    ? expandDates(intent.requestedDate, intent.requestedDateEnd)
-    : intent.requestedDate
-      ? [intent.requestedDate]
-      : [];
-
-  let chosen: Awaited<ReturnType<typeof getAvailability>>["options"][number] | null = null;
-  for (const date of dates) {
-    const availability = await getAvailability({
-      companyId: input.companyId,
-      date,
-      appointmentWindowId: intent.requestedWindowId,
-      serviceTypeId,
-      maintenance: intent.maintenanceIntent,
-    });
-    const filtered = availability.options.filter((option) => {
+  const todayKey = companyTodayKey(new Date(), timeZone);
+  const filterOptions = (
+    options: Awaited<ReturnType<typeof getAvailability>>["options"],
+    dateFilter?: string | null
+  ) =>
+    options.filter((option) => {
+      if (dateFilter && option.date !== dateFilter) return false;
       if (intent.requestedWindowId && option.windowId !== intent.requestedWindowId) return false;
       if (intent.requestedDaypart && !matchesDaypart(option, intent.requestedDaypart)) return false;
       if (intent.requestedStartMinutes != null) {
@@ -285,30 +289,148 @@ export async function processInboundScheduling(input: {
       }
       return true;
     });
-    if (filtered[0]) {
-      chosen = filtered[0];
-      break;
+
+  const todayAvailability = await getAvailability({
+    companyId: input.companyId,
+    date: todayKey,
+    serviceTypeId,
+    maintenance: intent.maintenanceIntent,
+  });
+  const todaySlots = uniqueWindowOffers(filterOptions(todayAvailability.options, todayKey));
+
+  let requestedSlots = todaySlots;
+  if (intent.requestedDate && intent.requestedDate !== todayKey) {
+    const requestedAvailability = await getAvailability({
+      companyId: input.companyId,
+      date: intent.requestedDate,
+      appointmentWindowId: intent.requestedWindowId,
+      serviceTypeId,
+      maintenance: intent.maintenanceIntent,
+    });
+    requestedSlots = uniqueWindowOffers(filterOptions(requestedAvailability.options, intent.requestedDate));
+  } else if (intent.requestedDate === todayKey) {
+    requestedSlots = uniqueWindowOffers(filterOptions(todayAvailability.options, todayKey));
+  } else if (intent.requestedDateEnd && intent.requestedDate) {
+    requestedSlots = [];
+    for (const date of expandDates(intent.requestedDate, intent.requestedDateEnd)) {
+      const availability = await getAvailability({
+        companyId: input.companyId,
+        date,
+        appointmentWindowId: intent.requestedWindowId,
+        serviceTypeId,
+        maintenance: intent.maintenanceIntent,
+      });
+      requestedSlots.push(...uniqueWindowOffers(filterOptions(availability.options, date)));
     }
   }
 
-  if (!chosen) {
-    const alternatives = await findNextAvailableOptions({
-      companyId: input.companyId,
-      startDate: intent.requestedDate || dates[0] || new Date().toISOString().slice(0, 10),
-      days: intent.maintenanceIntent ? 60 : 14,
-      serviceTypeId,
-      daypart: intent.requestedDaypart,
-      maintenance: intent.maintenanceIntent,
+  const nextOptions = await findNextAvailableOptions({
+    companyId: input.companyId,
+    startDate: intent.requestedDate || (todaySlots.length ? todayKey : addLocalDays(todayKey, 1)),
+    days: intent.maintenanceIntent ? 60 : 14,
+    serviceTypeId,
+    daypart: intent.requestedDaypart,
+    maintenance: intent.maintenanceIntent,
+  });
+  const nextSlots = uniqueWindowOffers(filterOptions(nextOptions));
+
+  const turn = resolveSchedulingTurn({
+    previous,
+    intent,
+    canAutoBook,
+    todayKey,
+    todaySlots,
+    requestedSlots,
+    nextSlots,
+  });
+
+  if (turn.action === "ask") {
+    await prisma.conversationSchedulingState.update({
+      where: { id: state.id },
+      data: { status: "CLARIFYING", missingField: turn.missing },
     });
-    const requestedLabel = intent.requestedDate
-      ? `${formatLocalDateShort(intent.requestedDate, timeZone)}${intent.requestedDaypart ? ` ${intent.requestedDaypart.toLowerCase()}` : ""}`
-      : "for that time";
+    await reply(input, clarificationMessage({ policy, missing: turn.missing }));
+    return { handled: true as const, stateId: state.id, outcome: "clarify" as const };
+  }
+
+  if (turn.action === "offer_slots") {
+    const offerDate = turn.slots.length && turn.slots.every((slot) => slot.date === turn.slots[0]?.date) ? turn.slots[0]?.date : null;
+    await prisma.conversationSchedulingState.update({
+      where: { id: state.id },
+      data: {
+        status: "CLARIFYING",
+        missingField: "window",
+        requestedDate: offerDate ? new Date(`${offerDate}T00:00:00.000Z`) : state.requestedDate,
+      },
+    });
+    await reply(
+      input,
+      turn.slots.length
+        ? offerSlotsMessage({
+            slots: turn.slots.map((slot) => ({
+              dateKey: slot.date,
+              startMinutes: slot.startMinutes,
+              endMinutes: slot.endMinutes,
+              timeZone,
+            })),
+            todayKey,
+            todayWasFull: turn.todayWasFull,
+            keepGoing: Boolean(previous && !isSchedulingTurn(fresh) && !fresh.availabilityAsk),
+          })
+        : noAvailabilityMessage({
+            policy,
+            requestedLabel: turn.requestedLabel
+              ? `${formatLocalDateShort(turn.requestedLabel, timeZone)}${intent.requestedDaypart ? ` ${intent.requestedDaypart.toLowerCase()}` : ""}`
+              : "right now",
+            alternatives: nextSlots.map((row) => ({
+              dateKey: row.date,
+              startMinutes: row.startMinutes,
+              endMinutes: row.endMinutes,
+              timeZone,
+            })),
+          })
+    );
+    return { handled: true as const, stateId: state.id, outcome: turn.slots.length ? "offered" as const : "alternatives" as const };
+  }
+
+  if (turn.action === "handoff") {
+    await markNeedsReview(state.id, input.companyId, turn.reason);
+    await reply(input, officeReviewMessage());
+    return { handled: true as const, stateId: state.id, outcome: "needs_review" as const };
+  }
+
+  if (turn.action === "close") {
+    await prisma.conversationSchedulingState.update({
+      where: { id: state.id },
+      data: { status: "CANCELED" },
+    });
+    await reply(input, sessionClosedMessage());
+    return { handled: true as const, stateId: state.id, outcome: "declined" as const };
+  }
+
+  const chosenDate = turn.action === "book" || turn.action === "suggest" ? turn.date : null;
+  const chosenWindowId = turn.action === "book" || turn.action === "suggest" ? turn.windowId : null;
+  if (!chosenDate || !chosenWindowId) {
+    await markNeedsReview(state.id, input.companyId, "ambiguous_request");
+    await reply(input, officeReviewMessage());
+    return { handled: true as const, stateId: state.id, outcome: "needs_review" as const };
+  }
+
+  const recheck = await getAvailability({
+    companyId: input.companyId,
+    date: chosenDate,
+    appointmentWindowId: chosenWindowId,
+    serviceTypeId,
+    maintenance: intent.maintenanceIntent,
+  });
+  const stillOpen = recheck.options.find((option) => option.windowId === chosenWindowId && option.remainingCapacity > 0);
+  if (!stillOpen) {
     await reply(
       input,
       noAvailabilityMessage({
         policy,
-        requestedLabel,
-        alternatives: alternatives.map((row) => ({
+        requestedLabel: "that window",
+        alternatives: nextSlots.map((row) => ({
           dateKey: row.date,
           startMinutes: row.startMinutes,
           endMinutes: row.endMinutes,
@@ -318,23 +440,23 @@ export async function processInboundScheduling(input: {
     );
     await prisma.conversationSchedulingState.update({
       where: { id: state.id },
-      data: { status: "CLARIFYING" },
+      data: { status: "CLARIFYING", missingField: "window" },
     });
     return { handled: true as const, stateId: state.id, outcome: "alternatives" as const };
   }
 
-  if (!canAutoBook) {
+  if (turn.action === "suggest" || !canAutoBook) {
     await prisma.conversationSchedulingState.update({
       where: { id: state.id },
-      data: { status: "SUGGESTED" },
+      data: { status: "SUGGESTED", requestedDate: new Date(`${chosenDate}T00:00:00.000Z`), requestedWindowId: chosenWindowId },
     });
     await markNeedsReview(state.id, input.companyId, "office_approval");
     await reply(
       input,
       suggestedBookingMessage({
-        dateKey: chosen.date,
-        startMinutes: chosen.startMinutes,
-        endMinutes: chosen.endMinutes,
+        dateKey: stillOpen.date,
+        startMinutes: stillOpen.startMinutes,
+        endMinutes: stillOpen.endMinutes,
         timeZone,
       })
     );
@@ -345,8 +467,8 @@ export async function processInboundScheduling(input: {
     ? await rescheduleAppointment({
         companyId: input.companyId,
         jobId: upcoming[0].id,
-        date: chosen.date,
-        windowId: chosen.windowId,
+        date: chosenDate,
+        windowId: chosenWindowId,
         threadId: input.threadId,
         inboundMessageId: input.messageId,
         sendConfirmation: true,
@@ -355,8 +477,8 @@ export async function processInboundScheduling(input: {
         companyId: input.companyId,
         customerId: input.customerId,
         serviceTypeId,
-        date: chosen.date,
-        windowId: chosen.windowId,
+        date: chosenDate,
+        windowId: chosenWindowId,
         source: intent.maintenanceIntent ? "MAINTENANCE" : "CONVERSATION",
         threadId: input.threadId,
         inboundMessageId: input.messageId,
@@ -371,19 +493,12 @@ export async function processInboundScheduling(input: {
       await reply(input, officeReviewMessage());
       return { handled: true as const, stateId: state.id, outcome: "duplicate_maintenance" as const };
     }
-    const alternatives = await findNextAvailableOptions({
-      companyId: input.companyId,
-      startDate: chosen.date,
-      serviceTypeId,
-      daypart: intent.requestedDaypart,
-      maintenance: intent.maintenanceIntent,
-    });
     await reply(
       input,
       noAvailabilityMessage({
         policy,
         requestedLabel: "that window",
-        alternatives: alternatives.map((row) => ({
+        alternatives: nextSlots.map((row) => ({
           dateKey: row.date,
           startMinutes: row.startMinutes,
           endMinutes: row.endMinutes,

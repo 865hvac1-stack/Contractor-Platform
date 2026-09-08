@@ -371,6 +371,8 @@ export async function processHighLevelWebhook(
     });
     if (comms?.thread.id && comms.message && (fields.direction || "inbound").toLowerCase() === "inbound") {
       try {
+        // ContractorYou scheduling is the only inbound auto-responder in this codebase.
+        // An active ConversationSchedulingState owns the thread until a terminal status.
         const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
         await processInboundScheduling({
           companyId: input.companyId,

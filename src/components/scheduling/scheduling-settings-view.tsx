@@ -123,7 +123,7 @@ export function SchedulingSettingsView({
           <OverviewStat label="Auto booking" value={data.policy.autoBookingEnabled ? "On" : "Off"} />
           <OverviewStat label="Appointment windows" value={String(activeWindows.length)} />
           <OverviewStat label="Active technicians" value={String(data.technicians.length)} />
-          <OverviewStat label="Available today" value={availableToday === 0 ? "Full" : `${availableToday} slots`} />
+          <OverviewStat label="Available today" value={availableToday === 0 ? "No availability" : `${availableToday} slots`} />
           <OverviewStat label="Maintenance booking" value={`${data.policy.maintenanceHorizonDays} days`} />
         </div>
       </section>
@@ -274,7 +274,7 @@ export function SchedulingSettingsView({
                   >
                     <span className="text-sm font-medium">{formatWindowChip(window.startMinutes, window.endMinutes)}</span>
                     <span className="text-sm text-[var(--muted-foreground)]">
-                      {slots === 0 ? "Full" : `${techs} tech${techs === 1 ? "" : "s"} · ${slots} slot${slots === 1 ? "" : "s"}`}
+                      {slots === 0 ? "No availability" : `${techs} tech${techs === 1 ? "" : "s"} · ${slots} slot${slots === 1 ? "" : "s"}`}
                     </span>
                   </button>
                   {todayWindowId === window.id ? (
@@ -302,7 +302,7 @@ export function SchedulingSettingsView({
                 <h2 className="font-medium text-[var(--cy-navy)]">Auto booking</h2>
                 <p className="mt-1 text-sm text-[var(--muted-foreground)]">
                   {data.policy.autoBookingEnabled
-                    ? "ContractorYou can automatically schedule eligible customer requests from conversations."
+                    ? "ContractorYou can automatically schedule eligible customer requests from conversations. HighLevel should only carry the texts — turn off HighLevel Conversation AI on SMS so it cannot send a second reply."
                     : "Auto booking is off. Requests become suggestions for the office."}
                 </p>
               </div>

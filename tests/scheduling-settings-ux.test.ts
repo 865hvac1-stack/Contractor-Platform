@@ -32,6 +32,8 @@ describe("scheduling settings UX v2 wiring", () => {
     expect(view).toMatch(/Appointment windows/);
     expect(view).toMatch(/Edit windows/);
     expect(view).toMatch(/Today’s capacity/);
+    expect(view).toMatch(/No availability/);
+    expect(view).not.toMatch(/slots === 0 \? "Full"/);
     expect(view).toMatch(/Schedule exceptions/);
     expect(view).toMatch(/What can auto-book/);
     expect(view).toMatch(/Advanced scheduling settings/);
