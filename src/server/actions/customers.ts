@@ -90,6 +90,10 @@ export async function createCustomerAction(
     revalidatePath("/office");
     const returnTo = String(formData.get("returnTo") || "");
     if (returnTo === "office") redirect(`/office/customers/${customer.id}`);
+    if (returnTo === "/invoices/new") redirect(`/invoices/new?customerId=${customer.id}`);
+    if (returnTo === "/estimates/new") redirect(`/estimates/new?customerId=${customer.id}`);
+    if (returnTo === "/jobs/new") redirect(`/jobs/new?customerId=${customer.id}`);
+    if (returnTo === "/memberships") redirect(`/memberships?customerId=${customer.id}`);
     redirect(`/customers/${customer.id}`);
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };

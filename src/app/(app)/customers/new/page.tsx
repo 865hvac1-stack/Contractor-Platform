@@ -11,8 +11,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const selectClassName =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-export default async function NewCustomerPage() {
+export default async function NewCustomerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   await requirePermission("customers:manage");
+  const { returnTo } = await searchParams;
+  const allowedReturn =
+    returnTo === "/invoices/new" ||
+    returnTo === "/estimates/new" ||
+    returnTo === "/jobs/new" ||
+    returnTo === "/memberships"
+      ? returnTo
+      : "";
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -35,6 +47,7 @@ export default async function NewCustomerPage() {
         </CardHeader>
         <CardContent>
           <ActionForm action={createCustomerAction} className="space-y-4">
+            {allowedReturn ? <input type="hidden" name="returnTo" value={allowedReturn} /> : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First name</Label>

@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CustomerSearchCombobox } from "@/components/customers/search-combobox";
+import { customerLabel } from "@/lib/tech/today";
 
 export default async function MembershipsPage({
   searchParams,
@@ -22,7 +24,7 @@ export default async function MembershipsPage({
   const ctx = await requirePermission("memberships:view");
   const canManage = can(ctx.role, "memberships:manage");
   const { customerId } = await searchParams;
-  const [plans, memberships, customers] = await Promise.all([
+  const [plans, memberships, selectedCustomer] = await Promise.all([
     prisma.membershipPlan.findMany({
       where: { companyId: ctx.company.id },
       orderBy: { name: "asc" },
@@ -38,11 +40,12 @@ export default async function MembershipsPage({
       orderBy: { saleDate: "desc" },
       take: 100,
     }),
-    prisma.customer.findMany({
-      where: { companyId: ctx.company.id, status: { not: "ARCHIVED" } },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      take: 200,
-    }),
+    customerId
+      ? prisma.customer.findFirst({
+          where: { id: customerId, companyId: ctx.company.id, status: { not: "ARCHIVED" } },
+          select: { id: true, firstName: true, lastName: true, businessName: true, phone: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -87,14 +90,21 @@ export default async function MembershipsPage({
             className="space-y-3 rounded-xl border border-[var(--border)] bg-white p-4"
           >
             <h2 className="font-medium">Record a membership sale</h2>
-            <select name="customerId" required className="h-8 w-full rounded-lg border border-input px-2.5 text-sm">
-              <option value="">Customer</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.lastName}, {customer.firstName}
-                </option>
-              ))}
-            </select>
+            <CustomerSearchCombobox
+              selected={
+                selectedCustomer
+                  ? {
+                      id: selectedCustomer.id,
+                      name: customerLabel(selectedCustomer),
+                      phone: selectedCustomer.phone,
+                    }
+                  : null
+              }
+              customerHrefPrefix="/office/customers"
+              createHref="/customers/new?returnTo=/memberships"
+              canCreate={canManage}
+              showContext={false}
+            />
             <select name="planId" required className="h-8 w-full rounded-lg border border-input px-2.5 text-sm">
               <option value="">Plan</option>
               {plans

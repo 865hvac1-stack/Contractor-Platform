@@ -73,7 +73,7 @@ export async function createEstimateAction(
     }
     if (d.jobId) {
       const job = await prisma.job.findFirst({
-        where: { id: d.jobId, companyId: ctx.company.id },
+        where: { id: d.jobId, companyId: ctx.company.id, customerId: d.customerId },
       });
       if (!job) return { ok: false, error: "Job not found." };
     }
@@ -254,7 +254,7 @@ export async function createInvoiceAction(
 
     if (d.jobId) {
       const job = await prisma.job.findFirst({
-        where: { id: d.jobId, companyId: ctx.company.id },
+        where: { id: d.jobId, companyId: ctx.company.id, customerId: d.customerId },
       });
       if (!job) return { ok: false, error: "Job not found." };
     }

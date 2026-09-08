@@ -85,6 +85,7 @@ export default async function NewJobPage({
               }
               returnTo={returnTo === "dispatch" || returnTo === "office" ? returnTo : undefined}
               canAssign={can(ctx.role, "schedule:manage")}
+              canCreateCustomer={can(ctx.role, "customers:manage")}
               submitLabel={returnTo === "dispatch" || returnTo === "office" ? "Create and send to Dispatch" : "Create job"}
               members={memberships.map((m) => ({
                 id: m.user.id,

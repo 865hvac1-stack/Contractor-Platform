@@ -83,6 +83,7 @@ export default async function OfficeNewJobPage({
             defaultPropertyId={propertyId}
             returnTo="office"
             canAssign={can(ctx.role, "schedule:manage")}
+            canCreateCustomer={can(ctx.role, "customers:manage")}
             submitLabel={
               can(ctx.role, "schedule:manage") ? "Create job" : "Create and send to Dispatch"
             }

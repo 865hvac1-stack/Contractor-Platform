@@ -93,6 +93,7 @@ export async function searchCustomers(input: {
   return prisma.customer.findMany({
     where: {
       ...customerSearchWhere(input.companyId, input.query),
+      status: { not: "ARCHIVED" },
       ...(assignedOnly
         ? { jobs: { some: { companyId: input.companyId, ...access } } }
         : {}),
