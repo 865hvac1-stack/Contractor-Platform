@@ -4,11 +4,12 @@ import { resolve } from "node:path";
 import { interpretSchedulingIntent, mergeSchedulingIntent } from "@/lib/scheduling/intent";
 import {
   isAvailabilityQuestion,
+  matchOfferedSlot,
   ownsSchedulingInbound,
   resolveSchedulingTurn,
   uniqueWindowOffers,
 } from "@/lib/scheduling/conversation-turn";
-import { clarificationMessage, offerSlotsMessage } from "@/lib/scheduling/templates";
+import { clarificationMessage, noOpenWindowsMessage, offerSlotsMessage } from "@/lib/scheduling/templates";
 import { evaluateCapacity } from "@/lib/scheduling/capacity-engine";
 import { DEFAULT_POLICY } from "@/lib/scheduling/types";
 import { conversationCanAutoBook } from "@/lib/scheduling/auto-book";
@@ -75,6 +76,109 @@ describe("production scheduling handoff regression", () => {
     expect(clarificationMessage({ policy: DEFAULT_POLICY, missing: "date" })).toBe(
       "Happy to get you on the calendar. What day works best?"
     );
+  });
+
+  it("does not repeat What day works best after an availability question", () => {
+    const first = interpretSchedulingIntent({
+      text: "I am trying to schedule a service call",
+      timeZone: "America/New_York",
+      now,
+      windows,
+    });
+    expect(first.missingField).toBe("date");
+    const phrases = [
+      "When do you have available?",
+      "What days do you have available",
+      "What day do you have available?",
+      "What's your next opening?",
+      "When can someone come?",
+      "What do you have this week?",
+    ];
+    const nextSlots = [
+      { date: "2026-09-09", windowId: "w11", startMinutes: 11 * 60, endMinutes: 13 * 60 },
+      { date: "2026-09-10", windowId: "w9", startMinutes: 9 * 60, endMinutes: 11 * 60 },
+      { date: "2026-09-10", windowId: "w13", startMinutes: 13 * 60, endMinutes: 15 * 60 },
+    ];
+    for (const text of phrases) {
+      const fresh = interpretSchedulingIntent({ text, timeZone: "America/New_York", now, windows });
+      const merged = mergeSchedulingIntent(first, fresh);
+      expect(isAvailabilityQuestion(text), text).toBe(true);
+      expect(merged.availabilitySearchRequested || merged.availabilityAsk, text).toBe(true);
+      expect(merged.missingField, text).not.toBe("date");
+      const turn = resolveSchedulingTurn({
+        previous: { status: "CLARIFYING", paused: false, missingField: "date" },
+        intent: merged,
+        text,
+        canAutoBook: true,
+        todayKey: "2026-09-08",
+        todaySlots: [],
+        requestedSlots: [],
+        nextSlots,
+      });
+      expect(turn.action, text).toBe("offer_slots");
+      if (turn.action === "offer_slots") {
+        expect(turn.slots).toEqual(nextSlots);
+        const reply = offerSlotsMessage({
+          slots: turn.slots.map((slot) => ({
+            dateKey: slot.date,
+            startMinutes: slot.startMinutes,
+            endMinutes: slot.endMinutes,
+            timeZone: "America/New_York",
+          })),
+          todayKey: "2026-09-08",
+          todayWasFull: true,
+        });
+        expect(reply, text).not.toMatch(/What day works best/i);
+        expect(reply, text).toMatch(/Which works/);
+      }
+    }
+  });
+
+  it("books the first offered slot after The first one", () => {
+    const offered = [
+      { date: "2026-09-09", windowId: "w11", startMinutes: 11 * 60, endMinutes: 13 * 60 },
+      { date: "2026-09-10", windowId: "w9", startMinutes: 9 * 60, endMinutes: 11 * 60 },
+    ];
+    expect(matchOfferedSlot("The first one", offered)).toEqual(offered[0]);
+    const turn = resolveSchedulingTurn({
+      previous: { status: "CLARIFYING", paused: false, missingField: "slot_selection" },
+      intent: { confidence: "low", missingField: null },
+      text: "The first one",
+      offeredSlots: offered,
+      canAutoBook: true,
+      todayKey: "2026-09-08",
+      todaySlots: [],
+      requestedSlots: offered,
+      nextSlots: offered,
+    });
+    expect(turn).toEqual({ action: "book", date: "2026-09-09", windowId: "w11" });
+  });
+
+  it("hands off instead of re-asking when no real availability exists", () => {
+    const first = interpretSchedulingIntent({
+      text: "I am trying to schedule a service call",
+      timeZone: "America/New_York",
+      now,
+      windows,
+    });
+    const fresh = interpretSchedulingIntent({
+      text: "When do you have available?",
+      timeZone: "America/New_York",
+      now,
+      windows,
+    });
+    const turn = resolveSchedulingTurn({
+      previous: { status: "CLARIFYING", paused: false, missingField: "date" },
+      intent: mergeSchedulingIntent(first, fresh),
+      canAutoBook: true,
+      todayKey: "2026-09-08",
+      todaySlots: [],
+      requestedSlots: [],
+      nextSlots: [],
+    });
+    expect(turn).toEqual({ action: "handoff", reason: "no_availability" });
+    expect(noOpenWindowsMessage()).toMatch(/office help with scheduling/);
+    expect(noOpenWindowsMessage()).not.toMatch(/What day works best/);
   });
 
   it("keeps the active session and offers real slots for When do you have available?", () => {

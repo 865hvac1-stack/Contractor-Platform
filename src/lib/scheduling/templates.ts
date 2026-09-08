@@ -44,10 +44,14 @@ export function noAvailabilityMessage(input: {
   return `We’re full ${input.requestedLabel}, but we have ${alts} available. Would either work?`;
 }
 
-export function clarificationMessage(input: { policy: SchedulingPolicyView; missing: "date" | "daypart" | "window" | "appointment" | "service" }) {
+export function clarificationMessage(input: {
+  policy: SchedulingPolicyView;
+  missing: "date" | "daypart" | "window" | "appointment" | "service" | "slot_selection";
+}) {
   if (input.policy.clarificationTemplate) return input.policy.clarificationTemplate;
   if (input.missing === "daypart") return "Absolutely. Do you prefer morning or afternoon?";
   if (input.missing === "date") return "Happy to get you on the calendar. What day works best?";
+  if (input.missing === "slot_selection") return "Which of those openings works best?";
   if (input.missing === "appointment") return "You have more than one upcoming appointment. Which one should we change?";
   if (input.missing === "service") return "I can schedule that. Is this a service call or a maintenance visit?";
   return "I want to get this right — what day and time window works for you?";
@@ -121,4 +125,8 @@ export function offerSlotsMessage(input: {
 
 export function sessionClosedMessage() {
   return "No problem — I won’t schedule anything. Text us when you want to get on the calendar.";
+}
+
+export function noOpenWindowsMessage() {
+  return "I don’t see an open service window right now. I’ll have the office help with scheduling.";
 }

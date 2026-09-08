@@ -55,6 +55,7 @@ export function interpretSchedulingIntent(input: {
   const cancelIntent = /\b(cancel|call off).*(appointment|visit|job)?|\bi need to cancel\b|\bcancel (my |the )?(appointment|visit|job)\b/.test(lower);
   const declineIntent = isDeclineScheduling(lower);
   const availabilityAsk = isAvailabilityQuestion(lower);
+  const availabilitySearchRequested = availabilityAsk;
   const rescheduleIntent = /\b(reschedule|change (my |the )?appointment|move (me|it|my appointment)|can't do|cannot do|switch to)\b/.test(lower);
   const maintenanceIntent = /\b(maintenance|tune[- ]?up|comfort club|membership visit|fall maintenance|spring maintenance)\b/.test(lower);
   const urgency: SchedulingIntent["urgency"] = /\b(emergency|asap|right now|no (heat|cooling|ac)|urgent)\b/.test(lower)
@@ -163,6 +164,7 @@ export function interpretSchedulingIntent(input: {
     cancelIntent,
     declineIntent,
     availabilityAsk,
+    availabilitySearchRequested,
     humanRequested,
     missingField,
     confidence,
@@ -170,16 +172,25 @@ export function interpretSchedulingIntent(input: {
 }
 
 export function mergeSchedulingIntent(previous: SchedulingIntent, next: SchedulingIntent): SchedulingIntent {
-  const requestedDate = next.requestedDate ?? previous.requestedDate;
-  const requestedDaypart = next.requestedDaypart ?? previous.requestedDaypart;
-  const requestedWindowId = next.requestedWindowId ?? previous.requestedWindowId;
+  const searching =
+    Boolean(next.availabilityAsk || next.availabilitySearchRequested) ||
+    (previous.missingField === "date" &&
+      !next.requestedDate &&
+      !next.requestedWindowId &&
+      !next.requestedStartMinutes &&
+      !next.cancelIntent &&
+      !next.declineIntent &&
+      !next.humanRequested);
+  const requestedDate = searching && !next.requestedDate ? null : next.requestedDate ?? previous.requestedDate;
+  const requestedDaypart = searching ? next.requestedDaypart ?? null : next.requestedDaypart ?? previous.requestedDaypart;
+  const requestedWindowId = next.requestedWindowId ?? (searching ? null : previous.requestedWindowId);
   let missingField: SchedulingIntent["missingField"] = null;
-  if (next.availabilityAsk && !requestedWindowId) missingField = null;
+  if (searching && !requestedWindowId) missingField = null;
   else if (!requestedDate && !next.cancelIntent && !next.declineIntent) missingField = "date";
   else if (!requestedDaypart && !requestedWindowId && !next.requestedStartMinutes) missingField = "daypart";
   return {
     requestedDate,
-    requestedDateEnd: next.requestedDateEnd ?? previous.requestedDateEnd,
+    requestedDateEnd: searching ? next.requestedDateEnd ?? null : next.requestedDateEnd ?? previous.requestedDateEnd,
     requestedDaypart,
     requestedWindowId,
     requestedStartMinutes: next.requestedStartMinutes ?? previous.requestedStartMinutes,
@@ -190,7 +201,8 @@ export function mergeSchedulingIntent(previous: SchedulingIntent, next: Scheduli
     rescheduleIntent: next.rescheduleIntent || previous.rescheduleIntent,
     cancelIntent: next.cancelIntent || previous.cancelIntent,
     declineIntent: Boolean(next.declineIntent),
-    availabilityAsk: Boolean(next.availabilityAsk),
+    availabilityAsk: Boolean(next.availabilityAsk || searching),
+    availabilitySearchRequested: Boolean(next.availabilitySearchRequested || searching),
     humanRequested: next.humanRequested || previous.humanRequested,
     missingField,
     confidence: missingField ? "low" : "high",

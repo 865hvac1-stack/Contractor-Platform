@@ -3143,6 +3143,7 @@ model ConversationSchedulingState {
   cancelIntent         Boolean                       @default(false)
   lastInboundMessageId String?
   missingField         String?
+  offeredSlots         Json?
   suggestedJobId       String?
   bookedJobId          String?
   paused               Boolean                       @default(false)

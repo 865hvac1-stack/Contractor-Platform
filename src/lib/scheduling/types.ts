@@ -103,8 +103,9 @@ export type SchedulingIntent = {
   cancelIntent?: boolean;
   declineIntent?: boolean;
   availabilityAsk?: boolean;
+  availabilitySearchRequested?: boolean;
   humanRequested?: boolean;
-  missingField?: "date" | "daypart" | "window" | "appointment" | "service" | null;
+  missingField?: "date" | "daypart" | "window" | "appointment" | "service" | "slot_selection" | null;
   confidence: "high" | "low";
 };
 
