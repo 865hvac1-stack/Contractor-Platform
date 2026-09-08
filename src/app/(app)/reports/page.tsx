@@ -3,28 +3,40 @@ import { can } from "@/lib/permissions";
 import { getReportsSummary } from "@/lib/dashboard";
 import { formatMoney } from "@/lib/money";
 import { getCompanyProfitability, getVehicleExpenseTotals } from "@/lib/costing/reporting";
+import { loadFinancialSnapshot } from "@/lib/finance/snapshot";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
 import Link from "next/link";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string; view?: string; range?: string; source?: string }>;
+}) {
   const ctx = await requirePermission("reports:view");
-  const summary = await getReportsSummary(ctx.company.id);
+  const finance = parseFinanceSearch(await searchParams);
+  const snapshot = await loadFinancialSnapshot(ctx.company.id, finance.range);
+  const summary = await getReportsSummary(ctx.company.id, snapshot.period.start, snapshot.period.end);
   const showProfit = can(ctx.role, "job_costs:view");
+  const copy = financeFilterCopy(finance);
   const [profit, vehicles] = showProfit
     ? await Promise.all([getCompanyProfitability(ctx.company.id), getVehicleExpenseTotals(ctx.company.id)])
     : [null, []];
 
   const cards = [
     {
-      label: "Revenue this month",
-      value: formatMoney(summary.revenueCents),
+      label: `Revenue · ${snapshot.period.label}`,
+      value: formatMoney(snapshot.revenueCents),
+      href: snapshot.hrefs.revenue,
       detail:
         summary.revenueCount === 0
-          ? "No paid invoices this month"
+          ? "No paid invoices in this period"
           : `${summary.revenueCount} paid invoice${summary.revenueCount === 1 ? "" : "s"}`,
     },
     {
       label: "Open estimates",
       value: formatMoney(summary.openEstimatesValue),
+      href: snapshot.hrefs.openEstimates,
       detail:
         summary.openEstimatesCount === 0
           ? "No open estimates"
@@ -44,6 +56,7 @@ export default async function ReportsPage() {
     {
       label: "Outstanding invoices",
       value: formatMoney(summary.outstandingCents),
+      href: snapshot.hrefs.ar,
       detail:
         summary.outstandingCount === 0
           ? "Nothing outstanding"
@@ -72,25 +85,47 @@ export default async function ReportsPage() {
       <div>
         <h1 className="font-display text-3xl tracking-tight">Reports</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Month-to-date snapshot from live company data. Zeros mean no activity yet.
+          {snapshot.period.label} from live company data. Zeros mean no activity yet.
         </p>
       </div>
 
+      {copy ? (
+        <FinanceFilterContext
+          title={copy.title}
+          detail={
+            finance.view === "profit" && !snapshot.grossProfitAvailable
+              ? "Not enough confirmed job cost data to calculate gross profit yet."
+              : copy.detail
+          }
+          amount={
+            finance.view === "profit" && snapshot.grossProfitCents != null
+              ? formatMoney(snapshot.grossProfitCents)
+              : undefined
+          }
+          backHref={finance.backHref}
+        />
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map((card) => (
-          <div
-            key={card.label}
-            className="rounded-xl border border-[var(--border)] bg-white p-5"
-          >
-            <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-              {card.label}
-            </p>
-            <p className="mt-2 font-display text-3xl tabular-nums tracking-tight">
-              {card.value}
-            </p>
-            <p className="mt-2 text-sm text-[var(--muted-foreground)]">{card.detail}</p>
-          </div>
-        ))}
+        {cards.map((card) => {
+          const body = (
+            <>
+              <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">{card.label}</p>
+              <p className="mt-2 font-display text-3xl tabular-nums tracking-tight">{card.value}</p>
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">{card.detail}</p>
+            </>
+          );
+          const className = "rounded-xl border border-[var(--border)] bg-white p-5";
+          return "href" in card && card.href ? (
+            <Link key={card.label} href={card.href} className={`${className} hover:border-[var(--cy-orange)]/40`}>
+              {body}
+            </Link>
+          ) : (
+            <div key={card.label} className={className}>
+              {body}
+            </div>
+          );
+        })}
       </div>
 
       {profit ? (

@@ -1,5 +1,14 @@
 import { endOfDay, startOfDay, startOfMonth, endOfMonth, subDays, subMonths } from "date-fns";
 import { prisma } from "@/lib/db";
+import {
+  COLLECTED_DEFINITION,
+  REVENUE_DEFINITION,
+  collectedPaymentWhere,
+  outstandingInvoiceWhere,
+  overdueInvoiceWhere,
+  revenueInvoiceWhere,
+} from "@/lib/finance/definitions";
+import { collectedAmountCents } from "@/lib/payments/record";
 import { BOOKED_LEAD_STATUSES, SOLD_LEAD_STATUSES } from "@/lib/leads/sources";
 import { getMarketingHubMetrics } from "@/lib/marketing/metrics";
 import { scopedCompanyWhere } from "@/lib/intelligence/scope";
@@ -86,7 +95,8 @@ export async function getCompanyMetrics(
     estimatesSold,
     staleEstimates,
     invoiced,
-    collected,
+    revenue,
+    payments,
     outstanding,
     overdue,
     expenses,
@@ -137,22 +147,21 @@ export async function getCompanyMetrics(
       _count: true,
     }),
     prisma.invoice.aggregate({
-      where: { ...whereCompany, status: "PAID", updatedAt: inPeriod },
+      where: revenueInvoiceWhere(companyId, period.start, period.end),
       _sum: { totalCents: true },
       _count: true,
     }),
+    prisma.payment.findMany({
+      where: collectedPaymentWhere(companyId, period.start, period.end),
+      select: { amountCents: true, refundedCents: true, status: true },
+    }),
     prisma.invoice.aggregate({
-      where: { ...whereCompany, status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] }, balanceCents: { gt: 0 } },
+      where: outstandingInvoiceWhere(companyId),
       _sum: { balanceCents: true },
       _count: true,
     }),
     prisma.invoice.aggregate({
-      where: {
-        ...whereCompany,
-        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-        balanceCents: { gt: 0 },
-        dueDate: { lt: new Date() },
-      },
+      where: overdueInvoiceWhere(companyId),
       _sum: { balanceCents: true },
       _count: true,
     }),
@@ -190,6 +199,7 @@ export async function getCompanyMetrics(
     _sum: { amountCents: true },
   });
 
+  const collectedCents = payments.reduce((sum, payment) => sum + collectedAmountCents(payment), 0);
   const jobRevenue = jobInvoices.reduce((s, i) => s + i.totalCents, 0);
   const jobCost = jobExpenses._sum.amountCents ?? 0;
   const avgJobValue =
@@ -426,17 +436,30 @@ export async function getCompanyMetrics(
       reason: invoiced._count > 0 ? undefined : "No invoices issued in this period.",
     }),
     metric({
-      key: "money.collected",
-      label: "Collected",
-      definition: "Paid invoice totals marked paid in the period.",
-      available: collected._count > 0,
-      value: collected._count > 0 ? collected._sum.totalCents ?? 0 : null,
+      key: "money.revenue",
+      label: "Revenue",
+      definition: REVENUE_DEFINITION,
+      available: revenue._count > 0,
+      value: revenue._count > 0 ? revenue._sum.totalCents ?? 0 : null,
       unit: "cents",
-      sampleSize: collected._count,
+      sampleSize: revenue._count,
       periodLabel: period.label,
       periodStart: period.start,
       periodEnd: period.end,
-      reason: collected._count > 0 ? undefined : "No paid invoices in this period.",
+      reason: revenue._count > 0 ? undefined : "No paid invoices in this period.",
+    }),
+    metric({
+      key: "money.collected",
+      label: "Collected",
+      definition: COLLECTED_DEFINITION,
+      available: payments.length > 0,
+      value: payments.length > 0 ? collectedCents : null,
+      unit: "cents",
+      sampleSize: payments.length,
+      periodLabel: period.label,
+      periodStart: period.start,
+      periodEnd: period.end,
+      reason: payments.length > 0 ? undefined : "No collected payments in this period.",
     }),
     metric({
       key: "money.outstanding",

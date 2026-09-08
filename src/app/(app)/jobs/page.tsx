@@ -16,6 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
 import { JobsSubnav } from "@/components/hub-subnav";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 
 function formatSchedule(start: Date | null, end: Date | null) {
   if (!start) return "Unscheduled";
@@ -44,12 +46,24 @@ const STATUSES = [
 export default async function JobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; view?: string; page?: string; customerId?: string; when?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    view?: string;
+    page?: string;
+    customerId?: string;
+    when?: string;
+    needsInvoice?: string;
+    serviceType?: string;
+    source?: string;
+    range?: string;
+  }>;
 }) {
   const ctx = await requirePermission("jobs:view");
   const access = jobAccessFilter(ctx.role, ctx.user.id);
   const params = await searchParams;
   const query = parseJobsListQuery(params);
+  const finance = parseFinanceSearch(params);
   const where = jobsWhere({
     companyId: ctx.company.id,
     access,
@@ -58,6 +72,8 @@ export default async function JobsPage({
     view: query.view,
     customerId: query.customerId,
     when: query.when,
+    needsInvoice: query.needsInvoice,
+    serviceType: query.serviceType,
   });
   const skip = ((query.page ?? 1) - 1) * JOBS_PAGE_SIZE;
   const [total, jobs] = await Promise.all([
@@ -89,7 +105,9 @@ export default async function JobsPage({
             {query.q ? ` matching “${query.q}”` : ""}
             {query.when === "today" ? " scheduled today" : ""}
             {query.when === "upcoming" ? " upcoming" : ""}
-            {query.customerId ? " for this customer" : ""}.
+            {query.customerId ? " for this customer" : ""}
+            {query.needsInvoice ? " that still need an invoice" : ""}
+            {query.serviceType ? ` in ${query.serviceType}` : ""}.
           </p>
         </div>
         <Link href="/jobs/new" className={cn(buttonVariants())}>
@@ -97,6 +115,11 @@ export default async function JobsPage({
         </Link>
       </div>
       <JobsSubnav />
+
+      {(() => {
+        const copy = financeFilterCopy({ ...finance, needsInvoice: Boolean(query.needsInvoice), serviceType: query.serviceType });
+        return copy ? <FinanceFilterContext title={copy.title} detail={copy.detail} backHref={finance.backHref} /> : null;
+      })()}
 
       <form className="flex flex-col gap-2 sm:flex-row" method="get">
         <Input
@@ -127,6 +150,9 @@ export default async function JobsPage({
         </select>
         {query.customerId ? <input type="hidden" name="customerId" value={query.customerId} /> : null}
         {query.view ? <input type="hidden" name="view" value={query.view} /> : null}
+        {query.needsInvoice ? <input type="hidden" name="needsInvoice" value="1" /> : null}
+        {query.serviceType ? <input type="hidden" name="serviceType" value={query.serviceType} /> : null}
+        {query.source ? <input type="hidden" name="source" value={query.source} /> : null}
         <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
           Search
         </button>
@@ -134,7 +160,7 @@ export default async function JobsPage({
 
       {jobs.length === 0 ? (
         <EmptyState
-          title={query.q || query.status || query.when || query.customerId ? "No matching jobs" : "No jobs yet"}
+          title={query.q || query.status || query.when || query.customerId || query.needsInvoice || query.serviceType ? "No matching jobs" : "No jobs yet"}
           description={
             query.q || query.status || query.when || query.customerId
               ? "Try a different search or status."

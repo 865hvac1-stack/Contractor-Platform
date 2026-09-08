@@ -1,13 +1,54 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
+import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { getHomeSummary } from "@/lib/home";
+import { collectedAmountCents } from "@/lib/payments/record";
+import { paymentLabel } from "@/lib/payments/provider";
+import { collectedPaymentWhere, revenueInvoiceWhere } from "@/lib/finance/definitions";
+import { loadFinancialSnapshot } from "@/lib/finance/snapshot";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { MoneySubnav } from "@/components/hub-subnav";
 
-export default async function MoneyPage() {
+export default async function MoneyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    view?: string;
+    range?: string;
+    source?: string;
+  }>;
+}) {
   const ctx = await requirePermission("invoices:view");
-  const data = await getHomeSummary(ctx.company.id);
+  const finance = parseFinanceSearch(await searchParams);
+  const snapshot = await loadFinancialSnapshot(ctx.company.id, finance.range);
+  const isDay = finance.view === "day" && finance.start && finance.end;
+  const copy = financeFilterCopy(finance) ?? (finance.source === "home"
+    ? { title: "Money", detail: snapshot.period.label }
+    : null);
+
+  const dayRecords = isDay
+    ? await Promise.all([
+        prisma.invoice.findMany({
+          where: revenueInvoiceWhere(ctx.company.id, finance.start!, finance.end!),
+          include: { customer: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+        prisma.payment.findMany({
+          where: collectedPaymentWhere(ctx.company.id, finance.start!, finance.end!),
+          include: {
+            invoice: { select: { invoiceNumber: true, customer: { select: { firstName: true, lastName: true } } } },
+          },
+          orderBy: { paidAt: "desc" },
+        }),
+      ])
+    : null;
+
+  const dayRevenue = dayRecords?.[0].reduce((sum, invoice) => sum + invoice.totalCents, 0) ?? 0;
+  const dayCollected = dayRecords?.[1].reduce((sum, payment) => sum + collectedAmountCents(payment), 0) ?? 0;
 
   return (
     <div className="space-y-6">
@@ -18,27 +59,86 @@ export default async function MoneyPage() {
         </p>
       </header>
       <MoneySubnav />
-      {data.snapshot ? (
+
+      {copy ? (
+        <FinanceFilterContext
+          title={copy.title}
+          detail={copy.detail}
+          amount={isDay ? `${formatMoney(dayRevenue)} revenue · ${formatMoney(dayCollected)} collected` : undefined}
+          backHref={finance.backHref}
+        />
+      ) : null}
+
+      {snapshot.hasData ? (
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MoneyStat label="Revenue this month" value={formatMoney(data.snapshot.revenueCents)} href="/invoices" />
-          <MoneyStat label="Collected this month" value={formatMoney(data.snapshot.collectedCents)} href="/payments" />
-          <MoneyStat label="A/R" value={formatMoney(data.snapshot.arCents)} href="/invoices?status=overdue" />
-          <MoneyStat label="Open estimates" value={formatMoney(data.snapshot.openEstimateCents)} href="/estimates?status=open" />
+          <MoneyStat
+            label={isDay ? "Revenue this period" : `Revenue · ${snapshot.period.label}`}
+            value={formatMoney(isDay ? dayRevenue : snapshot.revenueCents)}
+            href={snapshot.hrefs.revenue}
+          />
+          <MoneyStat
+            label={isDay ? "Collected this period" : `Collected · ${snapshot.period.label}`}
+            value={formatMoney(isDay ? dayCollected : snapshot.collectedCents)}
+            href={snapshot.hrefs.collected}
+          />
+          <MoneyStat label="A/R" value={formatMoney(snapshot.arCents)} href={snapshot.hrefs.ar} />
+          <MoneyStat label="Open estimates" value={formatMoney(snapshot.openEstimateCents)} href={snapshot.hrefs.openEstimates} />
         </dl>
       ) : (
         <p className="rounded-2xl border border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
           We&apos;re still building your business picture. Verified invoices and payments will show here.
         </p>
       )}
+
+      {dayRecords ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+            <h2 className="font-medium">Paid invoices</h2>
+            {dayRecords[0].length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">No paid invoices in this period.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm">
+                {dayRecords[0].map((invoice) => (
+                  <li key={invoice.id} className="flex justify-between gap-3 border-b border-[var(--border)] py-2 last:border-0">
+                    <Link href={`/invoices/${invoice.id}`} className="hover:underline">
+                      {invoice.invoiceNumber} · {invoice.customer.firstName} {invoice.customer.lastName}
+                    </Link>
+                    <span className="tabular-nums">{formatMoney(invoice.totalCents)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+            <h2 className="font-medium">Payments</h2>
+            {dayRecords[1].length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">No collected payments in this period.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm">
+                {dayRecords[1].map((payment) => (
+                  <li key={payment.id} className="flex justify-between gap-3 border-b border-[var(--border)] py-2 last:border-0">
+                    <Link href={`/invoices/${payment.invoiceId}`} className="hover:underline">
+                      {payment.invoice.invoiceNumber} · {payment.invoice.customer.firstName}{" "}
+                      {payment.invoice.customer.lastName} · {paymentLabel(payment)}
+                    </Link>
+                    <span className="tabular-nums">{formatMoney(collectedAmountCents(payment))}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-3 text-sm font-medium">
-        <Link href="/invoices" className="text-[var(--cy-orange)]">
+        <Link href={snapshot.hrefs.revenue} className="text-[var(--cy-orange)]">
           View invoices →
         </Link>
-        <Link href="/payments" className="text-[var(--cy-orange)]">
+        <Link href={snapshot.hrefs.collected} className="text-[var(--cy-orange)]">
           View payments →
         </Link>
         {can(ctx.role, "reports:view") ? (
-          <Link href="/reports" className="text-[var(--cy-orange)]">
+          <Link href={snapshot.hrefs.reports} className="text-[var(--cy-orange)]">
             View reports →
           </Link>
         ) : null}

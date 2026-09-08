@@ -21,6 +21,9 @@ export type JobsListQuery = {
   customerId?: string;
   when?: string;
   page?: number;
+  needsInvoice?: boolean;
+  serviceType?: string;
+  source?: string;
 };
 
 export function parseJobsListQuery(input: {
@@ -30,6 +33,9 @@ export function parseJobsListQuery(input: {
   customerId?: string;
   when?: string;
   page?: string;
+  needsInvoice?: string;
+  serviceType?: string;
+  source?: string;
 }): JobsListQuery {
   const page = Number(input.page || "1");
   return {
@@ -39,6 +45,9 @@ export function parseJobsListQuery(input: {
     customerId: input.customerId?.trim() || undefined,
     when: input.when?.trim() || undefined,
     page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
+    needsInvoice: input.needsInvoice === "1" || input.needsInvoice === "true",
+    serviceType: input.serviceType?.trim() || undefined,
+    source: input.source?.trim() || undefined,
   };
 }
 
@@ -51,6 +60,8 @@ export function jobsWhere(input: {
   customerId?: string;
   when?: string;
   now?: Date;
+  needsInvoice?: boolean;
+  serviceType?: string;
 }): Prisma.JobWhereInput {
   const query = input.q?.trim();
   const status =
@@ -60,7 +71,7 @@ export function jobsWhere(input: {
   const now = input.now ?? new Date();
   const dayStart = startOfDay(now);
   const dayEnd = endOfDay(now);
-  const whenFilter =
+  const whenFilter: Prisma.JobWhereInput =
     input.when === "today"
       ? {
           scheduledStart: { gte: dayStart, lte: dayEnd },
@@ -69,40 +80,60 @@ export function jobsWhere(input: {
       : input.when === "upcoming"
         ? {
             status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS"] as JobStatus[] },
-            OR: [
-              { scheduledStart: { gte: now, lte: addDays(dayEnd, 7) } },
-              { scheduledStart: null, status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] as JobStatus[] } },
-            ],
           }
         : {};
+  const readyToInvoice = Boolean(input.needsInvoice);
+  const serviceType = input.serviceType?.trim();
+  const extraFilters: Prisma.JobWhereInput[] = [];
+  if (input.when === "upcoming") {
+    extraFilters.push({
+      OR: [
+        { scheduledStart: { gte: now, lte: addDays(dayEnd, 7) } },
+        { scheduledStart: null, status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] as JobStatus[] } },
+      ],
+    });
+  }
+  if (serviceType) {
+    extraFilters.push({
+      OR: [
+        { serviceType: { name: { equals: serviceType, mode: "insensitive" } } },
+        { jobType: { equals: serviceType, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (query) {
+    extraFilters.push({
+      OR: [
+        { jobNumber: { contains: query, mode: "insensitive" } },
+        { description: { contains: query, mode: "insensitive" } },
+        { jobType: { contains: query, mode: "insensitive" } },
+        { importedTechnicianName: { contains: query, mode: "insensitive" } },
+        { serviceType: { name: { contains: query, mode: "insensitive" } } },
+        { customer: { firstName: { contains: query, mode: "insensitive" } } },
+        { customer: { lastName: { contains: query, mode: "insensitive" } } },
+        { customer: { businessName: { contains: query, mode: "insensitive" } } },
+        { customer: { phone: { contains: query, mode: "insensitive" } } },
+        { property: { address: { contains: query, mode: "insensitive" } } },
+        { property: { city: { contains: query, mode: "insensitive" } } },
+        { assignments: { some: { user: { firstName: { contains: query, mode: "insensitive" } } } } },
+        { assignments: { some: { user: { lastName: { contains: query, mode: "insensitive" } } } } },
+      ],
+    });
+  }
   return {
     companyId: input.companyId,
     ...input.access,
-    ...(status && input.when !== "today" && input.when !== "upcoming" ? { status } : {}),
-    ...(!status && input.view === "active" && input.when !== "today" && input.when !== "upcoming"
+    ...(readyToInvoice
+      ? { status: "COMPLETED" as const, invoices: { none: {} } }
+      : status && input.when !== "today" && input.when !== "upcoming"
+        ? { status }
+        : {}),
+    ...(!readyToInvoice && !status && input.view === "active" && input.when !== "today" && input.when !== "upcoming"
       ? { status: { notIn: ["COMPLETED", "CANCELED"] as JobStatus[] } }
       : {}),
     ...(input.customerId ? { customerId: input.customerId } : {}),
     ...whenFilter,
-    ...(query
-      ? {
-          OR: [
-            { jobNumber: { contains: query, mode: "insensitive" } },
-            { description: { contains: query, mode: "insensitive" } },
-            { jobType: { contains: query, mode: "insensitive" } },
-            { importedTechnicianName: { contains: query, mode: "insensitive" } },
-            { serviceType: { name: { contains: query, mode: "insensitive" } } },
-            { customer: { firstName: { contains: query, mode: "insensitive" } } },
-            { customer: { lastName: { contains: query, mode: "insensitive" } } },
-            { customer: { businessName: { contains: query, mode: "insensitive" } } },
-            { customer: { phone: { contains: query, mode: "insensitive" } } },
-            { property: { address: { contains: query, mode: "insensitive" } } },
-            { property: { city: { contains: query, mode: "insensitive" } } },
-            { assignments: { some: { user: { firstName: { contains: query, mode: "insensitive" } } } } },
-            { assignments: { some: { user: { lastName: { contains: query, mode: "insensitive" } } } } },
-          ],
-        }
-      : {}),
+    ...(extraFilters.length === 1 ? extraFilters[0] : extraFilters.length > 1 ? { AND: extraFilters } : {}),
   };
 }
 
@@ -113,6 +144,9 @@ export function jobsListHref(query: JobsListQuery, page = query.page ?? 1) {
   if (query.status && query.status !== "ALL") params.set("status", query.status);
   if (query.customerId) params.set("customerId", query.customerId);
   if (query.when) params.set("when", query.when);
+  if (query.needsInvoice) params.set("needsInvoice", "1");
+  if (query.serviceType) params.set("serviceType", query.serviceType);
+  if (query.source) params.set("source", query.source);
   if (page > 1) params.set("page", String(page));
   const text = params.toString();
   return text ? `/jobs?${text}` : "/jobs";

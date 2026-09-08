@@ -10,6 +10,7 @@ import {
   addDays,
 } from "date-fns";
 import { prisma } from "@/lib/db";
+import { openEstimateWhere, outstandingInvoiceWhere, revenueInvoiceWhere } from "@/lib/finance/definitions";
 import { getNeedsAttention } from "@/lib/attention";
 import { attentionFilterCounts, homeAttentionItems, prioritizeAttention } from "@/lib/attention-priority";
 import { BOOKED_LEAD_STATUSES, LEAD_SOURCE_LABELS } from "@/lib/leads/sources";
@@ -637,20 +638,20 @@ export async function getScheduleJobs(companyId: string, view: "today" | "week")
   });
 }
 
-export async function getReportsSummary(companyId: string) {
+export async function getReportsSummary(companyId: string, start?: Date, end?: Date) {
   const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
+  const monthStart = start ?? startOfMonth(now);
+  const monthEnd = end ?? endOfMonth(now);
 
   const [revenue, openEstimates, allEstimates, outstanding, completedJobs, expenses] =
     await Promise.all([
       prisma.invoice.aggregate({
-        where: { companyId, status: "PAID", updatedAt: { gte: monthStart, lte: monthEnd } },
+        where: revenueInvoiceWhere(companyId, monthStart, monthEnd),
         _sum: { totalCents: true },
         _count: true,
       }),
       prisma.estimate.aggregate({
-        where: { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] } },
+        where: openEstimateWhere(companyId),
         _sum: { totalCents: true },
         _count: true,
       }),
@@ -660,11 +661,7 @@ export async function getReportsSummary(companyId: string) {
         _count: true,
       }),
       prisma.invoice.aggregate({
-        where: {
-          companyId,
-          status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-          balanceCents: { gt: 0 },
-        },
+        where: outstandingInvoiceWhere(companyId),
         _sum: { balanceCents: true },
         _count: true,
       }),

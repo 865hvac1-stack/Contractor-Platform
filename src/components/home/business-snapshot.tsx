@@ -1,56 +1,31 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { formatMoney } from "@/lib/money";
+import { homeRangeHref } from "@/lib/finance/hrefs";
+import { FINANCE_RANGES, type FinanceRange } from "@/lib/finance/period";
+import type { FinancialSnapshot } from "@/lib/finance/snapshot";
+import { RevenueCollectionsChart, RevenueMixChart } from "@/components/home/finance-charts";
+
+const RANGE_LABELS: Record<FinanceRange, string> = {
+  month: "This month",
+  "30d": "30 days",
+  "90d": "90 days",
+  "12m": "12 months",
+};
 
 export function BusinessSnapshot({
   snapshot,
   canReports,
+  canCosts = false,
 }: {
-  snapshot: {
-    revenueCents: number;
-    collectedCents: number;
-    arCents: number;
-    openEstimateCents: number;
-    revenueTrend: number | null;
-    sparkline: number[] | null;
-  } | null;
+  snapshot: FinancialSnapshot;
   canReports: boolean;
+  canCosts?: boolean;
 }) {
-  return (
-    <section className="rounded-2xl border border-[var(--border)] bg-white px-5 py-5 shadow-[0_8px_24px_rgba(11,18,32,0.04)] md:px-6">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-            Business snapshot
-          </h2>
-          <p className="mt-1 text-sm text-[var(--cy-text-secondary)]">This month</p>
-        </div>
-        <div className="flex gap-3 text-sm font-medium">
-          <Link href="/money" className="text-[var(--cy-orange)]">
-            View Money →
-          </Link>
-          {canReports ? (
-            <Link href="/reports" className="text-[var(--cy-navy)]">
-              View Reports →
-            </Link>
-          ) : null}
-        </div>
-      </div>
-
-      {snapshot ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-          <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat
-              label="Revenue"
-              value={formatMoney(snapshot.revenueCents)}
-              trend={snapshot.revenueTrend}
-            />
-            <Stat label="Collected" value={formatMoney(snapshot.collectedCents)} />
-            <Stat label="A/R" value={formatMoney(snapshot.arCents)} />
-            <Stat label="Open estimates" value={formatMoney(snapshot.openEstimateCents)} />
-          </dl>
-          {snapshot.sparkline ? <Sparkline values={snapshot.sparkline} /> : null}
-        </div>
-      ) : (
+  if (!snapshot.hasData) {
+    return (
+      <section className="rounded-2xl border border-[var(--border)] bg-white px-5 py-5 shadow-[0_8px_24px_rgba(11,18,32,0.04)] md:px-6">
+        <Header snapshot={snapshot} canReports={canReports} />
         <div className="mt-4 rounded-xl bg-[var(--cy-gray)] px-4 py-5">
           <p className="font-medium text-[var(--cy-navy)]">We&apos;re building your business picture.</p>
           <p className="mt-1 text-sm text-[var(--cy-text-secondary)]">
@@ -60,41 +35,150 @@ export function BusinessSnapshot({
             View Money →
           </Link>
         </div>
-      )}
+      </section>
+    );
+  }
+
+  const grossValue = !canCosts
+    ? "Restricted"
+    : snapshot.grossProfitAvailable && snapshot.grossProfitCents != null
+      ? formatMoney(snapshot.grossProfitCents)
+      : "Not enough cost data";
+
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-white px-5 py-5 shadow-[0_8px_24px_rgba(11,18,32,0.04)] md:px-6">
+      <Header snapshot={snapshot} canReports={canReports} />
+
+      <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <Kpi label="Revenue" value={formatMoney(snapshot.revenueCents)} href={snapshot.hrefs.revenue} />
+        <Kpi label="Collected" value={formatMoney(snapshot.collectedCents)} href={snapshot.hrefs.collected} />
+        <Kpi
+          label="Gross profit"
+          value={grossValue}
+          href={snapshot.hrefs.grossProfit}
+          muted={!snapshot.grossProfitAvailable || !canCosts}
+        />
+        <Kpi label="A/R" value={formatMoney(snapshot.arCents)} href={snapshot.hrefs.ar} />
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-navy)]">
+            Revenue & collections
+          </h3>
+          <div className="mt-3">
+            <RevenueCollectionsChart points={snapshot.trend} />
+          </div>
+        </div>
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-navy)]">Revenue mix</h3>
+          <div className="mt-3">
+            <RevenueMixChart slices={snapshot.mix} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-2 border-t border-[var(--border)] pt-4 lg:grid-cols-4">
+        <Kpi
+          compact
+          label="Open estimates"
+          value={formatMoney(snapshot.openEstimateCents)}
+          href={snapshot.hrefs.openEstimates}
+        />
+        <Kpi
+          compact
+          label="Overdue A/R"
+          value={formatMoney(snapshot.overdueArCents)}
+          href={snapshot.hrefs.overdueAr}
+        />
+        <Kpi
+          compact
+          label="Average ticket"
+          value={snapshot.averageTicketCents == null ? "—" : formatMoney(snapshot.averageTicketCents)}
+          href={snapshot.hrefs.averageTicket}
+        />
+        {snapshot.readyToInvoiceCount > 0 ? (
+          <Kpi
+            compact
+            label="Ready to invoice"
+            value={`${snapshot.readyToInvoiceCount} job${snapshot.readyToInvoiceCount === 1 ? "" : "s"}`}
+            href={snapshot.hrefs.readyToInvoice}
+          />
+        ) : null}
+      </div>
     </section>
   );
 }
 
-function Stat({ label, value, trend }: { label: string; value: string; trend?: number | null }) {
+function Header({ snapshot, canReports }: { snapshot: FinancialSnapshot; canReports: boolean }) {
   return (
-    <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">{label}</dt>
-      <dd className="mt-1 text-2xl font-semibold tabular-nums text-[var(--cy-navy)]">{value}</dd>
-      {trend != null ? (
-        <p className={`mt-1 text-xs ${trend >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-          {trend >= 0 ? "↑" : "↓"} {Math.abs(trend)}% vs last month
-        </p>
-      ) : null}
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+          Business snapshot
+        </h2>
+        <p className="mt-1 text-sm text-[var(--cy-text-secondary)]">{snapshot.period.label}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-full bg-[var(--cy-gray)] p-0.5">
+          {FINANCE_RANGES.map((range) => (
+            <Link
+              key={range}
+              href={homeRangeHref(range)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                snapshot.period.range === range
+                  ? "bg-white text-[var(--cy-navy)] shadow-sm"
+                  : "text-[var(--cy-text-secondary)] hover:text-[var(--cy-navy)]"
+              }`}
+            >
+              {RANGE_LABELS[range]}
+            </Link>
+          ))}
+        </div>
+        <Link href={snapshot.hrefs.money} className="text-sm font-medium text-[var(--cy-orange)]">
+          View Money →
+        </Link>
+        {canReports ? (
+          <Link href={snapshot.hrefs.reports} className="text-sm font-medium text-[var(--cy-navy)]">
+            View Reports →
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function Sparkline({ values }: { values: number[] }) {
-  const width = 160;
-  const height = 48;
-  const max = Math.max(...values, 1);
-  const points = values
-    .map((value, index) => {
-      const x = (index / Math.max(values.length - 1, 1)) * width;
-      const y = height - (value / max) * (height - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
+function Kpi({
+  label,
+  value,
+  href,
+  compact,
+  muted,
+}: {
+  label: string;
+  value: string;
+  href: string;
+  compact?: boolean;
+  muted?: boolean;
+}) {
   return (
-    <div className="hidden items-end lg:flex">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-        <polyline fill="none" stroke="#f87000" strokeWidth="2" points={points} />
-      </svg>
-    </div>
+    <Link
+      href={href}
+      aria-label={`View ${label}`}
+      className={`group cursor-pointer rounded-xl border border-[var(--border)] bg-white text-left transition hover:-translate-y-0.5 hover:border-[var(--cy-orange)]/40 hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cy-navy)] ${
+        compact ? "px-3 py-3" : "px-4 py-3.5"
+      }`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-text-muted)]">{label}</p>
+      <p
+        className={`mt-1 flex items-center justify-between gap-2 font-semibold tabular-nums text-[var(--cy-navy)] ${
+          compact ? "text-lg" : "text-2xl"
+        } ${muted ? "text-[var(--cy-text-secondary)]" : ""}`}
+      >
+        <span className="truncate">{value}</span>
+        <ChevronRight className="size-4 shrink-0 text-[var(--muted-foreground)] group-hover:text-[var(--cy-orange)]" />
+      </p>
+      <p className="mt-1 text-[11px] font-medium text-[var(--cy-orange)]">View →</p>
+    </Link>
   );
 }

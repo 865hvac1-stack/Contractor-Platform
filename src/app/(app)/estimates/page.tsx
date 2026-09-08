@@ -7,6 +7,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { JobsSubnav } from "@/components/hub-subnav";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 import type { EstimateStatus, Prisma } from "@prisma/client";
 import {
   Table,
@@ -20,10 +22,12 @@ import {
 export default async function EstimatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; source?: string; range?: string }>;
 }) {
   const ctx = await requirePermission("estimates:view");
-  const { status } = await searchParams;
+  const params = await searchParams;
+  const { status } = params;
+  const finance = parseFinanceSearch(params);
   const now = new Date();
   const followUpCutoff = new Date();
   followUpCutoff.setDate(followUpCutoff.getDate() - 3);
@@ -78,6 +82,19 @@ export default async function EstimatesPage({
         </Link>
       </div>
       <JobsSubnav />
+
+      {(() => {
+        const copy = financeFilterCopy({ ...finance, status: status ?? finance.status });
+        const openTotal = estimates.reduce((sum, estimate) => sum + estimate.totalCents, 0);
+        return copy ? (
+          <FinanceFilterContext
+            title={copy.title}
+            detail={copy.detail}
+            amount={status === "open" && estimates.length > 0 ? formatMoney(openTotal) : undefined}
+            backHref={finance.backHref}
+          />
+        ) : null;
+      })()}
 
       <div className="flex flex-wrap gap-2">
         {[

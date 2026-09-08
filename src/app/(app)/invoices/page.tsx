@@ -7,7 +7,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MoneySubnav } from "@/components/hub-subnav";
-import type { InvoiceStatus, Prisma } from "@prisma/client";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
+import { invoicesWhere, parseInvoicesListQuery } from "@/lib/invoices/search";
 import {
   Table,
   TableBody,
@@ -20,26 +22,31 @@ import {
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    from?: string;
+    to?: string;
+    view?: string;
+    serviceType?: string;
+    source?: string;
+    range?: string;
+  }>;
 }) {
   const ctx = await requirePermission("invoices:view");
-  const { status } = await searchParams;
-  const now = new Date();
-  const overdueStatuses: InvoiceStatus[] = ["SENT", "PARTIALLY_PAID", "OVERDUE"];
-  const where: Prisma.InvoiceWhereInput =
-    status === "overdue"
-      ? {
-          companyId: ctx.company.id,
-          status: { in: overdueStatuses },
-          balanceCents: { gt: 0 },
-          dueDate: { lt: now },
-        }
-      : { companyId: ctx.company.id };
+  const params = await searchParams;
+  const query = parseInvoicesListQuery(params);
+  const finance = parseFinanceSearch(params);
+  const where = invoicesWhere(ctx.company.id, query);
   const invoices = await prisma.invoice.findMany({
     where,
-    include: { customer: true },
+    include: { customer: true, serviceType: { select: { name: true } }, job: { select: { jobType: true } } },
     orderBy: { createdAt: "desc" },
   });
+  const copy = financeFilterCopy(finance);
+  const amountField = finance.view === "ar" || finance.view === "overdue" || query.status === "OPEN" || query.status === "overdue"
+    ? "balanceCents"
+    : "totalCents";
+  const totalCents = invoices.reduce((sum, invoice) => sum + invoice[amountField], 0);
 
   return (
     <div className="space-y-6">
@@ -47,9 +54,7 @@ export default async function InvoicesPage({
         <div>
           <h1 className="font-display text-3xl tracking-tight">Invoices</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {status === "overdue"
-              ? "Showing overdue invoices with an outstanding balance."
-              : "Bill customers and track balances."}
+            {copy?.detail ?? "Bill customers and track balances."}
           </p>
         </div>
         <Link href="/invoices/new" className={cn(buttonVariants())}>
@@ -58,16 +63,27 @@ export default async function InvoicesPage({
       </div>
       <MoneySubnav />
 
+      {copy ? (
+        <FinanceFilterContext
+          title={copy.title}
+          detail={copy.detail}
+          amount={invoices.length > 0 ? formatMoney(totalCents) : undefined}
+          backHref={finance.backHref}
+        />
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         {[
           { id: "", label: "All" },
+          { id: "OPEN", label: "Open" },
+          { id: "PAID", label: "Paid" },
           { id: "overdue", label: "Overdue" },
         ].map((item) => (
           <Link
             key={item.label}
             href={item.id ? `/invoices?status=${item.id}` : "/invoices"}
             className={`rounded-full px-3 py-1 text-sm ${
-              (status || "") === item.id
+              (query.status || "") === item.id
                 ? "bg-[var(--cy-navy)] text-white"
                 : "bg-white text-[var(--cy-navy)] ring-1 ring-[var(--border)]"
             }`}
@@ -79,8 +95,12 @@ export default async function InvoicesPage({
 
       {invoices.length === 0 ? (
         <EmptyState
-          title="No invoices yet"
-          description="Create an invoice with line items when work is ready to bill."
+          title={query.status || query.from || query.serviceType ? "No matching invoices" : "No invoices yet"}
+          description={
+            query.status || query.from || query.serviceType
+              ? "Nothing in ContractorYou matches this filter yet."
+              : "Create an invoice with line items when work is ready to bill."
+          }
           actionLabel="New invoice"
           actionHref="/invoices/new"
         />
@@ -107,6 +127,9 @@ export default async function InvoicesPage({
                     >
                       {inv.invoiceNumber}
                     </Link>
+                    {inv.serviceType?.name || inv.job?.jobType ? (
+                      <p className="text-xs text-[var(--muted-foreground)]">{inv.serviceType?.name || inv.job?.jobType}</p>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     {inv.customer.firstName} {inv.customer.lastName}

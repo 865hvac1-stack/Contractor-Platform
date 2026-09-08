@@ -68,6 +68,9 @@ describe("home premium surface", () => {
     expect(hero).toContain("View Dispatch");
     expect(needs).toContain("View all");
     expect(snapshot).toContain("We&apos;re building your business picture.");
-    expect(snapshot).toContain("vs last month");
+    expect(snapshot).toContain("Revenue & collections");
+    expect(snapshot).toContain("Revenue mix");
+    expect(snapshot).toContain("View →");
+    expect(snapshot).not.toContain("vs last month");
   });
 });

@@ -10,14 +10,36 @@ import { uxStatus } from "@/lib/payments/connect";
 import { stripeConfigured } from "@/lib/payments/config";
 import { EmptyState } from "@/components/empty-state";
 import { MoneySubnav } from "@/components/hub-subnav";
+import { FinanceFilterContext } from "@/components/finance/filter-context";
+import { collectedPaymentWhere } from "@/lib/finance/definitions";
+import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
+import { collectedAmountCents } from "@/lib/payments/record";
 
-export default async function PaymentsDashboardPage() {
+export default async function PaymentsDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string; view?: string; range?: string; source?: string }>;
+}) {
   const ctx = await requirePermission("invoices:view");
-  const [metrics, recent, account] = await Promise.all([
+  const finance = parseFinanceSearch(await searchParams);
+  const filtered = Boolean(finance.start && finance.end);
+  const [metrics, recent, account, periodPayments] = await Promise.all([
     companyPaymentMetrics(prisma, ctx.company.id),
     recentCompanyPayments(prisma, ctx.company.id),
     prisma.stripeConnectAccount.findUnique({ where: { companyId: ctx.company.id } }),
+    filtered
+      ? prisma.payment.findMany({
+          where: collectedPaymentWhere(ctx.company.id, finance.start!, finance.end!),
+          include: {
+            invoice: { select: { invoiceNumber: true, customer: { select: { firstName: true, lastName: true } } } },
+          },
+          orderBy: { paidAt: "desc" },
+        })
+      : Promise.resolve(null),
   ]);
+  const copy = financeFilterCopy(finance);
+  const periodTotal = (periodPayments ?? []).reduce((sum, payment) => sum + collectedAmountCents(payment), 0);
+  const list = periodPayments ?? recent;
   const status = uxStatus({ platformConfigured: stripeConfigured(), account });
   const canPayouts = can(ctx.role, "payments:view_payouts");
   const payouts = canPayouts ? await loadPayoutSnapshot(prisma, ctx.company.id) : null;
@@ -48,6 +70,15 @@ export default async function PaymentsDashboardPage() {
         ) : null}
       </div>
       <MoneySubnav />
+
+      {copy ? (
+        <FinanceFilterContext
+          title={copy.title}
+          detail={copy.detail}
+          amount={filtered ? formatMoney(periodTotal) : undefined}
+          backHref={finance.backHref}
+        />
+      ) : null}
 
       <p className="text-sm text-[var(--muted-foreground)]">
         ContractorYou Payments: {status.replaceAll("_", " ")}
@@ -105,22 +136,22 @@ export default async function PaymentsDashboardPage() {
       ) : null}
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
-        <h2 className="font-medium">Recent payments</h2>
-        {recent.length === 0 ? (
+        <h2 className="font-medium">{filtered ? "Payments in this period" : "Recent payments"}</h2>
+        {list.length === 0 ? (
           <EmptyState
             title="No payments yet"
             description="Collected card, bank, cash, and check payments will appear here. Nothing is invented."
           />
         ) : (
           <ul className="mt-3 space-y-2 text-sm">
-            {recent.map((payment) => (
+            {list.map((payment) => (
               <li key={payment.id} className="flex justify-between gap-3 border-b border-[var(--border)] py-2 last:border-0">
                 <span>
                   {payment.invoice.invoiceNumber} · {payment.invoice.customer.firstName}{" "}
                   {payment.invoice.customer.lastName} · {paymentLabel(payment)}
                 </span>
                 <Link href={`/invoices/${payment.invoiceId}`} className="tabular-nums underline">
-                  {formatMoney(payment.amountCents)}
+                  {formatMoney(collectedAmountCents(payment))}
                 </Link>
               </li>
             ))}

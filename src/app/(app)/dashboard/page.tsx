@@ -4,6 +4,7 @@ import { isFieldRole } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
 import { landingPath } from "@/lib/workspaces";
 import { AskContractorYou } from "@/components/ask-contractoryou";
+import { parseFinanceRange } from "@/lib/finance/period";
 import { getHomeSummary } from "@/lib/home";
 import { CommandHero } from "@/components/home/command-hero";
 import { NeedsYou } from "@/components/home/needs-you";
@@ -23,13 +24,18 @@ const HOME_PROMPTS = [
   "How are we doing this month?",
 ];
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const ctx = await requirePermission("dashboard:view");
   if (isFieldRole(ctx.role)) redirect(landingPath(ctx.role));
 
   const canSeeMoney = can(ctx.role, "invoices:view");
   const canAsk = can(ctx.role, "intelligence:view");
-  const data = await getHomeSummary(ctx.company.id);
+  const range = parseFinanceRange((await searchParams).range);
+  const data = await getHomeSummary(ctx.company.id, range);
   const greeting = greetingForHour(new Date().getHours());
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -73,7 +79,11 @@ export default async function DashboardPage() {
       ) : null}
 
       {canSeeMoney ? (
-        <BusinessSnapshot snapshot={data.snapshot} canReports={can(ctx.role, "reports:view")} />
+        <BusinessSnapshot
+          snapshot={data.snapshot}
+          canReports={can(ctx.role, "reports:view")}
+          canCosts={can(ctx.role, "job_costs:view")}
+        />
       ) : null}
     </div>
   );
