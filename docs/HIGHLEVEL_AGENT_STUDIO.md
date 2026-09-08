@@ -54,14 +54,31 @@ Request fields are all optional except that enough context should exist for a us
 }
 ```
 
-Map these response fields into Agent Studio runtime variables:
+HighLevel Agent Studio often drops nested objects and arrays (`data` can appear as `{}` in a live run even when the Custom API Test tab shows the full JSON). The API still returns the rich nested `data` contract. It also returns **top-level scalars** for Response Mapping.
 
-- `data.available_slots` → `runtime.available_slots`
-- `data.customer` → `runtime.customer`
-- `data.requires` → `runtime.requires`
-- `error` → `runtime.error`
+Map these **top-level** fields first:
 
-Each slot includes an opaque `slot_token`. Offer only those windows. Do not invent times.
+- `availability_found` → `runtime.availability_found`
+- `available_slots_text` → `runtime.available_slots_text`
+- `slot_1_display` / `slot_1_token` → `runtime.slot_1_display` / `runtime.slot_1_token`
+- `slot_2_display` / `slot_2_token`
+- `slot_3_display` / `slot_3_token`
+- `slot_4_display` / `slot_4_token`
+- `customer_first_name` → `runtime.customer_first_name`
+- `customer_status` → `runtime.customer_status`
+- `property_address` → `runtime.property_address`
+- `property_status` → `runtime.property_status`
+- `service_type_name` → `runtime.service_type_name`
+- `requires_customer_name` → `runtime.requires_customer_name`
+- `requires_service_address` → `runtime.requires_service_address`
+- `requires_property_selection` → `runtime.requires_property_selection`
+- `requires_office` → `runtime.requires_office`
+- `agent_instruction` → `runtime.agent_instruction`
+- `error_code` → `runtime.error_code`
+
+Keep `data.available_slots` in the JSON for debugging. Do not rely on it inside a live Agent run.
+
+Unused slot numbers are `null`. `available_slots_text` is the same windows joined with ` | `. Never invent times.
 
 ## Book appointment
 
@@ -87,34 +104,42 @@ Each slot includes an opaque `slot_token`. Offer only those windows. Do not inve
 }
 ```
 
-Map:
+Map these **top-level** fields first:
 
-- `data.booking` → `runtime.booking`
-- `data.customer` → `runtime.customer`
-- `error` → `runtime.error`
+- `booking_confirmed` → `runtime.booking_confirmed`
+- `appointment_display` → `runtime.appointment_display`
+- `appointment_date` → `runtime.appointment_date`
+- `appointment_window_start` / `appointment_window_end`
+- `booking_id` / `job_id` / `job_number`
+- `customer_first_name` / `property_address`
+- `agent_instruction` → `runtime.agent_instruction`
+- `error_code` → `runtime.error_code`
+- On `SLOT_NO_LONGER_AVAILABLE`: `slot_1_display` … `slot_4_token` and `available_slots_text`
 
-Booking always re-checks ContractorYou capacity. The slot token is not a reservation. If the window is gone, the response is `SLOT_NO_LONGER_AVAILABLE` plus any real alternatives.
+`technician_name` is only filled when ContractorYou already has a name. Do not invent one.
+
+Booking always re-checks ContractorYou capacity. The slot token is not a reservation. If the window is gone, the response is `SLOT_NO_LONGER_AVAILABLE` plus any real alternatives, flattened the same way as check-availability.
 
 ## Proof-of-concept flow
 
 1. Customer texts a scheduling need.
 2. Regina / the LLM extracts date, daypart, and service need.
 3. Call **Check Availability**.
-4. Offer only `runtime.available_slots`.
-5. Customer picks one.
-6. Ask only for missing name, address, or property if `runtime.requires` says so.
+4. Offer only `runtime.slot_1_display` through `runtime.slot_4_display` (or `runtime.available_slots_text`). Skip null slots.
+5. Customer picks one. Use the matching `runtime.slot_N_token`.
+6. Ask only for missing name, address, or property when the `requires_*` booleans are true.
 7. Call **Book Appointment** with that `slot_token`.
-8. Confirm the exact `runtime.booking` window. Do not send a second ContractorYou confirmation text.
+8. Confirm the exact `runtime.appointment_display`. Do not send a second ContractorYou confirmation text.
 
 ## LLM instructions
 
 Availability:
 
-> You are the customer-facing scheduling assistant for this contractor. Only offer appointment windows returned in runtime.available_slots. Never invent availability. Speak naturally and concisely. If additional customer information is required, ask only for the missing information. Do not mention APIs, ContractorYou, capacity calculations, or internal systems.
+> You are the customer-facing scheduling assistant for this contractor. Follow runtime.agent_instruction. Only offer appointment windows in runtime.slot_1_display through runtime.slot_4_display or runtime.available_slots_text. Never invent availability. Speak naturally and concisely. If additional customer information is required, ask only for the missing information. Do not mention APIs, ContractorYou, capacity calculations, or internal systems.
 
 Confirmation:
 
-> The booking returned in runtime.booking is authoritative. Confirm the exact date and appointment window naturally. Do not claim a technician identity unless the booking response explicitly provides one. Do not invent pricing or diagnostic information.
+> runtime.appointment_display is authoritative when runtime.booking_confirmed is true. Confirm that exact date and appointment window naturally. Do not claim a technician identity unless technician_name is present. Do not invent pricing or diagnostic information.
 
 ## Environment
 

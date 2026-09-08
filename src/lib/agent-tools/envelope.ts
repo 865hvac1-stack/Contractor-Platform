@@ -1,3 +1,5 @@
+import { withStudioFields } from "@/lib/agent-tools/studio-fields";
+
 export type AgentToolAction = "check_availability" | "book_appointment";
 
 export type AgentToolError = {
@@ -17,14 +19,14 @@ export function toolOk<T>(
   action: AgentToolAction,
   data: T,
   customerMessageContext?: Record<string, unknown>
-): AgentToolEnvelope<T> {
-  return {
+) {
+  return withStudioFields({
     success: true,
     action,
     data,
     customer_message_context: customerMessageContext,
     error: null,
-  };
+  });
 }
 
 export function toolError(
@@ -33,14 +35,14 @@ export function toolError(
   message: string,
   data: Record<string, unknown> | null = null,
   customerMessageContext?: Record<string, unknown>
-): AgentToolEnvelope<Record<string, unknown>> {
-  return {
+) {
+  return withStudioFields({
     success: false,
     action,
     data,
     customer_message_context: customerMessageContext,
     error: { code, message },
-  };
+  });
 }
 
 export function httpStatusForCode(code: string) {
