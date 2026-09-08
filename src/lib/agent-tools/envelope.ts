@@ -55,9 +55,16 @@ export function httpStatusForCode(code: string) {
     code === "PROPERTY_SELECTION_REQUIRED" ||
     code === "CUSTOMER_NAME_REQUIRED" ||
     code === "SERVICE_TYPE_REQUIRED" ||
-    code === "SLOT_TOKEN_INVALID"
+    code === "SLOT_TOKEN_INVALID" ||
+    code === "SLOT_NOT_SELECTED" ||
+    code === "CONVERSATION_AMBIGUOUS" ||
+    code === "CONVERSATION_NOT_FOUND"
   ) {
     return 422;
+  }
+  if (code === "SLOT_EXPIRED") return 409;
+  if (code === "BOOKING_TRANSACTION_FAILED" || code === "BOOKING_VERIFY_FAILED" || code === "DISPATCH_VERIFY_FAILED") {
+    return 500;
   }
   if (code === "INVALID_REQUEST") return 400;
   if (code === "INTERNAL_ERROR") return 500;

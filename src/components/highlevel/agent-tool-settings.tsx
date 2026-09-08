@@ -24,8 +24,9 @@ export function AgentToolSettings({
       <div>
         <h2 className="font-medium">HighLevel Agent Studio tools</h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Regina talks. ContractorYou checks real availability and books the job. These keys are for Agent Studio
-          only. ContractorYou will not send the customer a text from these tools.
+          Regina talks. ContractorYou is the source of truth for availability and booking. After a real booking
+          commits, ContractorYou sends the confirmation SMS. Regina must never tell a customer they are scheduled
+          unless booking_confirmed is true.
         </p>
       </div>
       <ActionForm action={generateAgentToolKeyAction}>

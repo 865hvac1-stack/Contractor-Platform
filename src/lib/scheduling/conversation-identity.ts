@@ -89,7 +89,37 @@ export function parseServiceAddress(text: string): { street: string; city: strin
       zip: loose[4]!,
     };
   }
+  const streetOnly = cleaned.match(/^(\d{1,6}\s+[A-Za-z][A-Za-z0-9.#'' -]{1,80})$/);
+  if (streetOnly) {
+    return {
+      street: streetOnly[1]!.trim(),
+      city: "",
+      state: "",
+      zip: "",
+    };
+  }
   return null;
+}
+
+export function normalizeStreetAddress(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.,#]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function addressesLikelyMatch(left?: string | null, right?: string | null) {
+  const a = normalizeStreetAddress(left);
+  const b = normalizeStreetAddress(right);
+  return Boolean(a && b && a === b);
+}
+
+export function hasReliableCustomerName(firstName?: string | null, lastName?: string | null) {
+  const first = (firstName || "").trim();
+  if (first.length < 2) return false;
+  return !/^(unknown|customer|n\/a|na|test|user|homeowner|new)$/i.test(first);
 }
 
 export function streetLabel(address: string) {
@@ -358,9 +388,13 @@ export async function createPropertyForConversation(
   });
   const street = input.street.trim();
   const zip = input.zip.trim();
-  const duplicate = existing.find(
-    (row) => row.address.trim().toLowerCase() === street.toLowerCase() && row.zip.trim() === zip
-  );
+  const duplicate = existing.find((row) => {
+    if (addressesLikelyMatch(row.address, street)) {
+      if (!zip || !row.zip.trim()) return true;
+      return row.zip.trim() === zip;
+    }
+    return false;
+  });
   if (duplicate) return duplicate.id;
 
   const property = await db.property.create({
@@ -388,6 +422,10 @@ export async function createPropertyForConversation(
 function titleCase(value: string) {
   return value
     .split(/(\s+|-)/)
-    .map((part) => (/^[a-zA-Z]/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part))
+    .map((part) => {
+      if (!/^[a-zA-Z]/.test(part)) return part;
+      if (part.length <= 3 && part === part.toUpperCase()) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
     .join("");
 }

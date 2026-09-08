@@ -7,6 +7,7 @@ import { getCustomerMaintenanceSummary } from "@/lib/scheduling/maintenance";
 import { addLocalDays, companyTodayKey, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { interpretSchedulingIntent } from "@/lib/scheduling/intent";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
+import { parseToolServiceAddress, toolAddressSchema } from "@/lib/agent-tools/booking-contract";
 import { persistOfferedSlots, resolveActionThread } from "@/lib/agent-tools/persist-offers";
 import { sendActionResultSms } from "@/lib/agent-tools/send-result";
 import { signSlotToken } from "@/lib/agent-tools/slot-token";
@@ -31,6 +32,7 @@ export const checkAvailabilitySchema = z.object({
   requested_date: z.string().optional().nullable(),
   requested_daypart: z.string().optional().nullable(),
   timezone: z.string().optional().nullable(),
+  service_address: toolAddressSchema.optional().nullable(),
   send_to_customer: z.boolean().optional(),
 });
 
@@ -128,11 +130,15 @@ export async function checkAvailabilityTool(input: {
       });
 
   const offered = uniqueWindowOffers(rawOptions, 4);
-  const thread = await resolveActionThread({
+  const resolvedThread = await resolveActionThread({
     companyId: input.companyId,
     conversationId: body.conversation_id,
     phone: body.customer_phone,
+    contactId: body.contact_id,
   });
+  const thread = resolvedThread.status === "resolved" ? resolvedThread.thread : null;
+  const ambiguousThread = resolvedThread.status === "ambiguous";
+  const intake = parseToolServiceAddress(body.service_address) ?? undefined;
   if (thread && offered.length) {
     await persistOfferedSlots({
       companyId: input.companyId,
@@ -140,7 +146,10 @@ export async function checkAvailabilityTool(input: {
       customerId: customer.customer_id,
       propertyId: customer.property_id,
       serviceTypeId: service.serviceType.id,
+      customerConcern: body.service_need,
+      intake,
       slots: offered,
+      phase: "SLOTS_OFFERED",
     });
   }
 
@@ -204,6 +213,8 @@ export async function checkAvailabilityTool(input: {
           available_slots: [],
           requires,
           requires_office: true,
+          booking_confirmed: false,
+          customer_message: "I don’t see an open window right now. I’ll have the office help with scheduling.",
           maintenance,
           horizon_days: horizon,
         },
@@ -228,7 +239,8 @@ export async function checkAvailabilityTool(input: {
         service_type: { id: service.serviceType.id, name: service.serviceType.name },
         available_slots: slots,
         requires,
-        requires_office: false,
+        requires_office: ambiguousThread,
+        booking_confirmed: false,
         maintenance,
         next_search_date: addLocalDays(today, 1),
       },

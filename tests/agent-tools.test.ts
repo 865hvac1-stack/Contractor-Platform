@@ -113,10 +113,10 @@ describe("Agent Tool scheduling adapter", () => {
     expect(docs).toMatch(/check-availability/);
     expect(docs).toMatch(/book-appointment/);
     expect(docs).toMatch(/Authorization: Bearer/);
-    expect(docs).toMatch(/runtime.available_slots/);
-    expect(docs).toMatch(/runtime.slot_1_display/);
-    expect(docs).toMatch(/runtime.appointment_display/);
-    expect(docs).toMatch(/runtime.booking/);
+    expect(docs).toMatch(/booking_confirmed/);
+    expect(docs).toMatch(/slot_1_display/);
+    expect(docs).toMatch(/appointment_display/);
+    expect(docs).toMatch(/Do not tell the customer they are booked/);
     expect(docs).not.toMatch(/ghp_/);
     expect(docs).not.toMatch(/cyat_[A-Za-z0-9_-]{20,}/);
   });

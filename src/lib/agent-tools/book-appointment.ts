@@ -1,20 +1,25 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
-import { mapContactToCustomer } from "@/lib/highlevel/contacts";
-import { bookAppointment, findNextAvailableOptions, getAvailability } from "@/lib/scheduling";
 import {
-  createCustomerForConversation,
-  createPropertyForConversation,
-  jobDescriptionFromConcern,
-  loadSchedulingCustomerContext,
-  parsePersonName,
-  parseServiceAddress,
-} from "@/lib/scheduling/conversation-identity";
-import { uniqueWindowOffers } from "@/lib/scheduling/conversation-turn";
-import { findOpenMaintenanceVisit } from "@/lib/scheduling/maintenance";
-import { companyTodayKey, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
+  DO_NOT_CLAIM_BOOKED,
+  DO_NOT_DUPLICATE_CONFIRMATION,
+  HAND_OFF_TO_OFFICE,
+  agentInstructionForReadiness,
+  blockedBookingPayload,
+  evaluateBookingReadiness,
+  mergeSchedulingIntake,
+  parseToolPersonName,
+  parseToolServiceAddress,
+  selectedSlotFromState,
+  toolAddressSchema,
+} from "@/lib/agent-tools/booking-contract";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
+import {
+  loadActiveSchedulingState,
+  markSchedulingBooked,
+  persistSelectedSlot,
+  resolveActionThread,
+} from "@/lib/agent-tools/persist-offers";
 import { sendActionResultSms } from "@/lib/agent-tools/send-result";
 import { signSlotToken, verifySlotToken } from "@/lib/agent-tools/slot-token";
 import {
@@ -24,26 +29,41 @@ import {
   resolveToolCustomer,
   validateHighLevelLocation,
 } from "@/lib/agent-tools/context";
+import { mapContactToCustomer } from "@/lib/highlevel/contacts";
+import { bookAppointment, findNextAvailableOptions, getAvailability } from "@/lib/scheduling";
+import {
+  createCustomerForConversation,
+  createPropertyForConversation,
+  jobDescriptionFromConcern,
+  loadSchedulingCustomerContext,
+  matchPropertyFromText,
+  parseIntake,
+} from "@/lib/scheduling/conversation-identity";
+import { uniqueWindowOffers, parseOfferedSlots } from "@/lib/scheduling/conversation-turn";
+import { findOpenMaintenanceVisit } from "@/lib/scheduling/maintenance";
+import {
+  askAddressMessage,
+  askNameBeforeFinishingSchedule,
+  askWhichPropertyMessage,
+  contractorYouBookingConfirmation,
+} from "@/lib/scheduling/templates";
+import { companyTodayKey, formatLocalDateShort, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
+import { propertyChoiceLabel } from "@/lib/scheduling/conversation-identity";
 
 export const bookAppointmentSchema = z.object({
   location_id: z.string().optional().nullable(),
   contact_id: z.string().optional().nullable(),
   conversation_id: z.string().optional().nullable(),
-  slot_token: z.string().min(8),
+  slot_token: z.string().min(8).optional().nullable(),
   customer_phone: z.string().optional().nullable(),
   customer_name: z.string().optional().nullable(),
+  customer_first_name: z.string().optional().nullable(),
+  customer_last_name: z.string().optional().nullable(),
+  customer_reply: z.string().optional().nullable(),
   service_type: z.string().optional().nullable(),
   service_need: z.string().optional().nullable(),
   property_id: z.string().optional().nullable(),
-  service_address: z
-    .object({
-      line1: z.string().optional(),
-      city: z.string().optional(),
-      state: z.string().optional(),
-      postal_code: z.string().optional(),
-    })
-    .optional()
-    .nullable(),
+  service_address: toolAddressSchema.optional().nullable(),
   idempotency_key: z.string().optional().nullable(),
   send_to_customer: z.boolean().optional(),
 });
@@ -59,14 +79,8 @@ function slotDisplay(dateKey: string, startMinutes: number, endMinutes: number, 
   return `${day} from ${formatWindowChip(startMinutes, endMinutes)}`;
 }
 
-function addressFromBody(address?: { line1?: string; city?: string; state?: string; postal_code?: string } | null) {
-  if (!address?.line1 || !address.city || !address.state || !address.postal_code) return null;
-  return {
-    street: address.line1.trim(),
-    city: address.city.trim(),
-    state: address.state.trim(),
-    zip: address.postal_code.trim(),
-  };
+function shortSlotDisplay(dateKey: string, startMinutes: number, endMinutes: number, timeZone: string) {
+  return `${formatLocalDateShort(dateKey, timeZone)} from ${formatWindowChip(startMinutes, endMinutes)}`;
 }
 
 export async function bookAppointmentTool(input: {
@@ -78,7 +92,17 @@ export async function bookAppointmentTool(input: {
   if (!parsed.success) {
     return {
       status: 400,
-      body: toolError("book_appointment", "INVALID_REQUEST", "The booking request was missing a valid slot token."),
+      body: toolError(
+        "book_appointment",
+        "INVALID_REQUEST",
+        "The booking request was missing required fields.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ selectedSlot: null }),
+          customer_message: "",
+          error_code: "INVALID_REQUEST",
+        }),
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
     };
   }
   const body = parsed.data;
@@ -87,31 +111,121 @@ export async function bookAppointmentTool(input: {
     return { status: 403, body: toolError("book_appointment", location.code, location.message) };
   }
 
-  const slot = verifySlotToken(body.slot_token, input.companyId);
-  if (!slot) {
-    return {
-      status: 422,
-      body: toolError("book_appointment", "SLOT_TOKEN_INVALID", "That appointment choice is no longer valid. Check availability again."),
-    };
-  }
-
   const company = await prisma.company.findFirst({
     where: { id: input.companyId },
     select: { timezone: true },
   });
   const timeZone = company?.timezone || "America/New_York";
+  const resolvedThread = await resolveActionThread({
+    companyId: input.companyId,
+    conversationId: body.conversation_id,
+    phone: body.customer_phone,
+    contactId: body.contact_id,
+  });
+  if (resolvedThread.status === "ambiguous") {
+    const blocked = blockedBookingPayload({
+      readiness: evaluateBookingReadiness({ requiresOffice: true, selectedSlot: null }),
+      customer_message: "I’ve asked the office to finish scheduling this. Someone from our team will text you back shortly.",
+      error_code: "CONVERSATION_AMBIGUOUS",
+    });
+    return {
+      status: 200,
+      body: toolOk("book_appointment", { ...blocked, agent_instruction: HAND_OFF_TO_OFFICE }, { instruction: HAND_OFF_TO_OFFICE }),
+    };
+  }
+  const thread = resolvedThread.status === "resolved" ? resolvedThread.thread : null;
+  const state = thread ? await loadActiveSchedulingState(input.companyId, thread.id) : null;
+  const offered = parseOfferedSlots(state?.offeredSlots);
+  const persistedSlot = selectedSlotFromState({
+    requestedDate: state?.requestedDate,
+    requestedWindowId: state?.requestedWindowId,
+    offeredSlots: offered,
+  });
+  const tokenSlot = body.slot_token ? verifySlotToken(body.slot_token, input.companyId) : null;
+  if (body.slot_token && !tokenSlot && !persistedSlot) {
+    return {
+      status: 422,
+      body: toolError(
+        "book_appointment",
+        "SLOT_TOKEN_INVALID",
+        "That appointment choice is no longer valid. Check availability again.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ selectedSlot: null, offeredCount: offered.length }),
+          customer_message: "That appointment choice is no longer valid. Let me check the next openings.",
+          error_code: "SLOT_TOKEN_INVALID",
+        }),
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
+    };
+  }
+  const slot = tokenSlot
+    ? { date: tokenSlot.date, windowId: tokenSlot.windowId, startMinutes: persistedSlot?.startMinutes ?? 9 * 60, endMinutes: persistedSlot?.endMinutes ?? 11 * 60 }
+    : persistedSlot;
+  if (!slot) {
+    return {
+      status: 422,
+      body: toolError(
+        "book_appointment",
+        "SLOT_NOT_SELECTED",
+        "No stored appointment slot is selected yet.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ selectedSlot: null, offeredCount: offered.length }),
+          customer_message: "Which of those openings works best?",
+          error_code: "SLOT_NOT_SELECTED",
+        }),
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
+    };
+  }
+
+  if (state?.expiresAt && state.expiresAt.getTime() < Date.now() && state.status !== "BOOKED") {
+    return {
+      status: 409,
+      body: toolError(
+        "book_appointment",
+        "SLOT_EXPIRED",
+        "That selected appointment expired before booking could finish.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ selectedSlot: null, offeredCount: 0 }),
+          customer_message: "That opening expired. Let me check the next available times.",
+          error_code: "SLOT_EXPIRED",
+        }),
+        { instruction: "The selected slot expired. Check availability again. Do not tell the customer they are booked." }
+      ),
+    };
+  }
+
+  const inboundName = parseToolPersonName(body);
+  const inboundAddress = parseToolServiceAddress(body.service_address) || parseToolServiceAddress(body.customer_reply);
+  const intake = mergeSchedulingIntake(parseIntake(state?.intake), {
+    ...(inboundName ? { firstName: inboundName.firstName, lastName: inboundName.lastName } : {}),
+    ...(inboundAddress ?? {}),
+  });
+
   const service = await resolveServiceType({
     companyId: input.companyId,
     serviceType: body.service_type,
-    serviceNeed: body.service_need,
+    serviceNeed: body.service_need || state?.customerConcern,
   });
   if (!service.ok) {
     return {
       status: 422,
-      body: toolError("book_appointment", service.code, "Choose the service type before booking.", {
-        requires_clarification: true,
-        clarification: { field: "service_type", options: service.options },
-      }),
+      body: toolError(
+        "book_appointment",
+        service.code,
+        "Choose the service type before booking.",
+        {
+          ...blockedBookingPayload({
+            readiness: evaluateBookingReadiness({ selectedSlot: slot, intake, hasServiceContext: false }),
+            customer_message: "Is this a service call or a maintenance visit?",
+            error_code: service.code,
+            slot_selected: true,
+          }),
+          requires_clarification: true,
+          clarification: { field: "service_type", options: service.options },
+        },
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
     };
   }
 
@@ -119,39 +233,118 @@ export async function bookAppointmentTool(input: {
     companyId: input.companyId,
     contactId: body.contact_id,
     conversationId: body.conversation_id,
-    phone: body.customer_phone,
+    phone: body.customer_phone || thread?.phone,
   });
   let customerId = resolved.identity.customerId;
   let context = resolved.context;
   let createdPropertyId: string | null = null;
-  const suppliedAddress =
-    addressFromBody(body.service_address) ||
-    (typeof body.service_address?.line1 === "string" ? parseServiceAddress(body.service_address.line1) : null);
+
+  if (thread) {
+    await persistSelectedSlot({
+      companyId: input.companyId,
+      threadId: thread.id,
+      stateId: state?.id,
+      date: slot.date,
+      windowId: slot.windowId,
+      customerId,
+      propertyId: context?.properties.length === 1 ? context.properties[0]!.id : state?.propertyId,
+      serviceTypeId: service.serviceType.id,
+      intake,
+      missingField: evaluateBookingReadiness({
+        customerId,
+        customerFirstName: context?.firstName,
+        propertyId: context?.properties.length === 1 ? context.properties[0]!.id : null,
+        propertyCount: context?.properties.length ?? 0,
+        intake,
+        selectedSlot: slot,
+        hasServiceContext: true,
+      }).missingField,
+      phase: "BOOKING",
+      offeredSlots: offered,
+      customerConcern: body.service_need || state?.customerConcern,
+    });
+  }
 
   if (!customerId) {
-    const name = parsePersonName(body.customer_name || "");
+    const name = inboundName;
     if (!name) {
+      const readiness = evaluateBookingReadiness({
+        intake,
+        selectedSlot: slot,
+        hasServiceContext: true,
+        offeredCount: offered.length,
+      });
+      const message = askNameBeforeFinishingSchedule();
+      if (body.send_to_customer) {
+        await sendActionResultSms({
+          companyId: input.companyId,
+          phone: body.customer_phone || thread?.phone,
+          customerId: null,
+          body: message,
+          send: true,
+        });
+      }
       return {
-        status: 422,
-        body: toolError("book_appointment", "CUSTOMER_NAME_REQUIRED", "A customer name is required before booking a new customer.", {
-          required_fields: ["customer_name", "service_address"],
-        }),
+        status: 200,
+        body: toolOk(
+          "book_appointment",
+          {
+            ...blockedBookingPayload({
+              readiness,
+              customer_message: message,
+              error_code: "CUSTOMER_NAME_REQUIRED",
+              slot_selected: true,
+              appointment_display: shortSlotDisplay(slot.date, slot.startMinutes, slot.endMinutes, timeZone),
+            }),
+            required_fields: ["customer_name", "service_address"],
+            agent_instruction: agentInstructionForReadiness(readiness, false),
+          },
+          { instruction: agentInstructionForReadiness(readiness, false) }
+        ),
       };
     }
-    if (!suppliedAddress) {
+    if (!intake.street) {
+      const readiness = evaluateBookingReadiness({
+        intake: { ...intake, firstName: name.firstName, lastName: name.lastName },
+        selectedSlot: slot,
+        hasServiceContext: true,
+        offeredCount: offered.length,
+      });
+      const message = askAddressMessage();
+      if (body.send_to_customer) {
+        await sendActionResultSms({
+          companyId: input.companyId,
+          phone: body.customer_phone || thread?.phone,
+          customerId: null,
+          body: message,
+          send: true,
+        });
+      }
       return {
-        status: 422,
-        body: toolError("book_appointment", "SERVICE_ADDRESS_REQUIRED", "A service address is required before booking.", {
-          required_fields: ["service_address.line1", "service_address.city", "service_address.state", "service_address.postal_code"],
-        }),
+        status: 200,
+        body: toolOk(
+          "book_appointment",
+          {
+            ...blockedBookingPayload({
+              readiness,
+              customer_message: message,
+              error_code: "SERVICE_ADDRESS_REQUIRED",
+              slot_selected: true,
+              appointment_display: shortSlotDisplay(slot.date, slot.startMinutes, slot.endMinutes, timeZone),
+            }),
+            required_fields: ["service_address"],
+            agent_instruction: agentInstructionForReadiness(readiness, false),
+          },
+          { instruction: agentInstructionForReadiness(readiness, false) }
+        ),
       };
     }
     customerId = await createCustomerForConversation(prisma, {
       companyId: input.companyId,
       firstName: name.firstName,
       lastName: name.lastName,
-      phone: body.customer_phone,
-      threadId: resolved.thread?.id,
+      phone: body.customer_phone || thread?.phone,
+      threadId: thread?.id,
       contactId: body.contact_id,
       leadId: resolved.identity.leadId,
       source: "SMS",
@@ -159,10 +352,10 @@ export async function bookAppointmentTool(input: {
     const propertyId = await createPropertyForConversation(prisma, {
       companyId: input.companyId,
       customerId,
-      street: suppliedAddress.street,
-      city: suppliedAddress.city,
-      state: suppliedAddress.state,
-      zip: suppliedAddress.zip,
+      street: intake.street,
+      city: intake.city || "",
+      state: intake.state || "",
+      zip: intake.zip || "",
     });
     if (body.contact_id) {
       await mapContactToCustomer(prisma, {
@@ -177,44 +370,125 @@ export async function bookAppointmentTool(input: {
 
   context = context ?? (customerId ? await loadSchedulingCustomerContext(prisma, { companyId: input.companyId, customerId }) : null);
   const customer = customerPayload(context);
-  let propertyId = body.property_id || customer.property_id || createdPropertyId;
+  let propertyId = body.property_id || customer.property_id || createdPropertyId || state?.propertyId || null;
   if (propertyId && context && !context.properties.some((row) => row.id === propertyId)) {
     propertyId = null;
   }
+  if (!propertyId && context && intake.street) {
+    const matched = matchPropertyFromText(intake.street, context.properties);
+    if (matched.length === 1) propertyId = matched[0]!.id;
+  }
   if (!propertyId && customer.property_status === "multiple") {
+    const labels = (context?.properties ?? []).map((row, index) => propertyChoiceLabel(row, index));
+    const message = askWhichPropertyMessage(labels);
+    if (body.send_to_customer) {
+      await sendActionResultSms({
+        companyId: input.companyId,
+        phone: body.customer_phone || thread?.phone,
+        customerId,
+        body: message,
+        send: true,
+      });
+    }
     return {
-      status: 422,
+      status: 200,
       customerId,
-      body: toolError("book_appointment", "PROPERTY_SELECTION_REQUIRED", "This customer has more than one property. Ask which address the visit is for.", {
-        properties: customer.properties,
-        required_fields: ["property_id"],
-      }),
+      body: toolOk(
+        "book_appointment",
+        {
+          ...blockedBookingPayload({
+            readiness: evaluateBookingReadiness({
+              customerId,
+              customerFirstName: customer.first_name,
+              propertyCount: customer.property_count,
+              intake,
+              selectedSlot: slot,
+              hasServiceContext: true,
+            }),
+            customer_message: message,
+            error_code: "PROPERTY_SELECTION_REQUIRED",
+            slot_selected: true,
+          }),
+          properties: customer.properties,
+          required_fields: ["property_id"],
+          agent_instruction: agentInstructionForReadiness(
+            evaluateBookingReadiness({
+              customerId,
+              propertyCount: customer.property_count,
+              selectedSlot: slot,
+              hasServiceContext: true,
+            }),
+            false
+          ),
+        },
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
     };
   }
   if (!propertyId && customerId) {
-    if (!suppliedAddress) {
+    if (!intake.street) {
+      const message = askAddressMessage();
+      if (body.send_to_customer) {
+        await sendActionResultSms({
+          companyId: input.companyId,
+          phone: body.customer_phone || thread?.phone,
+          customerId,
+          body: message,
+          send: true,
+        });
+      }
       return {
         status: 422,
         customerId,
-        body: toolError("book_appointment", "SERVICE_ADDRESS_REQUIRED", "A service address is required before booking.", {
-          required_fields: ["service_address.line1", "service_address.city", "service_address.state", "service_address.postal_code"],
-        }),
+        body: toolError(
+          "book_appointment",
+          "SERVICE_ADDRESS_REQUIRED",
+          "A service address is required before booking.",
+          {
+            ...blockedBookingPayload({
+              readiness: evaluateBookingReadiness({
+                customerId,
+                customerFirstName: customer.first_name,
+                intake,
+                selectedSlot: slot,
+                hasServiceContext: true,
+              }),
+              customer_message: message,
+              error_code: "SERVICE_ADDRESS_REQUIRED",
+              slot_selected: true,
+            }),
+            required_fields: ["service_address"],
+            agent_instruction: DO_NOT_CLAIM_BOOKED,
+          },
+          { instruction: DO_NOT_CLAIM_BOOKED }
+        ),
       };
     }
     propertyId = await createPropertyForConversation(prisma, {
       companyId: input.companyId,
       customerId,
-      street: suppliedAddress.street,
-      city: suppliedAddress.city,
-      state: suppliedAddress.state,
-      zip: suppliedAddress.zip,
+      street: intake.street,
+      city: intake.city || "",
+      state: intake.state || "",
+      zip: intake.zip || "",
     });
     context = await loadSchedulingCustomerContext(prisma, { companyId: input.companyId, customerId });
   }
   if (!customerId || !propertyId) {
     return {
       status: 422,
-      body: toolError("book_appointment", "SERVICE_ADDRESS_REQUIRED", "A customer and service address are required before booking."),
+      body: toolError(
+        "book_appointment",
+        "SERVICE_ADDRESS_REQUIRED",
+        "A customer and service address are required before booking.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ selectedSlot: slot, intake }),
+          customer_message: askAddressMessage(),
+          error_code: "SERVICE_ADDRESS_REQUIRED",
+          slot_selected: true,
+        }),
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
     };
   }
 
@@ -228,6 +502,12 @@ export async function bookAppointmentTool(input: {
         propertyId,
         serviceTypeId: service.serviceType.id,
         body: toolError("book_appointment", "DUPLICATE_MAINTENANCE", "This customer already has a maintenance visit scheduled.", {
+          ...blockedBookingPayload({
+            readiness: evaluateBookingReadiness({ customerId, propertyId, selectedSlot: slot, hasServiceContext: true }),
+            customer_message: "You already have a maintenance visit scheduled.",
+            error_code: "DUPLICATE_MAINTENANCE",
+            slot_selected: true,
+          }),
           existing_job_id: visit.jobId,
           scheduled_date: visit.scheduledDate,
         }),
@@ -275,41 +555,73 @@ export async function bookAppointmentTool(input: {
         "book_appointment",
         "SLOT_NO_LONGER_AVAILABLE",
         "That window is no longer available.",
-        { available_slots: alternatives },
+        {
+          ...blockedBookingPayload({
+            readiness: evaluateBookingReadiness({
+              customerId,
+              customerFirstName: customer.first_name,
+              propertyId,
+              selectedSlot: null,
+              offeredCount: alternatives.length,
+              hasServiceContext: true,
+            }),
+            customer_message: "Sorry, that one was just taken. Let me grab the next available options for you.",
+            error_code: "SLOT_NO_LONGER_AVAILABLE",
+            slot_selected: false,
+          }),
+          available_slots: alternatives,
+          agent_instruction: "That window was just taken. Offer only the newly returned available_slots. Do not invent another time. Do not tell the customer they are booked.",
+        },
         {
           instruction:
-            "That window was just taken. Offer only the newly returned available_slots. Do not invent another time.",
+            "That window was just taken. Offer only the newly returned available_slots. Do not invent another time. Do not tell the customer they are booked.",
         }
       ),
     };
   }
 
-  const thread = body.conversation_id
-    ? await prisma.communicationThread.findFirst({
-        where: { companyId: input.companyId, provider: HIGHLEVEL_PROVIDER_KEY, externalId: body.conversation_id },
-        select: { id: true },
-      })
-    : resolved.thread;
   const idempotencyKey =
     input.idempotencyKey ||
     body.idempotency_key ||
-    `agent:${input.companyId}:${body.conversation_id || body.contact_id || body.customer_phone || "anon"}:${body.slot_token}`;
+    `agent:${input.companyId}:${thread?.id || body.conversation_id || body.contact_id || body.customer_phone || "anon"}:${slot.date}:${slot.windowId}`;
 
-  const booked = await bookAppointment({
-    companyId: input.companyId,
-    customerId,
-    propertyId,
-    serviceTypeId: service.serviceType.id,
-    date: slot.date,
-    windowId: slot.windowId,
-    source: service.maintenance ? "MAINTENANCE" : "CONVERSATION",
-    threadId: thread?.id,
-    idempotencyKey,
-    maintenanceVisitId,
-    description: jobDescriptionFromConcern(body.service_need ?? null),
-    sendConfirmation: false,
-    maintenance: service.maintenance,
-  });
+  let booked;
+  try {
+    booked = await bookAppointment({
+      companyId: input.companyId,
+      customerId,
+      propertyId,
+      serviceTypeId: service.serviceType.id,
+      date: slot.date,
+      windowId: slot.windowId,
+      source: service.maintenance ? "MAINTENANCE" : "CONVERSATION",
+      threadId: thread?.id,
+      idempotencyKey,
+      maintenanceVisitId,
+      description: jobDescriptionFromConcern(body.service_need || state?.customerConcern || null),
+      sendConfirmation: false,
+      maintenance: service.maintenance,
+    });
+  } catch {
+    return {
+      status: 500,
+      customerId,
+      propertyId,
+      serviceTypeId: service.serviceType.id,
+      body: toolError(
+        "book_appointment",
+        "BOOKING_TRANSACTION_FAILED",
+        "The booking transaction did not complete.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ customerId, propertyId, selectedSlot: slot, hasServiceContext: true }),
+          customer_message: "I wasn’t able to finish that booking. I’ll have the office take it from here.",
+          error_code: "BOOKING_TRANSACTION_FAILED",
+          slot_selected: true,
+        }),
+        { instruction: HAND_OFF_TO_OFFICE }
+      ),
+    };
+  }
 
   if (!booked.ok) {
     if (booked.code === "DUPLICATE_MAINTENANCE") {
@@ -326,27 +638,114 @@ export async function bookAppointmentTool(input: {
       customerId,
       propertyId,
       serviceTypeId: service.serviceType.id,
-      body: toolError("book_appointment", booked.code, booked.error),
+      body: toolError(
+        "book_appointment",
+        booked.code,
+        booked.error,
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({ customerId, propertyId, selectedSlot: slot, hasServiceContext: true }),
+          customer_message: booked.error,
+          error_code: booked.code,
+          slot_selected: true,
+        }),
+        { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
     };
   }
 
   const job = await prisma.job.findFirst({
     where: { id: booked.jobId, companyId: input.companyId },
     select: {
+      id: true,
       jobNumber: true,
+      scheduledStart: true,
       schedulingBooking: { select: { id: true } },
+      assignments: { select: { id: true } },
       property: { select: { id: true, address: true, city: true, state: true, zip: true } },
     },
   });
+  const bookingId = job?.schedulingBooking?.id ?? null;
+  const dispatchReady = Boolean(job?.scheduledStart && (job.assignments?.length ?? 0) > 0);
+  if (!job || !bookingId || !dispatchReady) {
+    return {
+      status: 500,
+      customerId,
+      propertyId,
+      serviceTypeId: service.serviceType.id,
+      jobId: job?.id,
+      bookingId,
+      body: toolError(
+        "book_appointment",
+        job && bookingId ? "DISPATCH_VERIFY_FAILED" : "BOOKING_VERIFY_FAILED",
+        "The booking could not be verified in ContractorYou.",
+        blockedBookingPayload({
+          readiness: evaluateBookingReadiness({
+            customerId,
+            propertyId,
+            selectedSlot: slot,
+            hasServiceContext: true,
+            requiresOffice: true,
+          }),
+          customer_message: "I wasn’t able to finish that booking. I’ll have the office take it from here.",
+          error_code: job && bookingId ? "DISPATCH_VERIFY_FAILED" : "BOOKING_VERIFY_FAILED",
+          slot_selected: true,
+        }),
+        { instruction: HAND_OFF_TO_OFFICE }
+      ),
+    };
+  }
+
   const refreshed = await loadSchedulingCustomerContext(prisma, { companyId: input.companyId, customerId });
-  const appointmentDisplay = slotDisplay(booked.date, stillOpen.startMinutes, stillOpen.endMinutes, timeZone);
-  if (body.send_to_customer) {
+  const propertyAddress = job.property
+    ? [job.property.address, job.property.city, job.property.state, job.property.zip].filter(Boolean).join(", ")
+    : intake.street || null;
+  const appointmentDisplay = shortSlotDisplay(booked.date, stillOpen.startMinutes, stillOpen.endMinutes, timeZone);
+  const customerMessage = contractorYouBookingConfirmation({
+    appointmentDisplay,
+    propertyAddress: job.property?.address || intake.street,
+  });
+
+  if (thread) {
+    await markSchedulingBooked({
+      companyId: input.companyId,
+      threadId: thread.id,
+      jobId: job.id,
+      customerId,
+      propertyId,
+    });
+  }
+
+  if (body.send_to_customer && !booked.duplicate) {
     await sendActionResultSms({
       companyId: input.companyId,
-      phone: body.customer_phone,
+      phone: body.customer_phone || thread?.phone || refreshed?.phone,
       customerId,
-      body: `You’re scheduled for ${appointmentDisplay}. We’ll text you when your technician is on the way.`,
+      body: customerMessage,
       send: true,
+    });
+  } else if (body.send_to_customer && booked.duplicate) {
+    const existingBooking = await prisma.schedulingBooking.findFirst({
+      where: { jobId: job.id, companyId: input.companyId },
+      select: { confirmationStatus: true },
+    });
+    if (existingBooking?.confirmationStatus !== "SENT") {
+      await sendActionResultSms({
+        companyId: input.companyId,
+        phone: body.customer_phone || thread?.phone || refreshed?.phone,
+        customerId,
+        body: customerMessage,
+        send: true,
+      });
+      await prisma.schedulingBooking.updateMany({
+        where: { jobId: job.id, companyId: input.companyId },
+        data: { confirmationStatus: "SENT" },
+      });
+    }
+  }
+  if (body.send_to_customer && !booked.duplicate) {
+    await prisma.schedulingBooking.updateMany({
+      where: { jobId: job.id, companyId: input.companyId },
+      data: { confirmationStatus: "SENT" },
     });
   }
 
@@ -355,21 +754,44 @@ export async function bookAppointmentTool(input: {
     customerId,
     propertyId,
     serviceTypeId: service.serviceType.id,
-    jobId: booked.jobId,
-    bookingId: job?.schedulingBooking?.id ?? booked.jobId,
+    jobId: job.id,
+    bookingId,
     body: toolOk(
       "book_appointment",
       {
+        booking_confirmed: true,
+        booking_id: bookingId,
+        job_id: job.id,
+        job_number: job.jobNumber ?? null,
+        appointment_display: appointmentDisplay,
+        appointment_date: booked.date,
+        appointment_window_start: hhmm(stillOpen.startMinutes),
+        appointment_window_end: hhmm(stillOpen.endMinutes),
+        customer_id: customerId,
+        customer_first_name: refreshed?.firstName ?? null,
+        property_id: propertyId,
+        property_address: propertyAddress,
+        requires_customer_name: false,
+        requires_service_address: false,
+        requires_property_selection: false,
+        requires_office: false,
+        ready_to_book: false,
+        slot_selected: true,
+        customer_message: customerMessage,
+        error_code: null,
+        scheduling_phase: "BOOKED",
+        agent_instruction: DO_NOT_DUPLICATE_CONFIRMATION,
         booking: {
-          booking_id: job?.schedulingBooking?.id ?? booked.jobId,
-          job_id: booked.jobId,
-          job_number: job?.jobNumber ?? null,
+          booking_id: bookingId,
+          job_id: job.id,
+          job_number: job.jobNumber ?? null,
           status: booked.duplicate ? "confirmed_duplicate" : "confirmed",
           date: booked.date,
           window_start: hhmm(stillOpen.startMinutes),
           window_end: hhmm(stillOpen.endMinutes),
           display: appointmentDisplay,
           technician_id: booked.technicianId,
+          booking_confirmed: true,
         },
         customer: {
           customer_id: customerId,
@@ -377,15 +799,10 @@ export async function bookAppointmentTool(input: {
         },
         property: {
           property_id: propertyId,
-          display_address: job?.property
-            ? [job.property.address, job.property.city, job.property.state, job.property.zip].filter(Boolean).join(", ")
-            : null,
+          display_address: propertyAddress,
         },
       },
-      {
-        instruction:
-          "The appointment is confirmed. Confirm this exact appointment naturally. Do not offer a different time. Do not mention APIs or ContractorYou.",
-      }
+      { instruction: DO_NOT_DUPLICATE_CONFIRMATION }
     ),
   };
 }

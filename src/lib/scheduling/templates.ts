@@ -66,6 +66,16 @@ export function askNameMessage() {
   return "Absolutely. What’s your name?";
 }
 
+export function askNameBeforeFinishingSchedule() {
+  return "Absolutely. Before I finish scheduling that, what's your name?";
+}
+
+export function contractorYouBookingConfirmation(input: { appointmentDisplay: string; propertyAddress?: string | null }) {
+  const address = input.propertyAddress?.trim();
+  if (address) return `Perfect — you're scheduled for ${input.appointmentDisplay} at ${address}.`;
+  return `Perfect — you're scheduled for ${input.appointmentDisplay}.`;
+}
+
 export function thanksNameAskAddressMessage(firstName: string) {
   return `Thanks, ${firstName}. What’s the service address?`;
 }

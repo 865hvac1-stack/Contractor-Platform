@@ -272,6 +272,7 @@ describe("customer and property resolution", () => {
   });
 
   it("collects name and address for an unknown phone without asking for the phone again", () => {
+    expect(parsePersonName("TJ Hurst")).toEqual({ firstName: "TJ", lastName: "Hurst" });
     expect(parsePersonName("John Smith")).toEqual({ firstName: "John", lastName: "Smith" });
     expect(parsePersonName("My name is John Smith")).toEqual({ firstName: "John", lastName: "Smith" });
     expect(parseServiceAddress("123 Main Street, Knoxville TN 37918")).toEqual({

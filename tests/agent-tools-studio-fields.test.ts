@@ -133,7 +133,7 @@ describe("Agent Studio flat availability fields", () => {
     expect(body.requires_service_address).toBe(true);
     expect(body.requires_property_selection).toBe(false);
     expect(body.agent_instruction).toBe(
-      "Customer was found, but service address is required before booking. Ask only for the service address."
+      "Customer was found, but service address is required before booking. Ask only for the service address. Do not tell the customer they are booked."
     );
   });
 
@@ -159,7 +159,9 @@ describe("Agent Studio flat availability fields", () => {
     expect(body.requires_property_selection).toBe(true);
     expect(body.property_id).toBeNull();
     expect(body.property_address).toBeNull();
-    expect(body.agent_instruction).toBe("Customer has multiple properties. Ask which service address this visit is for.");
+    expect(body.agent_instruction).toBe(
+      "Customer has multiple properties. Ask which service address this visit is for. Do not tell the customer they are booked."
+    );
     expect(body.data?.available_slots).toEqual(data.available_slots);
   });
 
@@ -185,6 +187,9 @@ describe("Agent Studio flat availability fields", () => {
 describe("Agent Studio flat booking fields", () => {
   it("flattens a successful booking and keeps nested data", () => {
     const data = {
+      booking_confirmed: true,
+      booking_id: "bk_1",
+      job_id: "job_1",
       booking: {
         booking_id: "bk_1",
         job_id: "job_1",
@@ -214,7 +219,9 @@ describe("Agent Studio flat booking fields", () => {
     expect(body.property_address).toBe("8233 Tazewell Pike, Corryton, TN 37721");
     expect(body.technician_name).toBeNull();
     expect(body.error_code).toBeNull();
-    expect(body.agent_instruction).toBe("The appointment is confirmed. Confirm this exact appointment naturally.");
+    expect(body.agent_instruction).toBe(
+      "Booking is confirmed in ContractorYou. Do not send a duplicate confirmation because ContractorYou already sent it."
+    );
   });
 
   it("flattens a booking validation failure", () => {

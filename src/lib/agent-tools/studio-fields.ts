@@ -1,3 +1,8 @@
+import {
+  DO_NOT_CLAIM_BOOKED,
+  DO_NOT_DUPLICATE_CONFIRMATION,
+  isBookingActuallyConfirmed,
+} from "@/lib/agent-tools/booking-contract";
 import type { AgentToolAction, AgentToolEnvelope } from "@/lib/agent-tools/envelope";
 
 export type StudioSlot = {
@@ -32,9 +37,12 @@ export type AvailabilityStudioFields = StudioSlotFields & {
   requires_office: boolean;
   agent_instruction: string;
   error_code: string | null;
+  booking_confirmed: boolean;
+  customer_message: string | null;
 };
 
 export type BookingStudioFields = StudioSlotFields & {
+  success?: boolean;
   booking_confirmed: boolean;
   booking_id: string | null;
   job_id: string | null;
@@ -43,12 +51,19 @@ export type BookingStudioFields = StudioSlotFields & {
   appointment_date: string | null;
   appointment_window_start: string | null;
   appointment_window_end: string | null;
+  customer_id: string | null;
   customer_first_name: string | null;
+  property_id: string | null;
   property_address: string | null;
   technician_name: string | null;
   requires_customer_name: boolean;
   requires_service_address: boolean;
   requires_property_selection: boolean;
+  requires_office: boolean;
+  ready_to_book: boolean;
+  slot_selected: boolean;
+  match_status: string | null;
+  customer_message: string | null;
   agent_instruction: string;
   error_code: string | null;
 };
@@ -56,16 +71,15 @@ export type BookingStudioFields = StudioSlotFields & {
 const AVAILABLE_INSTRUCTION =
   "Offer only the returned ContractorYou appointment windows. Do not invent additional availability.";
 const ADDRESS_INSTRUCTION =
-  "Customer was found, but service address is required before booking. Ask only for the service address.";
+  "Customer was found, but service address is required before booking. Ask only for the service address. Do not tell the customer they are booked.";
 const MULTIPLE_PROPERTIES_INSTRUCTION =
-  "Customer has multiple properties. Ask which service address this visit is for.";
+  "Customer has multiple properties. Ask which service address this visit is for. Do not tell the customer they are booked.";
 const NO_AVAILABILITY_INSTRUCTION =
   "No valid ContractorYou appointment windows were found. Do not promise a time.";
 const NEW_CUSTOMER_INSTRUCTION =
-  "Customer is new. Ask only for name and service address before booking. Offer only the returned appointment windows if any were found.";
-const BOOKED_INSTRUCTION = "The appointment is confirmed. Confirm this exact appointment naturally.";
+  "Customer is new. Ask only for name and service address before booking. Offer only the returned appointment windows if any were found. Do not tell the customer they are booked.";
 const SLOT_GONE_INSTRUCTION =
-  "That window was just taken. Offer only the newly returned appointment windows. Do not invent another time.";
+  "That window was just taken. Offer only the newly returned appointment windows. Do not invent another time. Do not tell the customer they are booked.";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -73,6 +87,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asBool(value: unknown, fallback = false) {
+  if (value === true) return true;
+  if (value === false) return false;
+  return fallback;
 }
 
 export function extractSlots(data: unknown): StudioSlot[] {
@@ -149,43 +169,53 @@ export function availabilityStudioFields(
   const slots = flattenSlots(extractSlots(record));
   const customerStatus = asString(customer?.status);
   const propertyStatus = asString(customer?.property_status);
-  const requiresCustomerName = requires.includes("customer_name") || customerStatus === "new";
-  const requiresPropertySelection = requires.includes("property_id") || propertyStatus === "multiple";
-  const requiresServiceAddress =
-    requires.includes("service_address") || propertyStatus === "missing" || (customerStatus === "new" && !requiresPropertySelection);
-  const requiresOffice = record?.requires_office === true || !slots.availability_found;
+  const requiresCustomerName = asBool(record?.requires_customer_name, requires.includes("customer_name") || customerStatus === "new");
+  const requiresPropertySelection = asBool(
+    record?.requires_property_selection,
+    requires.includes("property_id") || propertyStatus === "multiple"
+  );
+  const requiresServiceAddress = asBool(
+    record?.requires_service_address,
+    requires.includes("service_address") || propertyStatus === "missing" || (customerStatus === "new" && !requiresPropertySelection)
+  );
+  const requiresOffice = asBool(record?.requires_office, !slots.availability_found);
   return {
     ...slots,
     customer_status: customerStatus,
-    customer_first_name: asString(customer?.first_name),
-    customer_id: asString(customer?.customer_id),
+    customer_first_name: asString(record?.customer_first_name) ?? asString(customer?.first_name),
+    customer_id: asString(record?.customer_id) ?? asString(customer?.customer_id),
     property_status: propertyStatus,
-    property_id: asString(customer?.property_id),
-    property_address: propertyAddressFromCustomer(customer),
+    property_id: asString(record?.property_id) ?? asString(customer?.property_id),
+    property_address: asString(record?.property_address) ?? propertyAddressFromCustomer(customer),
     service_type_name: asString(asRecord(record?.service_type)?.name),
     requires_customer_name: requiresCustomerName,
     requires_service_address: requiresServiceAddress,
     requires_property_selection: requiresPropertySelection,
     requires_office: requiresOffice,
-    agent_instruction: availabilityInstruction({
-      availabilityFound: slots.availability_found,
-      customerStatus,
-      requiresCustomerName,
-      requiresServiceAddress,
-      requiresPropertySelection,
-    }),
+    booking_confirmed: false,
+    customer_message: asString(record?.customer_message),
+    agent_instruction: asString(record?.agent_instruction) ??
+      availabilityInstruction({
+        availabilityFound: slots.availability_found,
+        customerStatus,
+        requiresCustomerName,
+        requiresServiceAddress,
+        requiresPropertySelection,
+      }),
     error_code: errorCode,
   };
 }
 
-function bookingInstruction(errorCode: string | null, confirmed: boolean) {
+function bookingInstruction(errorCode: string | null, confirmed: boolean, record: Record<string, unknown> | null) {
+  const explicit = asString(record?.agent_instruction);
+  if (explicit) return explicit;
   if (errorCode === "SLOT_NO_LONGER_AVAILABLE") return SLOT_GONE_INSTRUCTION;
   if (errorCode === "SERVICE_ADDRESS_REQUIRED") return ADDRESS_INSTRUCTION;
   if (errorCode === "PROPERTY_SELECTION_REQUIRED") return MULTIPLE_PROPERTIES_INSTRUCTION;
   if (errorCode === "CUSTOMER_NAME_REQUIRED") return NEW_CUSTOMER_INSTRUCTION;
-  if (confirmed) return BOOKED_INSTRUCTION;
-  if (errorCode) return "The appointment could not be booked. Ask only for missing information or offer returned windows.";
-  return BOOKED_INSTRUCTION;
+  if (confirmed) return DO_NOT_DUPLICATE_CONFIRMATION;
+  if (errorCode) return "The appointment could not be booked. Ask only for missing information or offer returned windows. Do not tell the customer they are booked.";
+  return DO_NOT_CLAIM_BOOKED;
 }
 
 export function bookingStudioFields(data: unknown, errorCode: string | null = null): BookingStudioFields {
@@ -194,33 +224,48 @@ export function bookingStudioFields(data: unknown, errorCode: string | null = nu
   const customer = customerRecord(record);
   const property = asRecord(record?.property);
   const slots = flattenSlots(extractSlots(record));
-  const confirmed = Boolean(booking?.booking_id || booking?.job_id) && errorCode == null;
+  const jobId = asString(record?.job_id) ?? asString(booking?.job_id);
+  const bookingId = asString(record?.booking_id) ?? asString(booking?.booking_id);
+  const confirmed = isBookingActuallyConfirmed({
+    booking_confirmed: record?.booking_confirmed ?? booking?.booking_confirmed,
+    job_id: jobId,
+    booking_id: bookingId,
+    error_code: errorCode,
+  });
   return {
     ...slots,
     booking_confirmed: confirmed,
-    booking_id: asString(booking?.booking_id),
-    job_id: asString(booking?.job_id),
-    job_number: asString(booking?.job_number),
-    appointment_display: asString(booking?.display),
-    appointment_date: asString(booking?.date),
-    appointment_window_start: asString(booking?.window_start),
-    appointment_window_end: asString(booking?.window_end),
-    customer_first_name: asString(customer?.first_name),
-    property_address: asString(property?.display_address),
+    booking_id: confirmed ? bookingId : null,
+    job_id: confirmed ? jobId : null,
+    job_number: confirmed ? asString(record?.job_number) ?? asString(booking?.job_number) : null,
+    appointment_display: asString(record?.appointment_display) ?? asString(booking?.display),
+    appointment_date: asString(record?.appointment_date) ?? asString(booking?.date),
+    appointment_window_start: asString(record?.appointment_window_start) ?? asString(booking?.window_start),
+    appointment_window_end: asString(record?.appointment_window_end) ?? asString(booking?.window_end),
+    customer_id: asString(record?.customer_id) ?? asString(customer?.customer_id),
+    customer_first_name: asString(record?.customer_first_name) ?? asString(customer?.first_name),
+    property_id: asString(record?.property_id) ?? asString(property?.property_id),
+    property_address: asString(record?.property_address) ?? asString(property?.display_address),
     technician_name: asString(booking?.technician_name),
-    requires_customer_name: errorCode === "CUSTOMER_NAME_REQUIRED",
-    requires_service_address: errorCode === "SERVICE_ADDRESS_REQUIRED",
-    requires_property_selection: errorCode === "PROPERTY_SELECTION_REQUIRED",
-    agent_instruction: bookingInstruction(errorCode, confirmed),
+    requires_customer_name: asBool(record?.requires_customer_name, errorCode === "CUSTOMER_NAME_REQUIRED"),
+    requires_service_address: asBool(record?.requires_service_address, errorCode === "SERVICE_ADDRESS_REQUIRED"),
+    requires_property_selection: asBool(record?.requires_property_selection, errorCode === "PROPERTY_SELECTION_REQUIRED"),
+    requires_office: asBool(record?.requires_office, errorCode === "CONVERSATION_AMBIGUOUS"),
+    ready_to_book: asBool(record?.ready_to_book, false) && !confirmed,
+    slot_selected: asBool(record?.slot_selected, Boolean(asString(record?.slot_token) || asString(booking?.slot_token))),
+    match_status: asString(record?.match_status),
+    customer_message: asString(record?.customer_message),
+    agent_instruction: bookingInstruction(errorCode, confirmed, record),
     error_code: errorCode,
   };
 }
 
 export function withStudioFields<T>(envelope: AgentToolEnvelope<T>): AgentToolEnvelope<T> &
   Partial<AvailabilityStudioFields & BookingStudioFields> {
-  const errorCode = envelope.error?.code ?? null;
-  if (envelope.action === "check_availability" || envelope.action === "select_offered_slot") {
-    return { ...availabilityStudioFields(envelope.data, errorCode), ...envelope };
+  const data = asRecord(envelope.data);
+  const errorCode = envelope.error?.code ?? asString(data?.error_code);
+  if (envelope.action === "check_availability") {
+    return { ...availabilityStudioFields(envelope.data, errorCode), ...envelope, booking_confirmed: false };
   }
   return { ...bookingStudioFields(envelope.data, errorCode), ...envelope };
 }
@@ -249,11 +294,14 @@ export function studioFieldNames(action: AgentToolAction) {
       "requires_service_address",
       "requires_property_selection",
       "requires_office",
+      "booking_confirmed",
+      "customer_message",
       "agent_instruction",
       "error_code",
     ];
   }
   return [
+    "success",
     "booking_confirmed",
     "booking_id",
     "job_id",
@@ -262,9 +310,14 @@ export function studioFieldNames(action: AgentToolAction) {
     "appointment_date",
     "appointment_window_start",
     "appointment_window_end",
+    "customer_id",
     "customer_first_name",
+    "property_id",
     "property_address",
     "technician_name",
+    "slot_selected",
+    "ready_to_book",
+    "match_status",
     "slot_1_display",
     "slot_1_token",
     "slot_2_display",
@@ -275,6 +328,11 @@ export function studioFieldNames(action: AgentToolAction) {
     "slot_4_token",
     "available_slots_text",
     "availability_found",
+    "requires_customer_name",
+    "requires_service_address",
+    "requires_property_selection",
+    "requires_office",
+    "customer_message",
     "agent_instruction",
     "error_code",
   ];

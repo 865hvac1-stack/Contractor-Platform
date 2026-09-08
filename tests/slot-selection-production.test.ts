@@ -29,6 +29,13 @@ function turnFor(text: string) {
 }
 
 describe("production offered-slot resolution", () => {
+  it("selects Tuesday September 15th from the live production reply", () => {
+    expect(resolveOfferedSlotSelection("Tuesday September 15th", productionOffers)).toEqual({
+      kind: "match",
+      slot: productionOffers[0],
+    });
+  });
+
   it("selects September 15th from 9-11 exactly and books instead of re-listing", () => {
     const result = resolveOfferedSlotSelection("I would take September 15th from 9-11", productionOffers);
     expect(result).toEqual({ kind: "match", slot: productionOffers[0] });
