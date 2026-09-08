@@ -228,6 +228,7 @@ export async function sendWaitingCommunication(input: {
     to,
     body,
     customerId: record.customerId,
+    origin: "WAITING_BOARD",
   });
 
   if (!sent.ok) {

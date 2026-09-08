@@ -97,6 +97,7 @@ export async function maybeSendOnMyWayMessage(input: {
     to: job.customer.phone,
     body,
     customerId: job.customerId,
+    origin: "SYSTEM_AUTOMATION",
   });
 
   await writeAudit({

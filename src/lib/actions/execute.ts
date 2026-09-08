@@ -116,6 +116,7 @@ async function executeSmsBatch(
       to,
       body,
       customerId: target.customerId,
+      origin: "SYSTEM_AUTOMATION",
     });
     if (sent.provider === "demo") {
       results.push({

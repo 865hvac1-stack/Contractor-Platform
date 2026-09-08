@@ -371,19 +371,23 @@ export async function processHighLevelWebhook(
     });
     if (comms?.thread.id && comms.message && (fields.direction || "inbound").toLowerCase() === "inbound") {
       try {
-        // ContractorYou scheduling is the only inbound auto-responder in this codebase.
-        // An active ConversationSchedulingState owns the thread until a terminal status.
-        const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
-        await processInboundScheduling({
-          companyId: input.companyId,
-          threadId: comms.thread.id,
-          customerId: comms.customerId,
-          messageId: fields.messageId || comms.message.id,
-          body: fields.body,
-          direction: comms.message.direction,
-          channel: comms.message.channel,
-          phone: fields.from || emptyToNull(text(data.phone)),
-        });
+        const { contractorYouMayAutoreply, loadCustomerConversationOwner } = await import(
+          "@/lib/comms/conversation-owner"
+        );
+        const conversationOwner = await loadCustomerConversationOwner(prisma, input.companyId);
+        if (contractorYouMayAutoreply(conversationOwner)) {
+          const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
+          await processInboundScheduling({
+            companyId: input.companyId,
+            threadId: comms.thread.id,
+            customerId: comms.customerId,
+            messageId: fields.messageId || comms.message.id,
+            body: fields.body,
+            direction: comms.message.direction,
+            channel: comms.message.channel,
+            phone: fields.from || emptyToNull(text(data.phone)),
+          });
+        }
       } catch (error) {
         console.error("[scheduling] inbound conversation handler failed", error);
       }

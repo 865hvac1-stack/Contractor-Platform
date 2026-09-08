@@ -15,7 +15,9 @@ import { formatTokenTypeDiagnostic, type HighLevelTokenTypeDiagnostic } from "@/
 import { formatOauthInstallDiagnostic, type FreshOauthLocationResolution } from "@/lib/highlevel/oauth-location";
 import { highlevelSettingsHealth } from "@/lib/highlevel/settings-health";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
+import { ConversationOwnerForm } from "@/components/highlevel/conversation-owner-form";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
+import { parseCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDateTime } from "@/lib/datetime";
@@ -348,6 +350,8 @@ export default async function HighLevelSettingsPage({
           </p>
         </CardContent>
       </Card>
+
+      <ConversationOwnerForm value={parseCustomerConversationOwner(ctx.company.customerConversationOwner)} />
 
       <HighLevelSettingsForm
         oauthReady={highlevelOAuthConfigured()}

@@ -510,6 +510,7 @@ export async function sendInboxSmsAction(
       customerId,
       leadId,
       confirmExternalSend,
+      origin: "MANUAL_OFFICE",
     });
     await writeAudit({
       companyId: ctx.company.id,
@@ -675,5 +676,51 @@ export async function purchaseHighLevelNumberAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: error instanceof Error ? error.message : "Number purchase failed." };
+  }
+}
+
+export async function saveCustomerConversationOwnerAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("marketing:manage");
+    const { parseCustomerConversationOwner } = await import("@/lib/comms/conversation-owner");
+    const owner = parseCustomerConversationOwner(formData.get("customerConversationOwner"));
+    await prisma.company.update({
+      where: { id: ctx.company.id },
+      data: { customerConversationOwner: owner },
+    });
+    if (owner !== "CONTRACTORYOU") {
+      await prisma.conversationSchedulingState.updateMany({
+        where: {
+          companyId: ctx.company.id,
+          status: { in: ["OPEN", "CLARIFYING", "SUGGESTED", "NEEDS_REVIEW"] },
+        },
+        data: { paused: true, status: "PAUSED" },
+      });
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "communications.conversation_owner_updated",
+      entityType: "Company",
+      entityId: ctx.company.id,
+      metadata: { customerConversationOwner: owner },
+    });
+    revalidatePath("/settings/highlevel");
+    revalidatePath("/settings");
+    return {
+      ok: true,
+      message:
+        owner === "HIGHLEVEL_AI"
+          ? "HighLevel AI is the customer conversation owner. ContractorYou will not auto-text inbound messages."
+          : owner === "MANUAL"
+            ? "Customer conversations are manual. Neither AI will auto-reply from ContractorYou."
+            : "ContractorYou may auto-reply to inbound scheduling messages.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save conversation owner." };
   }
 }

@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
+import { contractorYouMayAutoreply, loadCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { getAvailability, findNextAvailableOptions, loadSchedulingPolicy } from "@/lib/scheduling/capacity";
 import { interpretSchedulingIntent, mergeSchedulingIntent } from "@/lib/scheduling/intent";
@@ -70,6 +71,16 @@ export async function processInboundScheduling(input: SchedulingProcessInput) {
   if (!input.body?.trim()) return { handled: false as const };
   const channel = (input.channel || "SMS").toUpperCase();
   if (channel === "CALL" || channel === "VOICEMAIL") return { handled: false as const };
+
+  const conversationOwner = await loadCustomerConversationOwner(prisma, input.companyId);
+  if (!contractorYouMayAutoreply(conversationOwner)) {
+    return {
+      handled: false as const,
+      skipped: true as const,
+      reason: "conversation_owner" as const,
+      owner: conversationOwner,
+    };
+  }
 
   await ensureSchedulingSetup(prisma, input.companyId);
   const existingByMessage = await prisma.conversationSchedulingState.findFirst({
@@ -938,6 +949,7 @@ async function reply(input: { companyId: string; customerId?: string | null; pho
     to,
     body,
     customerId: input.customerId,
+    origin: "CONTRACTORYOU_AUTOMATION",
   });
 }
 

@@ -322,6 +322,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
     to: customer.phone,
     body,
     customerId: customer.id,
+    origin: input.source === "CONVERSATION" ? "CONTRACTORYOU_AUTOMATION" : "SCHEDULING_CONFIRMATION",
   });
 
   if (!sent.ok) {

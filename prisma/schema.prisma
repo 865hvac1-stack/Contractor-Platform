@@ -18,6 +18,12 @@ enum CompanyStatus {
   INACTIVE
 }
 
+enum CustomerConversationOwner {
+  MANUAL
+  HIGHLEVEL_AI
+  CONTRACTORYOU
+}
+
 enum Industry {
   HVAC
   PLUMBING
@@ -510,6 +516,7 @@ model Company {
   description   String?
   hoursNote     String?
   isDemo        Boolean       @default(false)
+  customerConversationOwner CustomerConversationOwner @default(CONTRACTORYOU)
   allowExternalIntegrationTesting Boolean @default(false)
   status        CompanyStatus @default(ONBOARDING)
   companySize   String?

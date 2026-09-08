@@ -635,6 +635,7 @@ export async function retryBookingConfirmationAction(
       to: job.customer.phone,
       body,
       customerId: job.customerId,
+      origin: "SCHEDULING_CONFIRMATION",
     });
     if (!sent.ok) return { ok: false, error: sent.error || "Confirmation still failed." };
     await prisma.job.update({ where: { id: job.id }, data: { confirmationFailed: false } });

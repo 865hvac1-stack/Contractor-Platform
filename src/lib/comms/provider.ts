@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/db";
+import {
+  contractorYouMayAutoreply,
+  loadCustomerConversationOwner,
+  type OutboundCommunicationOrigin,
+} from "@/lib/comms/conversation-owner";
 import { demoOutboundBlock } from "@/lib/demo/guard";
 import { isHighLevelConnected } from "@/lib/highlevel/connection";
 import { sendViaHighLevel } from "@/lib/highlevel/communication-provider";
@@ -32,7 +37,19 @@ export async function sendCompanyCommunication(input: {
   customerId?: string | null;
   leadId?: string | null;
   confirmExternalSend?: boolean;
+  origin?: OutboundCommunicationOrigin;
 }): Promise<SmsSendResult & { provider: "highlevel" | "twilio" | "none" | "demo" }> {
+  if (input.origin === "CONTRACTORYOU_AUTOMATION") {
+    const owner = await loadCustomerConversationOwner(prisma, input.companyId);
+    if (!contractorYouMayAutoreply(owner)) {
+      return {
+        ok: false,
+        configured: true,
+        provider: "none",
+        error: "ContractorYou is not the customer conversation owner, so automated scheduling texts are blocked.",
+      };
+    }
+  }
   const blocked = await demoOutboundBlock(input.companyId);
   const provider = await resolveCommunicationProvider(input.companyId);
   if (blocked.blocked && !(input.confirmExternalSend && provider === "highlevel")) {
