@@ -31,6 +31,8 @@ describe("customer conversation owner", () => {
     expect(contractorYouMayAutoreply("HIGHLEVEL_AI")).toBe(false);
     expect(contractorYouMayAutoreply("MANUAL")).toBe(false);
     expect(parseCustomerConversationOwner("HIGHLEVEL_AI")).toBe("HIGHLEVEL_AI");
+    expect(parseCustomerConversationOwner("HIGHLEVEL")).toBe("HIGHLEVEL_AI");
+    expect(parseCustomerConversationOwner("OFFICE_ONLY")).toBe("MANUAL");
     expect(parseCustomerConversationOwner("nope")).toBe("CONTRACTORYOU");
   });
 
@@ -129,6 +131,15 @@ describe("customer conversation owner", () => {
     expect(migration).toMatch(/customerConversationOwner" = 'CONTRACTORYOU'/);
     expect(migration).toMatch(/assistantName/);
     expect(migration).toMatch(/Regina/);
+    expect(migration).toMatch(/businessName" = '865 HVAC'/);
+  });
+
+  it("sets 865 HVAC hybrid conversation owner to HighLevel Regina", () => {
+    const migration = readFileSync(
+      resolve("prisma/migrations/20260908193000_hybrid_conversation_owner/migration.sql"),
+      "utf8"
+    );
+    expect(migration).toMatch(/HIGHLEVEL_AI/);
     expect(migration).toMatch(/businessName" = '865 HVAC'/);
   });
 });

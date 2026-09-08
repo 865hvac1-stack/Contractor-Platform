@@ -7,7 +7,10 @@ import { getCustomerMaintenanceSummary } from "@/lib/scheduling/maintenance";
 import { addLocalDays, companyTodayKey, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { interpretSchedulingIntent } from "@/lib/scheduling/intent";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
+import { persistOfferedSlots, resolveActionThread } from "@/lib/agent-tools/persist-offers";
+import { sendActionResultSms } from "@/lib/agent-tools/send-result";
 import { signSlotToken } from "@/lib/agent-tools/slot-token";
+import { offerSlotsMessage } from "@/lib/scheduling/templates";
 import {
   customerPayload,
   hhmm,
@@ -28,6 +31,7 @@ export const checkAvailabilitySchema = z.object({
   requested_date: z.string().optional().nullable(),
   requested_daypart: z.string().optional().nullable(),
   timezone: z.string().optional().nullable(),
+  send_to_customer: z.boolean().optional(),
 });
 
 function slotDisplay(dateKey: string, startMinutes: number, endMinutes: number, timeZone: string) {
@@ -123,7 +127,24 @@ export async function checkAvailabilityTool(input: {
         maintenance: service.maintenance,
       });
 
-  const slots = uniqueWindowOffers(rawOptions, 4).map((slot) => ({
+  const offered = uniqueWindowOffers(rawOptions, 4);
+  const thread = await resolveActionThread({
+    companyId: input.companyId,
+    conversationId: body.conversation_id,
+    phone: body.customer_phone,
+  });
+  if (thread && offered.length) {
+    await persistOfferedSlots({
+      companyId: input.companyId,
+      threadId: thread.id,
+      customerId: customer.customer_id,
+      propertyId: customer.property_id,
+      serviceTypeId: service.serviceType.id,
+      slots: offered,
+    });
+  }
+
+  const slots = offered.map((slot) => ({
     slot_token: signSlotToken({
       companyId: input.companyId,
       date: slot.date,
@@ -146,6 +167,27 @@ export async function checkAvailabilityTool(input: {
         job_id: membership.next.jobId,
       }
     : { status: membership.hasActivePlan ? "none_due" : "no_plan" };
+
+  if (body.send_to_customer) {
+    const message = slots.length
+      ? offerSlotsMessage({
+          slots: offered.map((slot) => ({
+            dateKey: slot.date,
+            startMinutes: slot.startMinutes,
+            endMinutes: slot.endMinutes,
+            timeZone,
+          })),
+          todayKey: today,
+        })
+      : "I don’t see an open window right now. I’ll have the office help with scheduling.";
+    await sendActionResultSms({
+      companyId: input.companyId,
+      phone: body.customer_phone || thread?.phone,
+      customerId: customer.customer_id,
+      body: message,
+      send: true,
+    });
+  }
 
   if (!slots.length) {
     return {

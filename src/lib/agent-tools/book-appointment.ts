@@ -15,6 +15,7 @@ import { uniqueWindowOffers } from "@/lib/scheduling/conversation-turn";
 import { findOpenMaintenanceVisit } from "@/lib/scheduling/maintenance";
 import { companyTodayKey, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
+import { sendActionResultSms } from "@/lib/agent-tools/send-result";
 import { signSlotToken, verifySlotToken } from "@/lib/agent-tools/slot-token";
 import {
   customerPayload,
@@ -44,6 +45,7 @@ export const bookAppointmentSchema = z.object({
     .optional()
     .nullable(),
   idempotency_key: z.string().optional().nullable(),
+  send_to_customer: z.boolean().optional(),
 });
 
 function slotDisplay(dateKey: string, startMinutes: number, endMinutes: number, timeZone: string) {
@@ -337,6 +339,16 @@ export async function bookAppointmentTool(input: {
     },
   });
   const refreshed = await loadSchedulingCustomerContext(prisma, { companyId: input.companyId, customerId });
+  const appointmentDisplay = slotDisplay(booked.date, stillOpen.startMinutes, stillOpen.endMinutes, timeZone);
+  if (body.send_to_customer) {
+    await sendActionResultSms({
+      companyId: input.companyId,
+      phone: body.customer_phone,
+      customerId,
+      body: `You’re scheduled for ${appointmentDisplay}. We’ll text you when your technician is on the way.`,
+      send: true,
+    });
+  }
 
   return {
     status: 200,
@@ -356,7 +368,7 @@ export async function bookAppointmentTool(input: {
           date: booked.date,
           window_start: hhmm(stillOpen.startMinutes),
           window_end: hhmm(stillOpen.endMinutes),
-          display: slotDisplay(booked.date, stillOpen.startMinutes, stillOpen.endMinutes, timeZone),
+          display: appointmentDisplay,
           technician_id: booked.technicianId,
         },
         customer: {

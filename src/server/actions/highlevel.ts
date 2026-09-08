@@ -714,10 +714,10 @@ export async function saveCustomerConversationOwnerAction(
       ok: true,
       message:
         owner === "HIGHLEVEL_AI"
-          ? "HighLevel AI is the customer conversation owner. ContractorYou will not auto-text inbound messages."
+          ? "HighLevel Regina handles the conversation. ContractorYou will not auto-chat, but can still send availability and booking results."
           : owner === "MANUAL"
-            ? "Customer conversations are manual. Neither AI will auto-reply from ContractorYou."
-            : "ContractorYou AI receptionist may reply to inbound messages through HighLevel SMS.",
+            ? "Office only. Neither AI will auto-reply from ContractorYou."
+            : "ContractorYou Regina handles both the conversation and business actions.",
     };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };

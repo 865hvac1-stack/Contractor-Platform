@@ -141,7 +141,7 @@ describe("slot-selection loop regression", () => {
             timeZone: "America/New_York",
           })),
         })
-      ).toMatch(/I offered .+ and .+\. Which one would you like\?/);
+      ).toMatch(/I have two openings that match — .+ or .+\. Which one would you like\?/);
     }
     expect(
       shouldFetchNextAvailability({

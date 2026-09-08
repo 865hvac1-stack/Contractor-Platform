@@ -39,14 +39,22 @@ export async function sendCompanyCommunication(input: {
   confirmExternalSend?: boolean;
   origin?: OutboundCommunicationOrigin;
 }): Promise<SmsSendResult & { provider: "highlevel" | "twilio" | "none" | "demo" }> {
-  if (input.origin === "CONTRACTORYOU_AUTOMATION") {
+  if (input.origin === "CONTRACTORYOU_AUTOMATION" || input.origin === "CONTRACTORYOU_ACTION_RESULT") {
     const owner = await loadCustomerConversationOwner(prisma, input.companyId);
-    if (!contractorYouMayAutoreply(owner)) {
+    if (input.origin === "CONTRACTORYOU_AUTOMATION" && !contractorYouMayAutoreply(owner)) {
       return {
         ok: false,
         configured: true,
         provider: "none",
         error: "ContractorYou is not the customer conversation owner, so automated scheduling texts are blocked.",
+      };
+    }
+    if (input.origin === "CONTRACTORYOU_ACTION_RESULT" && owner === "MANUAL") {
+      return {
+        ok: false,
+        configured: true,
+        provider: "none",
+        error: "Office-only conversations do not accept automated action-result texts.",
       };
     }
   }

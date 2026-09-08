@@ -7,7 +7,9 @@ These Agent Studio tools remain available for integrations and testing. They sti
 Phase 1 tools:
 
 - `POST /api/agent-tools/check-availability`
+- `POST /api/agent-tools/select-offered-slot`
 - `POST /api/agent-tools/book-appointment`
+- `POST /api/agent-tools/book-selected-slot`
 
 These are authenticated machine-to-machine tools. They are not public customer APIs. They never send SMS.
 

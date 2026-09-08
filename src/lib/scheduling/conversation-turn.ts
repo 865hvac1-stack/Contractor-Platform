@@ -23,6 +23,7 @@ export type SchedulingTurnAction =
   | { action: "ask"; missing: NonNullable<SchedulingIntent["missingField"]> }
   | { action: "offer_slots"; slots: OfferedSlot[]; todayWasFull: boolean; requestedLabel: string | null }
   | { action: "clarify_slots"; slots: OfferedSlot[] }
+  | { action: "unmatched_slot" }
   | { action: "book"; date: string; windowId: string }
   | { action: "suggest"; date: string; windowId: string };
 
@@ -177,16 +178,74 @@ export function parseOfferedSlots(value: unknown): OfferedSlot[] {
   });
 }
 
-function parseClockStart(text: string): number | null {
-  const start = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
-  if (!start) return null;
-  let hours = Number(start[1]);
-  const minutes = Number(start[2] ?? 0);
-  const period = start[3];
-  if (period === "pm" && hours < 12) hours += 12;
-  if (period === "am" && hours === 12) hours = 0;
-  if (!period && hours >= 1 && hours <= 7) hours += 12;
-  return hours * 60 + minutes;
+const MONTH_INDEX: Record<string, number> = {
+  january: 1,
+  jan: 1,
+  february: 2,
+  feb: 2,
+  march: 3,
+  mar: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  june: 6,
+  jun: 6,
+  july: 7,
+  jul: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  sept: 9,
+  sep: 9,
+  october: 10,
+  oct: 10,
+  november: 11,
+  nov: 11,
+  december: 12,
+  dec: 12,
+};
+
+function clockToMinutes(hours: number, minutes: number, period?: string | null) {
+  let value = hours;
+  const suffix = (period || "").toLowerCase();
+  if (suffix === "pm" && value < 12) value += 12;
+  if (suffix === "am" && value === 12) value = 0;
+  if (!suffix && value >= 1 && value <= 7) value += 12;
+  return value * 60 + minutes;
+}
+
+function parseDayNumber(value: string) {
+  const day = Number(value);
+  return day >= 1 && day <= 31 ? day : null;
+}
+
+function filterByCalendarDate(offers: OfferedSlot[], text: string) {
+  const iso = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (iso) {
+    const key = `${iso[1]}-${iso[2]}-${iso[3]}`;
+    return offers.filter((slot) => slot.date === key);
+  }
+  const monthNames = Object.keys(MONTH_INDEX).sort((a, b) => b.length - a.length).join("|");
+  const monthDay = text.match(new RegExp(`\\b(${monthNames})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`));
+  if (monthDay) {
+    const month = MONTH_INDEX[monthDay[1]!];
+    const day = parseDayNumber(monthDay[2]!);
+    if (month && day) {
+      return offers.filter((slot) => {
+        const [, slotMonth, slotDay] = slot.date.split("-").map(Number);
+        return slotMonth === month && slotDay === day;
+      });
+    }
+  }
+  const ordinal = text.match(/\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/);
+  if (ordinal) {
+    const day = parseDayNumber(ordinal[1]!);
+    if (day) {
+      const byDay = offers.filter((slot) => Number(slot.date.slice(-2)) === day);
+      if (byDay.length) return byDay;
+    }
+  }
+  return offers;
 }
 
 function filterByWeekday(offers: OfferedSlot[], text: string) {
@@ -197,68 +256,71 @@ function filterByWeekday(offers: OfferedSlot[], text: string) {
 }
 
 function filterByDaypart(offers: OfferedSlot[], text: string) {
-  if (/\b(morning|am)\b/.test(text) && !/\b\d{1,2}\b/.test(text)) {
+  const hasClock = /\b\d{1,2}(?::\d{2})?\s*(am|pm)?\b/.test(text) && /\b(to|-|–|—|from)\b/.test(text);
+  if (/\b(morning)\b/.test(text) && !hasClock) {
     return offers.filter((slot) => slot.startMinutes < 12 * 60);
   }
-  if (/\b(afternoon|evening|pm)\b/.test(text) && !/\b\d{1,2}\b/.test(text)) {
+  if (/\b(afternoon|evening)\b/.test(text) && !hasClock) {
     return offers.filter((slot) => slot.startMinutes >= 12 * 60);
   }
   return offers;
 }
 
+function filterByWindow(offers: OfferedSlot[], text: string) {
+  const range = text.match(/\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|-|–|—)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (!range) return offers;
+  const start = clockToMinutes(Number(range[1]), Number(range[2] ?? 0), range[3] || range[6]);
+  const end = clockToMinutes(Number(range[4]), Number(range[5] ?? 0), range[6] || range[3]);
+  const byWindow = offers.filter((slot) => {
+    const startMatch = slot.startMinutes === start || (start >= slot.startMinutes && start < slot.endMinutes);
+    const endMatch = !end || slot.endMinutes === end || Math.abs(slot.endMinutes - end) <= 60;
+    return startMatch && endMatch;
+  });
+  return byWindow.length ? byWindow : offers;
+}
+
+function ordinalMatch(text: string, offers: OfferedSlot[]): OfferedSlot | null {
+  if (/\b(earliest|soonest|first available|the earliest one)\b/.test(text)) return offers[0] ?? null;
+  if (/\b(option\s*(1|one)|first( one| option)?|1st|that first one)\b/.test(text)) return offers[0] ?? null;
+  if (/\b(option\s*(2|two)|second( one| option)?|2nd)\b/.test(text)) return offers[1] ?? null;
+  if (/\b(option\s*(3|three)|third( one| option)?|3rd)\b/.test(text)) return offers[2] ?? null;
+  if (/\b(option\s*(4|four)|fourth( one| option)?|4th|last one|the last)\b/.test(text)) {
+    return offers[3] ?? offers[offers.length - 1] ?? null;
+  }
+  return null;
+}
+
+function finishSelection(matches: OfferedSlot[], original: OfferedSlot[]): SlotSelectionResult {
+  if (matches.length === 1) return { kind: "match", slot: matches[0]! };
+  if (matches.length > 1) return { kind: "ambiguous", candidates: matches };
+  return { kind: "none" };
+}
+
 export function resolveOfferedSlotSelection(text: string, offers: OfferedSlot[]): SlotSelectionResult {
   if (!offers.length) return { kind: "none" };
-  const lower = text.trim().toLowerCase();
+  const lower = text.trim().toLowerCase().replace(/[’']/g, "'");
 
-  if (/\b(first|1st|that first one|the first one)\b/.test(lower)) {
-    return offers[0] ? { kind: "match", slot: offers[0] } : { kind: "none" };
-  }
-  if (/\b(second|2nd|the second|second option)\b/.test(lower)) {
-    return offers[1] ? { kind: "match", slot: offers[1] } : { kind: "none" };
-  }
-  if (/\b(third|3rd|the third)\b/.test(lower)) {
-    return offers[2] ? { kind: "match", slot: offers[2] } : { kind: "none" };
-  }
-  if (/\b(last one|the last)\b/.test(lower)) {
-    const last = offers[offers.length - 1];
-    return last ? { kind: "match", slot: last } : { kind: "none" };
-  }
+  const ordinal = ordinalMatch(lower, offers);
+  if (ordinal) return { kind: "match", slot: ordinal };
 
   const affirmation =
-    /\b(that one|that works|sounds good|yes|yeah|yep|yup|sure|ok|okay|let'?s do (it|that)|book it|perfect|works for me)\b/.test(
+    /\b(that one|that works|sounds good|yes|yeah|yep|yup|sure|ok|okay|let'?s do (it|that)|book it|perfect|works for me|i('ll| will) take (it|that)|i would take that)\b/.test(
       lower
     );
-  if (affirmation && !/\b(first|second|third|morning|afternoon|evening|tuesday|wednesday|thursday|friday|monday|saturday|sunday|\d)\b/.test(lower)) {
+  const hasSpecific =
+    /\b(morning|afternoon|evening|sunday|monday|tuesday|wednesday|thursday|friday|saturday|january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,2}(?:st|nd|rd|th)?)\b/.test(
+      lower
+    );
+  if (affirmation && !hasSpecific) {
     if (offers.length === 1) return { kind: "match", slot: offers[0]! };
     return { kind: "ambiguous", candidates: offers };
   }
 
-  let matches = filterByDaypart(filterByWeekday(offers, lower), lower);
-
-  const range = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:to|-|–|—)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-  if (range) {
-    let startHours = Number(range[1]);
-    const startMinutes = Number(range[2] ?? 0);
-    const period = range[5];
-    if (period === "pm" && startHours < 12) startHours += 12;
-    if (period === "am" && startHours === 12) startHours = 0;
-    if (!period && startHours >= 1 && startHours <= 7) startHours += 12;
-    const start = startHours * 60 + startMinutes;
-    const byStart = matches.filter((slot) => slot.startMinutes === start || (start >= slot.startMinutes && start < slot.endMinutes));
-    if (byStart.length === 1) return { kind: "match", slot: byStart[0]! };
-    if (byStart.length > 1) return { kind: "ambiguous", candidates: byStart };
-  }
-
-  const start = parseClockStart(lower);
-  if (start != null && /\b\d{1,2}\b/.test(lower)) {
-    const byTime = matches.filter((slot) => start >= slot.startMinutes && start < slot.endMinutes);
-    if (byTime.length === 1) return { kind: "match", slot: byTime[0]! };
-    if (byTime.length > 1) return { kind: "ambiguous", candidates: byTime };
-  }
-
-  if (matches.length === 1) return { kind: "match", slot: matches[0]! };
-  if (matches.length > 1 && matches.length < offers.length) return { kind: "ambiguous", candidates: matches };
-  return { kind: "none" };
+  const byDate = filterByCalendarDate(offers, lower);
+  const byWeekday = filterByWeekday(byDate, lower);
+  const byDaypart = filterByDaypart(byWeekday, lower);
+  const byWindow = filterByWindow(byDaypart, lower);
+  return finishSelection(byWindow, offers);
 }
 
 export function matchOfferedSlot(text: string, offers: OfferedSlot[]): OfferedSlot | null {
@@ -293,7 +355,7 @@ export function resolveSchedulingTurn(input: {
   if (awaitingSlot && !intent.availabilityAsk && !intent.availabilitySearchRequested && !rejectOffered) {
     if (selection.kind === "match") return decideBookOrSuggest(input.canAutoBook, selection.slot.date, selection.slot.windowId);
     if (selection.kind === "ambiguous") return { action: "clarify_slots", slots: selection.candidates };
-    if (selection.kind === "none") return { action: "clarify_slots", slots: offered };
+    if (selection.kind === "none") return { action: "unmatched_slot" };
   }
 
   if (selection.kind === "match") {

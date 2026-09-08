@@ -8,18 +8,18 @@ import { conversationOwnerCopy } from "@/lib/comms/conversation-owner";
 
 const OPTIONS: Array<{ value: CustomerConversationOwner; label: string; hint: string }> = [
   {
-    value: "CONTRACTORYOU",
-    label: "ContractorYou AI receptionist",
-    hint: "ContractorYou Regina replies through HighLevel SMS. Turn HighLevel Conversation AI off so customers are not double-texted.",
+    value: "HIGHLEVEL_AI",
+    label: "HighLevel Regina",
+    hint: "HighLevel handles the conversation. ContractorYou still controls customers, availability, booking, jobs, and Dispatch.",
   },
   {
-    value: "HIGHLEVEL_AI",
-    label: "HighLevel Conversation AI",
-    hint: "HighLevel talks to the customer. ContractorYou remains the source of truth for scheduling. Use only if Regina is running in HighLevel.",
+    value: "CONTRACTORYOU",
+    label: "ContractorYou Regina",
+    hint: "ContractorYou handles both the conversation and business actions.",
   },
   {
     value: "MANUAL",
-    label: "Manual only",
+    label: "Office only",
     hint: "Neither AI replies automatically. The office sends customer texts from ContractorYou.",
   },
 ];

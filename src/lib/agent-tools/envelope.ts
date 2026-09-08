@@ -1,6 +1,6 @@
 import { withStudioFields } from "@/lib/agent-tools/studio-fields";
 
-export type AgentToolAction = "check_availability" | "book_appointment";
+export type AgentToolAction = "check_availability" | "book_appointment" | "select_offered_slot";
 
 export type AgentToolError = {
   code: string;

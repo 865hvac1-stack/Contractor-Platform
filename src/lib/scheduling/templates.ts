@@ -87,8 +87,18 @@ export function clarifyOfferedSlotsMessage(input: {
     (row) => `${formatLocalDateShort(row.dateKey, row.timeZone)} ${formatClockMinutes(row.startMinutes)}–${formatClockMinutes(row.endMinutes)}`
   );
   if (labeled.length === 1) return `Just to confirm — would you like ${labeled[0]}?`;
-  if (labeled.length === 2) return `I offered ${labeled[0]} and ${labeled[1]}. Which one would you like?`;
+  if (labeled.length === 2) {
+    return `I have two openings that match — ${labeled[0]} or ${labeled[1]}. Which one would you like?`;
+  }
   return `Which of these works: ${labeled.join(", ")}?`;
+}
+
+export function unmatchedOfferedSlotMessage() {
+  return "I didn’t catch which opening you wanted. What day and time works for you?";
+}
+
+export function slotTakenMessage() {
+  return "Sorry, that one was just taken. Let me grab the next available options for you.";
 }
 
 export function maintenanceDuplicateMessage(input: {

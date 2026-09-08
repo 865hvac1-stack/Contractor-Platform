@@ -8,17 +8,28 @@ export type OutboundCommunicationOrigin =
   | "MANUAL_OFFICE"
   | "HIGHLEVEL_AI"
   | "CONTRACTORYOU_AUTOMATION"
+  | "CONTRACTORYOU_ACTION_RESULT"
   | "SCHEDULING_CONFIRMATION"
   | "WAITING_BOARD"
   | "SYSTEM_AUTOMATION";
 
 export function parseCustomerConversationOwner(value: unknown): CustomerConversationOwner {
-  if (value === "MANUAL" || value === "HIGHLEVEL_AI" || value === "CONTRACTORYOU") return value;
+  if (value === "HIGHLEVEL" || value === "HIGHLEVEL_AI") return "HIGHLEVEL_AI";
+  if (value === "OFFICE_ONLY" || value === "MANUAL") return "MANUAL";
+  if (value === "CONTRACTORYOU") return "CONTRACTORYOU";
   return "CONTRACTORYOU";
 }
 
 export function contractorYouMayAutoreply(owner: CustomerConversationOwner) {
   return owner === "CONTRACTORYOU";
+}
+
+export function highLevelOwnsConversation(owner: CustomerConversationOwner) {
+  return owner === "HIGHLEVEL_AI";
+}
+
+export function contractorYouMaySendActionResult(owner: CustomerConversationOwner) {
+  return owner === "CONTRACTORYOU" || owner === "HIGHLEVEL_AI";
 }
 
 export async function loadCustomerConversationOwner(
@@ -34,10 +45,10 @@ export async function loadCustomerConversationOwner(
 
 export function conversationOwnerCopy(owner: CustomerConversationOwner) {
   if (owner === "HIGHLEVEL_AI") {
-    return "HighLevel Conversation AI talks to the customer. ContractorYou remains the source of truth for scheduling and business data.";
+    return "HighLevel handles the conversation. ContractorYou still controls customers, availability, booking, jobs, and Dispatch.";
   }
   if (owner === "MANUAL") {
-    return "Neither AI replies automatically. The office sends customer texts from ContractorYou.";
+    return "Office only. Neither AI replies automatically.";
   }
-  return "ContractorYou Regina (or your company assistant) replies through HighLevel SMS. Turn HighLevel Conversation AI off for this location so customers are not double-texted.";
+  return "ContractorYou handles both the conversation and business actions.";
 }

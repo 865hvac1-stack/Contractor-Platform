@@ -219,7 +219,7 @@ export function bookingStudioFields(data: unknown, errorCode: string | null = nu
 export function withStudioFields<T>(envelope: AgentToolEnvelope<T>): AgentToolEnvelope<T> &
   Partial<AvailabilityStudioFields & BookingStudioFields> {
   const errorCode = envelope.error?.code ?? null;
-  if (envelope.action === "check_availability") {
+  if (envelope.action === "check_availability" || envelope.action === "select_offered_slot") {
     return { ...availabilityStudioFields(envelope.data, errorCode), ...envelope };
   }
   return { ...bookingStudioFields(envelope.data, errorCode), ...envelope };

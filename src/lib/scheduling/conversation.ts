@@ -12,6 +12,8 @@ import {
   cancelConfirmationMessage,
   clarificationMessage,
   clarifyOfferedSlotsMessage,
+  unmatchedOfferedSlotMessage,
+  slotTakenMessage,
   maintenanceDuplicateMessage,
   noAvailabilityMessage,
   noPlanMessage,
@@ -525,6 +527,15 @@ export async function processInboundScheduling(input: SchedulingProcessInput) {
     return { handled: true as const, stateId: state.id, outcome: "clarify" as const };
   }
 
+  if (turn.action === "unmatched_slot") {
+    await prisma.conversationSchedulingState.update({
+      where: { id: state.id },
+      data: { status: "CLARIFYING", missingField: "slot_selection", offeredSlots, customerId, propertyId },
+    });
+    await reply(replyInput, unmatchedOfferedSlotMessage());
+    return { handled: true as const, stateId: state.id, outcome: "unmatched_slot" as const };
+  }
+
   if (turn.action === "offer_slots") {
     if (!turn.slots.length) {
       await markNeedsReview(state.id, input.companyId, "no_availability");
@@ -809,16 +820,17 @@ async function finishSelectedSlot(input: {
     });
     await reply(
       replyInput,
-      noAvailabilityMessage({
-        policy: input.policy,
-        requestedLabel: "that window",
-        alternatives: nextSlots.map((row) => ({
-          dateKey: row.date,
-          startMinutes: row.startMinutes,
-          endMinutes: row.endMinutes,
-          timeZone: input.timeZone,
-        })),
-      })
+      nextSlots.length
+        ? `${slotTakenMessage()} ${offerSlotsMessage({
+            slots: nextSlots.map((row) => ({
+              dateKey: row.date,
+              startMinutes: row.startMinutes,
+              endMinutes: row.endMinutes,
+              timeZone: input.timeZone,
+            })),
+            todayKey: input.chosenDate,
+          })}`
+        : slotTakenMessage()
     );
     return { handled: true as const, stateId: input.stateId, outcome: "alternatives" as const };
   }
@@ -895,16 +907,17 @@ async function finishSelectedSlot(input: {
     });
     await reply(
       replyInput,
-      noAvailabilityMessage({
-        policy: input.policy,
-        requestedLabel: "that window",
-        alternatives: nextSlots.map((row) => ({
-          dateKey: row.date,
-          startMinutes: row.startMinutes,
-          endMinutes: row.endMinutes,
-          timeZone: input.timeZone,
-        })),
-      })
+      nextSlots.length
+        ? `${slotTakenMessage()} ${offerSlotsMessage({
+            slots: nextSlots.map((row) => ({
+              dateKey: row.date,
+              startMinutes: row.startMinutes,
+              endMinutes: row.endMinutes,
+              timeZone: input.timeZone,
+            })),
+            todayKey: input.chosenDate,
+          })}`
+        : slotTakenMessage()
     );
     return { handled: true as const, stateId: input.stateId, outcome: "alternatives" as const };
   }
