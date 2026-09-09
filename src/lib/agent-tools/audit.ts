@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/audit";
 export async function recordAgentToolCall(input: {
   companyId: string;
   credentialId?: string | null;
-  tool: "check_availability" | "book_appointment" | "select_offered_slot";
+  tool: "check_availability" | "book_appointment" | "select_offered_slot" | "start_scheduling";
   success: boolean;
   errorCode?: string | null;
   httpStatus: number;

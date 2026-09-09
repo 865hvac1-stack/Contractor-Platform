@@ -43,11 +43,13 @@ describe("customer conversation owner", () => {
     expect(webhook).toMatch(/loadCustomerConversationOwner/);
     expect(webhook).toMatch(/processInboundReceptionist/);
     expect(webhook).toMatch(/processInboundScheduling/);
-    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
+    expect(webhook).toMatch(/processSchedulingSessionInbound/);
+    const sessionCheck = webhook.indexOf("processSchedulingSessionInbound");
     const ownerCheck = webhook.indexOf("contractorYouMayAutoreply(conversationOwner)");
     const receptionistCall = webhook.indexOf("processInboundReceptionist(inbound)");
     const processCall = webhook.indexOf("processInboundScheduling(inbound)");
-    expect(ownerCheck).toBeGreaterThan(0);
+    expect(sessionCheck).toBeGreaterThan(0);
+    expect(ownerCheck).toBeGreaterThan(sessionCheck);
     expect(receptionistCall).toBeGreaterThan(ownerCheck);
     expect(processCall).toBeGreaterThan(receptionistCall);
   });

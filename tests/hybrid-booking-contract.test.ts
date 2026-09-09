@@ -313,7 +313,7 @@ describe("hybrid booking source files", () => {
     expect(docs).toMatch(/Do not tell the customer they are booked/);
     expect(docs).toMatch(/Do not send a duplicate confirmation/);
     expect(docs).toMatch(/I’ve got you scheduled/);
-    expect(docs).toMatch(/Book Selected Slot/);
+    expect(docs).toMatch(/start-scheduling/);
     expect(docs).toMatch(/HIGHLEVEL_AI/);
     expect(docs).not.toMatch(/ghp_/);
     expect(docs).not.toMatch(/cyat_[A-Za-z0-9_-]{20,}/);
@@ -388,10 +388,12 @@ describe("hybrid booking source files", () => {
     ).toBe(false);
   });
 
-  it("keeps HIGHLEVEL_AI inbound continuation without turning Regina into the booker", () => {
+  it("routes active scheduling sessions before receptionist and does not let Regina book", () => {
     const webhook = readFileSync(resolve("src/lib/highlevel/webhooks.ts"), "utf8");
-    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
-    expect(webhook).toMatch(/highLevelOwnsConversation/);
+    expect(webhook).toMatch(/processSchedulingSessionInbound/);
+    expect(webhook.indexOf("processSchedulingSessionInbound")).toBeLessThan(
+      webhook.indexOf("contractorYouMayAutoreply(conversationOwner)")
+    );
     expect(readFileSync(resolve("src/lib/agent-tools/http.ts"), "utf8")).toMatch(/normalizeAgentToolBody/);
     expect(readFileSync(resolve("src/lib/agent-tools/select-slot.ts"), "utf8")).toMatch(/sendSelectSms/);
     expect(readFileSync(resolve("src/lib/agent-tools/select-slot.ts"), "utf8")).toMatch(/logHybridAction/);

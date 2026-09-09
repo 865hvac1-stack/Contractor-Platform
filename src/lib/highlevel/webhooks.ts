@@ -385,7 +385,18 @@ export async function processHighLevelWebhook(
           channel: comms.message.channel,
           phone: fields.from || emptyToNull(text(data.phone)),
         };
-        if (contractorYouMayAutoreply(conversationOwner)) {
+        const { processSchedulingSessionInbound } = await import("@/lib/agent-tools/scheduling-session");
+        const session = await processSchedulingSessionInbound({
+          companyId: inbound.companyId,
+          threadId: inbound.threadId,
+          messageId: inbound.messageId,
+          phone: inbound.phone,
+          contactId: fields.contactId,
+          body: inbound.body,
+        });
+        if (session.handled) {
+          // ContractorYou owns operational scheduling replies while a session is active.
+        } else if (contractorYouMayAutoreply(conversationOwner)) {
           const { loadReceptionistSettings, receptionistShouldHandleInbound } = await import(
             "@/lib/intelligence/receptionist/settings"
           );
@@ -396,19 +407,6 @@ export async function processHighLevelWebhook(
           } else {
             const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
             await processInboundScheduling(inbound);
-          }
-        } else {
-          const { highLevelOwnsConversation } = await import("@/lib/comms/conversation-owner");
-          if (highLevelOwnsConversation(conversationOwner)) {
-            const { continueHybridSchedulingFromInbound } = await import("@/lib/agent-tools/hybrid-continue");
-            await continueHybridSchedulingFromInbound({
-              companyId: inbound.companyId,
-              threadId: inbound.threadId,
-              messageId: inbound.messageId,
-              phone: inbound.phone,
-              contactId: fields.contactId,
-              body: inbound.body,
-            });
           }
         }
       } catch (error) {

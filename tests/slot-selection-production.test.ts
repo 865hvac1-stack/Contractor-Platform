@@ -100,8 +100,13 @@ describe("production offered-slot resolution", () => {
     expect(contractorYouMayAutoreply("CONTRACTORYOU")).toBe(true);
     const webhook = readFileSync(resolve("src/lib/highlevel/webhooks.ts"), "utf8");
     expect(webhook).toMatch(/contractorYouMayAutoreply/);
-    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
-    expect(webhook.indexOf("contractorYouMayAutoreply")).toBeLessThan(webhook.indexOf("processInboundReceptionist"));
+    expect(webhook).toMatch(/processSchedulingSessionInbound/);
+    expect(webhook.indexOf("processSchedulingSessionInbound")).toBeLessThan(
+      webhook.indexOf("contractorYouMayAutoreply(conversationOwner)")
+    );
+    expect(webhook.indexOf("contractorYouMayAutoreply(conversationOwner)")).toBeLessThan(
+      webhook.indexOf("processInboundReceptionist")
+    );
     const provider = readFileSync(resolve("src/lib/comms/provider.ts"), "utf8");
     expect(provider).toMatch(/CONTRACTORYOU_ACTION_RESULT/);
     expect(readFileSync(resolve("src/app/api/agent-tools/select-offered-slot/route.ts"), "utf8")).toMatch(

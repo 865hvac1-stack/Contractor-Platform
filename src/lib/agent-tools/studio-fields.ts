@@ -267,11 +267,26 @@ export function withStudioFields<T>(envelope: AgentToolEnvelope<T>): AgentToolEn
   if (envelope.action === "check_availability") {
     return { ...availabilityStudioFields(envelope.data, errorCode), ...envelope, booking_confirmed: false };
   }
+  if (envelope.action === "start_scheduling") {
+    const confirmed = isBookingActuallyConfirmed({
+      booking_confirmed: data?.booking_confirmed,
+      job_id: data?.job_id,
+      booking_id: data?.booking_id,
+      error_code: errorCode,
+    });
+    if (confirmed) return { ...bookingStudioFields(envelope.data, errorCode), ...envelope };
+    return {
+      ...availabilityStudioFields(envelope.data, errorCode),
+      ...bookingStudioFields(envelope.data, errorCode),
+      ...envelope,
+      booking_confirmed: false,
+    };
+  }
   return { ...bookingStudioFields(envelope.data, errorCode), ...envelope };
 }
 
 export function studioFieldNames(action: AgentToolAction) {
-  if (action === "check_availability") {
+  if (action === "check_availability" || action === "start_scheduling") {
     return [
       "availability_found",
       "customer_status",

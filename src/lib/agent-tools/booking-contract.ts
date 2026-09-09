@@ -21,19 +21,48 @@ import {
 } from "@/lib/scheduling/conversation-identity";
 import type { OfferedSlot } from "@/lib/scheduling/conversation-turn";
 
-export const HYBRID_PHASES = [
-  "NEED_CUSTOMER",
+export const SCHEDULING_SESSION_PHASES = [
+  "STARTED",
+  "NEED_CUSTOMER_NAME",
   "NEED_PROPERTY",
   "NEED_SERVICE_CONTEXT",
-  "CHECK_AVAILABILITY",
+  "CHECKING_AVAILABILITY",
   "SLOTS_OFFERED",
+  "WAITING_FOR_SLOT_SELECTION",
   "SLOT_SELECTED",
   "READY_TO_BOOK",
   "BOOKING",
   "BOOKED",
+  "HANDOFF",
+  "CANCELLED",
+] as const;
+
+export const HYBRID_PHASES = [
+  "NEED_CUSTOMER",
+  "NEED_CUSTOMER_NAME",
+  "NEED_PROPERTY",
+  "NEED_SERVICE_CONTEXT",
+  "CHECK_AVAILABILITY",
+  "CHECKING_AVAILABILITY",
+  "SLOTS_OFFERED",
+  "WAITING_FOR_SLOT_SELECTION",
+  "SLOT_SELECTED",
+  "READY_TO_BOOK",
+  "BOOKING",
+  "BOOKED",
+  "HANDOFF",
+  "CANCELLED",
+  "STARTED",
 ] as const;
 
 export type HybridPhase = (typeof HYBRID_PHASES)[number];
+export type SchedulingSessionPhase = (typeof SCHEDULING_SESSION_PHASES)[number];
+
+export const TERMINAL_SCHEDULING_PHASES = ["BOOKED", "HANDOFF", "CANCELLED"] as const;
+
+export function isTerminalSchedulingPhase(phase?: string | null) {
+  return (TERMINAL_SCHEDULING_PHASES as readonly string[]).includes(phase || "");
+}
 
 export const DO_NOT_CLAIM_BOOKED =
   "Do not tell the customer they are booked. ContractorYou will send the booking confirmation after the booking transaction succeeds.";
@@ -108,18 +137,28 @@ export function normalizeAgentToolBody(body: unknown): Record<string, unknown> {
   const contact = firstPresent(raw, ["contact_id", "contactId", "contactID"]);
   const conversation = firstPresent(raw, ["conversation_id", "conversationId"]);
   const address = firstPresent(raw, ["service_address", "address", "serviceAddress"]);
+  const concern = firstPresent(raw, [
+    "service_need",
+    "concern",
+    "customer_concern",
+    "notes",
+    "serviceNeed",
+    "known_concern",
+    "service_context",
+  ]);
   const send = coerceToolBoolean(firstPresent(raw, ["send_to_customer", "sendToCustomer", "send_to_customer"]));
   if (phone !== undefined) raw.customer_phone = phone;
   if (reply !== undefined) raw.customer_reply = reply;
   if (contact !== undefined) raw.contact_id = contact;
   if (conversation !== undefined) raw.conversation_id = conversation;
   if (address !== undefined) raw.service_address = address;
+  if (concern !== undefined) raw.service_need = concern;
   if (send !== undefined) raw.send_to_customer = send;
   return raw;
 }
 
 export function logHybridAction(event: {
-  action: "CHECK" | "SELECT" | "MISSING_INFO" | "BOOK";
+  action: "CHECK" | "SELECT" | "MISSING_INFO" | "BOOK" | "START";
   companyId: string;
   threadResolved?: boolean;
   threadAmbiguous?: boolean;
@@ -261,16 +300,16 @@ export function evaluateBookingReadiness(input: {
   const requires_service_address = !multipleProperties && !hasProperty;
   const requires_office = Boolean(input.requiresOffice);
 
-  let phase: HybridPhase = "NEED_CUSTOMER";
+  let phase: HybridPhase = "NEED_CUSTOMER_NAME";
   if (input.booked) phase = "BOOKED";
   else if (requires_office && !selected) phase = "NEED_SERVICE_CONTEXT";
   else if (selected && hasName && hasProperty && hasService && !multipleProperties) phase = "READY_TO_BOOK";
   else if (selected) phase = "SLOT_SELECTED";
-  else if (offered) phase = "SLOTS_OFFERED";
+  else if (offered) phase = "WAITING_FOR_SLOT_SELECTION";
   else if (!hasService) phase = "NEED_SERVICE_CONTEXT";
   else if (!hasProperty) phase = "NEED_PROPERTY";
-  else if (!hasName) phase = "NEED_CUSTOMER";
-  else phase = "CHECK_AVAILABILITY";
+  else if (!hasName) phase = "NEED_CUSTOMER_NAME";
+  else phase = "CHECKING_AVAILABILITY";
 
   const ready_to_book =
     !input.booked &&

@@ -259,6 +259,19 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
       offeredSlots: offered,
       customerConcern: state?.customerConcern ?? body.service_need,
     });
+    if (readiness.ready_to_book) {
+      return bookAppointmentTool({
+        companyId: input.companyId,
+        body: {
+          ...body,
+          slot_token: token,
+          customer_name: inboundName ? `${inboundName.firstName} ${inboundName.lastName}`.trim() : body.customer_name,
+          service_address: existingIntake.street,
+          service_need: state?.customerConcern ?? body.service_need,
+          send_to_customer: body.send_to_customer,
+        },
+      });
+    }
     const message = missingMessage(readiness, resolved.context?.properties ?? []);
     let smsSent = false;
     let smsSkipReason: string | null = message ? null : "no_missing_info";

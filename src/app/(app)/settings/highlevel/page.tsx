@@ -16,6 +16,7 @@ import { formatOauthInstallDiagnostic, type FreshOauthLocationResolution } from 
 import { highlevelSettingsHealth } from "@/lib/highlevel/settings-health";
 import { publicHighLevelConnectionView } from "@/lib/highlevel/location-id";
 import { AgentToolSettings } from "@/components/highlevel/agent-tool-settings";
+import { loadSchedulingIntegrationStatus } from "@/lib/agent-tools/scheduling-session";
 import { ConversationOwnerForm } from "@/components/highlevel/conversation-owner-form";
 import { ReceptionistSettingsForm } from "@/components/highlevel/receptionist-settings-form";
 import { loadReceptionistSettings } from "@/lib/intelligence/receptionist/settings";
@@ -80,7 +81,7 @@ export default async function HighLevelSettingsPage({
 }) {
   const ctx = await requirePermission("marketing:manage");
   const { error, connected, test_connected: testConnected } = await searchParams;
-  const [testGrantRow, sandboxEnabled, agentToolKeys, agentToolCalls] = await Promise.all([
+  const [testGrantRow, sandboxEnabled, agentToolKeys, agentToolCalls, schedulingStatus] = await Promise.all([
     getHighLevelTestGrant(prisma, ctx.company.id),
     companyAllowsExternalIntegrationTesting(ctx.company.id, prisma),
     prisma.agentToolCredential.findMany({
@@ -94,6 +95,7 @@ export default async function HighLevelSettingsPage({
       take: 12,
       select: { id: true, tool: true, success: true, errorCode: true, customerId: true, jobId: true, createdAt: true },
     }),
+    loadSchedulingIntegrationStatus(ctx.company.id),
   ]);
   const testGrant = toHighLevelTestGrantView(testGrantRow);
   const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
@@ -383,6 +385,15 @@ export default async function HighLevelSettingsPage({
           jobId: row.jobId,
           createdAt: formatDateTime(row.createdAt),
         }))}
+        schedulingStatus={{
+          orchestration: schedulingStatus.orchestration,
+          activeSessions: schedulingStatus.activeSessions,
+          lastActionAt: schedulingStatus.lastActionAt ? formatDateTime(schedulingStatus.lastActionAt) : null,
+          lastActionTool: schedulingStatus.lastActionTool,
+          lastActionOk: schedulingStatus.lastActionOk,
+          lastErrorAt: schedulingStatus.lastErrorAt ? formatDateTime(schedulingStatus.lastErrorAt) : null,
+          lastErrorCode: schedulingStatus.lastErrorCode,
+        }}
       />
 
       <HighLevelSettingsForm

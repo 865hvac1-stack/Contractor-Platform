@@ -40,6 +40,7 @@ describe("Agent Tool authentication and tokens", () => {
 
   it("lets Agent Studio reach the tools without a ContractorYou session cookie", () => {
     expect(isPublicPath("/api/agent-tools/check-availability")).toBe(true);
+    expect(isPublicPath("/api/agent-tools/start-scheduling")).toBe(true);
     expect(isPublicPath("/api/agent-tools/book-appointment")).toBe(true);
     expect(isPublicPath("/settings/highlevel")).toBe(false);
     expect(
@@ -111,6 +112,7 @@ describe("Agent Tool scheduling adapter", () => {
   it("documents Agent Studio setup without embedding secrets", () => {
     const docs = readFileSync(resolve("docs/HIGHLEVEL_AGENT_STUDIO.md"), "utf8");
     expect(docs).toMatch(/check-availability/);
+    expect(docs).toMatch(/start-scheduling/);
     expect(docs).toMatch(/book-appointment/);
     expect(docs).toMatch(/Authorization: Bearer/);
     expect(docs).toMatch(/booking_confirmed/);

@@ -77,7 +77,29 @@ export function contractorYouBookingConfirmation(input: { appointmentDisplay: st
 }
 
 export function thanksNameAskAddressMessage(firstName: string) {
-  return `Thanks, ${firstName}. What’s the service address?`;
+  return `Thanks, ${firstName}. What's the address where you need service?`;
+}
+
+export function askServiceConcernMessage() {
+  return "What's going on with the system?";
+}
+
+export function askWhichPropertyForServiceMessage() {
+  return "Which property do you need service at?";
+}
+
+export function contractorYouOfferWindowsMessage(lines: string[]) {
+  if (!lines.length) {
+    return "I don’t see an open window right now. I’ll have the office help with scheduling.";
+  }
+  return `I have these appointment windows available:\n${lines.map((line) => line).join("\n")}\nWhich works best for you?`;
+}
+
+export function slotTakenOfferMessage(lines: string[]) {
+  if (!lines.length) {
+    return "That appointment was just taken, and I don’t see another open window right now. I’ll have the office help find the next opening.";
+  }
+  return `That appointment was just taken, but I have these openings available:\n${lines.join("\n")}\nWhich works best for you?`;
 }
 
 export function askAddressMessage() {

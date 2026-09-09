@@ -1,12 +1,79 @@
-# HighLevel Agent Studio — hybrid scheduling contract
+# HighLevel Agent Studio — ContractorYou-owned scheduling
 
-HighLevel Regina is the conversational layer. ContractorYou is the only source of truth for availability, identity, booking, jobs, and Dispatch. HighLevel SMS is transport.
+HighLevel Regina is the conversational front-end. ContractorYou is the complete deterministic scheduling state machine. HighLevel SMS is transport.
 
-HIGHLEVEL_AI remains the conversation owner for 865 HVAC. That is correct. Regina may greet the customer and collect the problem. She must never be the authority that declares a booking successful.
+HIGHLEVEL_AI remains the conversation owner for 865 HVAC. That is correct for greetings and non-scheduling talk. Regina must never be the authority that declares a booking successful.
+
+## Root architecture
+
+Conversation AI Trigger Workflow is asynchronous / fire-and-forget. Regina cannot read workflow HTTP responses, cannot branch on ContractorYou JSON, and cannot reliably sequence Check → Select → Book.
+
+```
+Customer SMS
+→ HighLevel Regina detects scheduling intent
+→ ONE HighLevel workflow: start-scheduling
+→ ContractorYou starts/owns the scheduling session
+→ ContractorYou asks questions and offers real windows through the same HighLevel SMS thread
+→ Customer replies
+→ inbound HighLevel webhook routes the reply to the ContractorYou session
+→ ContractorYou determines the next step and sends exactly one operational SMS
+→ repeat until booked
+→ ContractorYou creates Job + SchedulingBooking + Dispatch
+→ ContractorYou sends the only confirmation
+→ session closes (BOOKED / HANDOFF / CANCELLED)
+→ Regina may resume normal non-scheduling conversation
+```
+
+Once ContractorYou owns an active scheduling session, Regina must not independently orchestrate scheduling.
+
+## One entry action
+
+`POST /api/agent-tools/start-scheduling`
+
+This is the only HighLevel Conversation AI workflow action required to start scheduling.
+
+```json
+{
+  "phone": "+18653858079",
+  "contact_id": "HighLevel contact id",
+  "service_type": "Residential Service Call",
+  "service_need": "It's not cooling",
+  "service_address": "8233 Tazewell Pike",
+  "send_to_customer": true
+}
+```
+
+HighLevel does not send `conversation_id`. ContractorYou resolves the canonical thread from:
+
+- company
+- provider = HighLevel
+- normalized inbound phone
+- HighLevel `contact_id`
+- existing HighLevel thread mapping
+
+If more than one active conversation makes that unsafe, ContractorYou returns `requires_office=true` and does not guess.
+
+A second start-scheduling trigger on the same conversation reuses the open session. It does not start a second flow and does not send a duplicate offer.
+
+## Compatibility endpoints
+
+Keep these for testing and backward compatibility. They are no longer the primary Conversation AI orchestration architecture.
+
+- `POST /api/agent-tools/check-availability`
+- `POST /api/agent-tools/select-offered-slot`
+- `POST /api/agent-tools/book-selected-slot`
+- alias: `POST /api/agent-tools/book-appointment`
 
 ## Hard rule
 
-**HighLevel Regina must never tell a customer they are booked, scheduled, or confirmed unless ContractorYou returned `booking_confirmed: true` after a Job and SchedulingBooking actually persisted.**
+**HighLevel Regina must never tell a customer they are booked, scheduled, or confirmed unless ContractorYou has already sent the confirmation after a Job and SchedulingBooking persisted.**
+
+Forbidden unless ContractorYou confirmed:
+
+- “You’re booked.”
+- “You’re scheduled.”
+- “Your appointment is confirmed.”
+- “I’ve got you scheduled.”
 
 `success=true` does **not** mean the appointment is booked.
 
@@ -20,32 +87,95 @@ HIGHLEVEL_AI remains the conversation owner for 865 HVAC. That is correct. Regin
 6. rechecked capacity
 7. created exactly one Job
 8. created exactly one SchedulingBooking
-9. updated Dispatch (the scheduled job + technician assignment)
+9. updated Dispatch
 10. committed the transaction
 11. verified the persisted records
-12. sent the customer confirmation through `sendCompanyCommunication` when `send_to_customer=true`
+12. sent the customer confirmation through `sendCompanyCommunication`
 
-If any required step fails, ContractorYou returns `booking_confirmed: false` and either asks for the missing information, offers fresh availability, or hands off to the office.
+## Session states
 
-## Workflows
+Stored on the existing `ConversationSchedulingState` (`lastAiAction`):
 
-Keep these three HighLevel workflows. Do not add a HighLevel calendar booking step.
+```
+STARTED
+NEED_CUSTOMER_NAME
+NEED_PROPERTY
+NEED_SERVICE_CONTEXT
+CHECKING_AVAILABILITY
+SLOTS_OFFERED
+WAITING_FOR_SLOT_SELECTION
+SLOT_SELECTED
+READY_TO_BOOK
+BOOKING
+BOOKED
+HANDOFF
+CANCELLED
+```
 
-1. **ContractorYou — Check Availability**
-2. **ContractorYou — Select Offered Slot**
-3. **ContractorYou — Book Selected Slot**
+The session survives across separate inbound SMS messages.
 
-HighLevel does not send `conversation_id`. ContractorYou resolves the canonical thread from:
+## Inbound routing
 
-- company
-- provider = HighLevel
-- inbound SMS phone
-- HighLevel `contact_id`
-- existing HighLevel thread mapping
+When a HighLevel inbound SMS arrives, before receptionist / conversational Regina behavior:
 
-If more than one **active** conversation makes that unsafe, ContractorYou returns `requires_office=true` and does not guess.
+1. Resolve the canonical conversation
+2. Check for an active ContractorYou scheduling session
+3. If active, route the inbound message to the scheduling state machine
+4. Do not let ContractorYou Regina generate a competing response
+5. Do not start another scheduling flow
+6. Process the reply according to the current session state
+7. Send exactly one operational SMS through canonical HighLevel communications
 
-If Regina’s Select workflow does not fire, ContractorYou still continues an **already open** scheduling state from the inbound HighLevel SMS. That path is not a second receptionist. It only handles slot selection and missing name/address after Check Availability has stored offered slots. It sends the operational SMS itself so “one moment” cannot become silence.
+Provider message IDs are idempotent. A duplicate HighLevel webhook does not send a second SMS.
+
+## Identity and property
+
+Phone formats `+18653858079`, `8653858079`, and `(865) 385-8079` resolve to the same canonical US number. HighLevel `contact_id` is additional strong identity evidence. Customers are never merged solely on weak address similarity.
+
+- Existing customer with a reliable name: reuse them.
+- Existing customer + one property: reuse it.
+- Existing customer + multiple properties: ask “Which property do you need service at?”
+- Existing customer + no property: ask for the service address.
+- New customer: collect only missing fields. Normally name, then address.
+- Name is required before booking, not before offering real availability.
+- If start-scheduling already has the concern and address, do not ask again.
+
+## Availability and booking
+
+ContractorYou uses the existing capacity engine. It does not invent windows.
+
+After a natural selection such as `Tuesday September 15th`, the exact offered slot is persisted. If the name is still missing, ContractorYou asks:
+
+`Absolutely. Before I finish scheduling that, what's your name?`
+
+The selected slot is preserved. The next inbound SMS stays on the same session. After `TJ Hurst`, ContractorYou creates/matches Customer + Property, rechecks capacity, and books automatically. No second HighLevel workflow is required.
+
+If the final capacity check fails, ContractorYou does not book or confirm. It retrieves fresh real availability and texts:
+
+`That appointment was just taken, but I have these openings available...`
+
+One session. One Job. One SchedulingBooking. One final confirmation.
+
+Example confirmation:
+
+`Perfect — you're scheduled for Tuesday, September 15 from 9–11 AM at 8233 Tazewell Pike.`
+
+If Book is called twice, HighLevel retries, or start-scheduling is triggered twice, ContractorYou reuses the same Job / SchedulingBooking and does not send a second confirmation.
+
+## HighLevel Regina ownership
+
+ContractorYou cannot dynamically pause HighLevel Conversation AI per conversation. There is no safe HighLevel API in this integration that turns Regina off for one SMS thread and back on after `BOOKED`.
+
+Required HighLevel-side change:
+
+1. Keep one Conversation AI workflow action: **ContractorYou — Start Scheduling** → `POST /api/agent-tools/start-scheduling`
+2. Remove Check / Select / Book as the live Conversation AI sequence
+3. After Regina triggers start-scheduling once, she must stop operational scheduling talk
+4. Do not tell the customer they are booked
+5. Do not send a duplicate confirmation
+6. After the customer is booked, Regina may resume normal non-scheduling conversation
+
+The production guard is ContractorYou inbound routing: while a session is active, ContractorYou is authoritative for scheduling replies even if HighLevel also receives the SMS.
 
 ## Authentication
 
@@ -64,30 +194,9 @@ Optional booking header:
 Idempotency-Key: <unique value per booking attempt>
 ```
 
-Pass these fields on every action when HighLevel has them:
+HighLevel string values are accepted: `send_to_customer: "true"`, `phone` instead of `customer_phone`, `reply` instead of `customer_reply`, and `concern` instead of `service_need`.
 
-```json
-{
-  "customer_phone": "+18653858079",
-  "contact_id": "HighLevel contact id",
-  "service_type": "Residential Service Call",
-  "service_need": "It's currently not cooling",
-  "service_address": "8233 Tazewell Pike",
-  "send_to_customer": true
-}
-```
-
-Phone formats `+18653858079`, `8653858079`, and `(865) 385-8079` resolve to the same canonical US number.
-
-HighLevel string values are accepted: `send_to_customer: "true"`, `phone` instead of `customer_phone`, and `reply` instead of `customer_reply`.
-
-## Check Availability
-
-`POST /api/agent-tools/check-availability`
-
-ContractorYou returns real capacity windows and persists them on the canonical conversation as `offeredSlots`.
-
-Map these top-level fields:
+Map these top-level fields when present:
 
 - `availability_found`
 - `available_slots_text`
@@ -96,160 +205,12 @@ Map these top-level fields:
 - `requires_service_address`
 - `requires_property_selection`
 - `requires_office`
-- `booking_confirmed` — always `false` here
-- `agent_instruction`
-- `error_code`
-
-Regina may offer only those windows. She may keep conversational tone. She must not invent times.
-
-## Select Offered Slot
-
-`POST /api/agent-tools/select-offered-slot`
-
-```json
-{
-  "customer_phone": "+18653858079",
-  "contact_id": "...",
-  "customer_reply": "Tuesday September 15th",
-  "service_need": "It's currently not cooling",
-  "service_address": "8233 Tazewell Pike",
-  "send_to_customer": true
-}
-```
-
-For `Tuesday September 15th` ContractorYou must:
-
-1. resolve the canonical conversation
-2. load persisted `offeredSlots`
-3. match September 15
-4. persist that exact selected slot
-5. decide whether booking prerequisites are complete
-
-If the customer is new and the name is missing:
-
-```
-match_status: exact
-slot_selected: true
-ready_to_book: false
-booking_confirmed: false
-requires_customer_name: true
-customer_message: "Absolutely. Before I finish scheduling that, what's your name?"
-agent_instruction: "Do not tell the customer they are booked. ContractorYou will send the booking confirmation after the booking transaction succeeds."
-```
-
-The selected slot is preserved. Do **not** make the customer pick the appointment again.
-
-**After Select Offered Slot, Regina must NOT say “I’ve got you scheduled.” She should trigger Book Selected Slot, or ask only for the missing field ContractorYou returned.**
-
-If `send_to_customer=true`, ContractorYou already sent the name/address question. Regina should not send a second operational SMS.
-
-## Book Selected Slot
-
-`POST /api/agent-tools/book-selected-slot`  
-Alias: `POST /api/agent-tools/book-appointment`
-
-```json
-{
-  "customer_phone": "+18653858079",
-  "contact_id": "...",
-  "customer_name": "TJ Hurst",
-  "customer_reply": "TJ Hurst",
-  "service_address": "8233 Tazewell Pike",
-  "service_need": "It's currently not cooling",
-  "send_to_customer": true
-}
-```
-
-`slot_token` is optional when Select already persisted the selected slot.
-
-Top-level fields HighLevel must map:
-
-- `success`
 - `booking_confirmed`
-- `booking_id`
-- `job_id`
-- `job_number`
 - `appointment_display`
-- `customer_id`
-- `customer_first_name`
-- `property_id`
-- `property_address`
-- `requires_customer_name`
-- `requires_service_address`
-- `requires_property_selection`
-- `requires_office`
-- `customer_message`
-- `error_code`
 - `agent_instruction`
-
-If `booking_confirmed=true` and `send_to_customer=true`:
-
-```
-agent_instruction: "Booking is confirmed in ContractorYou. Do not send a duplicate confirmation because ContractorYou already sent it."
-```
-
-ContractorYou sends one SMS, for example:
-
-`Perfect — you're scheduled for Tuesday, September 15 from 9–11 AM at 8233 Tazewell Pike.`
-
-If Book is called twice, HighLevel retries, or Select and Book both fire after the name is collected, ContractorYou reuses the same Job / SchedulingBooking and does not send a second confirmation.
-
-## Identity and property
-
-The inbound SMS phone is authoritative transport context.
-
-- Existing ContractorYou customer with a reliable name: reuse them. Do not ask for their name again.
-- No ContractorYou customer: collect name before booking. Address alone is not enough.
-- New customer minimum: phone + name + service address + service concern/type.
-- Existing customer + one property: reuse it.
-- Existing customer + multiple properties: ask which property. Keep the selected slot.
-- Existing customer + no property: ask for the service address, then create/link one property.
-- Do not create duplicate customers or properties.
-
-## State machine
-
-```
-NEED_CUSTOMER
-→ NEED_PROPERTY
-→ NEED_SERVICE_CONTEXT
-→ CHECK_AVAILABILITY
-→ SLOTS_OFFERED
-→ SLOT_SELECTED
-→ READY_TO_BOOK
-→ BOOKING
-→ BOOKED
-```
-
-This path is illegal and was the production failure:
-
-```
-SLOTS_OFFERED → customer says a date → HighLevel verbally says BOOKED
-```
-
-without ContractorYou reaching `BOOKED`.
-
-## Regina prompt rules
-
-Allowed conversational lines:
-
-- “Absolutely.”
-- “I can help with that.”
-- “What’s going on with the system?”
-
-Forbidden unless `booking_confirmed=true`:
-
-- “You’re booked.”
-- “You’re scheduled.”
-- “Your appointment is confirmed.”
-- “I’ve got you scheduled.”
-
-After Select Offered Slot:
-
-> Do not tell the customer they are booked. If `ready_to_book` is true, trigger Book Selected Slot. If `requires_customer_name` is true, ask only for their name. ContractorYou will send the booking confirmation after the booking transaction succeeds.
-
-After Book Selected Slot:
-
-> If `booking_confirmed` is false, follow `customer_message` / `agent_instruction`. If `booking_confirmed` is true, do not send another confirmation. ContractorYou already sent it.
+- `error_code`
+- `customer_message`
+- `scheduling_phase`
 
 ## Environment
 

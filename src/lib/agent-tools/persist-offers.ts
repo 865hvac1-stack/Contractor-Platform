@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db";
-import { chooseResolvedThread, mergeSchedulingIntake, phoneLookupVariants } from "@/lib/agent-tools/booking-contract";
+import {
+  chooseResolvedThread,
+  isTerminalSchedulingPhase,
+  mergeSchedulingIntake,
+  phoneLookupVariants,
+} from "@/lib/agent-tools/booking-contract";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 import { canonicalizeUsPhone, phonesMatch } from "@/lib/phone";
 import { parseIntake, type SchedulingIntake } from "@/lib/scheduling/conversation-identity";
@@ -99,6 +104,20 @@ export async function resolveActionThread(input: {
   return chosen;
 }
 
+export function isActiveSchedulingSession(state: {
+  status?: string | null;
+  lastAiAction?: string | null;
+  expiresAt?: Date | null;
+  bookedJobId?: string | null;
+} | null) {
+  if (!state) return false;
+  if (state.bookedJobId) return false;
+  if (state.status === "BOOKED" || state.status === "CANCELED") return false;
+  if (isTerminalSchedulingPhase(state.lastAiAction)) return false;
+  if (state.expiresAt && state.expiresAt.getTime() < Date.now()) return false;
+  return (ACTIVE_SCHEDULING_STATUSES as readonly string[]).includes(state.status || "");
+}
+
 export async function persistOfferedSlots(input: {
   companyId: string;
   threadId: string;
@@ -111,15 +130,8 @@ export async function persistOfferedSlots(input: {
   phase?: string;
   lastInboundMessageId?: string | null;
 }) {
-  const existing = await prisma.conversationSchedulingState.findFirst({
-    where: {
-      companyId: input.companyId,
-      threadId: input.threadId,
-      status: { in: [...ACTIVE_SCHEDULING_STATUSES, "BOOKED"] },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-  if (existing?.status === "BOOKED") return existing;
+  const existing = await loadOpenSchedulingSession(input.companyId, input.threadId);
+  if (existing && !isActiveSchedulingSession(existing)) return existing;
   const expiresAt = new Date(Date.now() + 7 * 86_400_000);
   const intake = mergeSchedulingIntake(parseIntake(existing?.intake), input.intake ?? {});
   const data = {
@@ -131,8 +143,8 @@ export async function persistOfferedSlots(input: {
     serviceTypeId: input.serviceTypeId ?? existing?.serviceTypeId,
     customerConcern: input.customerConcern ?? existing?.customerConcern,
     intake,
-    lastAiAction: input.phase ?? "SLOTS_OFFERED",
-    lastIntent: input.phase ?? "SLOTS_OFFERED",
+    lastAiAction: input.phase ?? "WAITING_FOR_SLOT_SELECTION",
+    lastIntent: input.phase ?? "WAITING_FOR_SLOT_SELECTION",
     lastInboundMessageId: input.lastInboundMessageId ?? existing?.lastInboundMessageId,
     expiresAt,
   };
@@ -172,8 +184,8 @@ export async function persistSelectedSlot(input: {
     ? await prisma.conversationSchedulingState.findFirst({
         where: { id: input.stateId, companyId: input.companyId },
       })
-    : await loadActiveSchedulingState(input.companyId, input.threadId);
-  if (existing?.status === "BOOKED") return existing;
+    : await loadOpenSchedulingSession(input.companyId, input.threadId);
+  if (existing && !isActiveSchedulingSession(existing) && existing.status === "BOOKED") return existing;
   const expiresAt = new Date(Date.now() + 7 * 86_400_000);
   const intake = mergeSchedulingIntake(parseIntake(existing?.intake), input.intake ?? {});
   const data = {
@@ -234,6 +246,84 @@ export async function loadActiveSchedulingState(companyId: string, threadId: str
   return prisma.conversationSchedulingState.findFirst({
     where: { companyId, threadId },
     orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function loadOpenSchedulingSession(companyId: string, threadId: string) {
+  const state = await loadActiveSchedulingState(companyId, threadId);
+  if (!isActiveSchedulingSession(state)) return null;
+  return state;
+}
+
+export async function persistSchedulingSession(input: {
+  companyId: string;
+  threadId: string;
+  stateId?: string | null;
+  phase: string;
+  status?: "OPEN" | "CLARIFYING" | "SUGGESTED" | "NEEDS_REVIEW" | "BOOKED" | "CANCELED";
+  customerId?: string | null;
+  propertyId?: string | null;
+  serviceTypeId?: string | null;
+  customerConcern?: string | null;
+  intake?: SchedulingIntake;
+  missingField?: string | null;
+  offeredSlots?: OfferedSlot[] | null;
+  requestedDate?: Date | null;
+  requestedWindowId?: string | null;
+  lastInboundMessageId?: string | null;
+  lastIntent?: string | null;
+  handoffReason?: string | null;
+  bookedJobId?: string | null;
+}) {
+  const existing = input.stateId
+    ? await prisma.conversationSchedulingState.findFirst({
+        where: { id: input.stateId, companyId: input.companyId },
+      })
+    : await loadOpenSchedulingSession(input.companyId, input.threadId);
+  const expiresAt = new Date(Date.now() + 7 * 86_400_000);
+  const intake = mergeSchedulingIntake(parseIntake(existing?.intake), input.intake ?? {});
+  const status =
+    input.status ??
+    (input.phase === "BOOKED"
+      ? "BOOKED"
+      : input.phase === "CANCELLED"
+        ? "CANCELED"
+        : input.phase === "HANDOFF"
+          ? "NEEDS_REVIEW"
+          : input.phase === "WAITING_FOR_SLOT_SELECTION" || input.phase === "SLOTS_OFFERED"
+            ? "SUGGESTED"
+            : "CLARIFYING");
+  const data = {
+    status,
+    missingField: input.missingField ?? existing?.missingField ?? null,
+    customerId: input.customerId ?? existing?.customerId,
+    propertyId: input.propertyId ?? existing?.propertyId,
+    serviceTypeId: input.serviceTypeId ?? existing?.serviceTypeId,
+    customerConcern: input.customerConcern ?? existing?.customerConcern,
+    intake,
+    offeredSlots: input.offeredSlots ?? existing?.offeredSlots ?? undefined,
+    requestedDate: input.requestedDate === undefined ? existing?.requestedDate : input.requestedDate,
+    requestedWindowId: input.requestedWindowId === undefined ? existing?.requestedWindowId : input.requestedWindowId,
+    lastAiAction: input.phase,
+    lastIntent: input.lastIntent ?? input.phase,
+    lastInboundMessageId: input.lastInboundMessageId ?? existing?.lastInboundMessageId,
+    handoffReason: input.handoffReason ?? existing?.handoffReason,
+    bookedJobId: input.bookedJobId ?? existing?.bookedJobId,
+    paused: input.phase === "HANDOFF",
+    expiresAt,
+  };
+  if (existing && isActiveSchedulingSession(existing)) {
+    return prisma.conversationSchedulingState.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+  return prisma.conversationSchedulingState.create({
+    data: {
+      companyId: input.companyId,
+      threadId: input.threadId,
+      ...data,
+    },
   });
 }
 
