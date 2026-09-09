@@ -8,14 +8,17 @@ import {
   agentInstructionForReadiness,
   blockedBookingPayload,
   chooseResolvedThread,
+  coerceToolBoolean,
   evaluateBookingReadiness,
   isBookingActuallyConfirmed,
   mergeSchedulingIntake,
+  normalizeAgentToolBody,
   parseToolPersonName,
   parseToolServiceAddress,
   phoneLookupVariants,
   selectedSlotFromState,
 } from "@/lib/agent-tools/booking-contract";
+import { shouldContinueHybridInbound } from "@/lib/agent-tools/hybrid-continue";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
 import { bookingStudioFields } from "@/lib/agent-tools/studio-fields";
 import {
@@ -324,12 +327,75 @@ describe("hybrid booking source files", () => {
     expect(book).toMatch(/BOOKING_TRANSACTION_FAILED/);
     expect(book).toMatch(/DISPATCH_VERIFY_FAILED/);
     expect(book).toMatch(/BOOKING_VERIFY_FAILED/);
-    expect(book).toMatch(/confirmationStatus !== "SENT"/);
+    expect(book).toMatch(/confirmationStatus === "SENT"/);
+    expect(book).toMatch(/duplicate_confirmation/);
     const persist = readFileSync(resolve("src/lib/agent-tools/persist-offers.ts"), "utf8");
     expect(persist).toMatch(/contactId/);
     expect(persist).toMatch(/phoneLookupVariants/);
     expect(persist).toMatch(/chooseResolvedThread/);
     expect(persist).toMatch(/status === "BOOKED"/);
+  });
+
+  it("coerces HighLevel string variables so Select does not 400", () => {
+    expect(coerceToolBoolean("true")).toBe(true);
+    expect(coerceToolBoolean("True")).toBe(true);
+    expect(coerceToolBoolean("false")).toBe(false);
+    const body = normalizeAgentToolBody({
+      phone: "+18653858079",
+      contactId: "ct_1",
+      reply: "Tuesday September 15th",
+      send_to_customer: "true",
+      address: "8233 Tazewell Pike",
+    });
+    expect(body.customer_phone).toBe("+18653858079");
+    expect(body.contact_id).toBe("ct_1");
+    expect(body.customer_reply).toBe("Tuesday September 15th");
+    expect(body.send_to_customer).toBe(true);
+    expect(body.service_address).toBe("8233 Tazewell Pike");
+  });
+
+  it("continues the selected Sep 15 slot when the customer later texts TJ Hurst", () => {
+    expect(
+      shouldContinueHybridInbound({
+        text: "Tuesday September 15th",
+        offeredCount: 4,
+        matchKind: "match",
+        selected: false,
+        looksLikeName: false,
+        looksLikeAddress: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldContinueHybridInbound({
+        text: "TJ Hurst",
+        offeredCount: 4,
+        matchKind: "none",
+        selected: true,
+        looksLikeName: true,
+        looksLikeAddress: false,
+        missingField: "name",
+      })
+    ).toBe(true);
+    expect(
+      shouldContinueHybridInbound({
+        text: "hello",
+        offeredCount: 4,
+        matchKind: "none",
+        selected: false,
+        looksLikeName: false,
+        looksLikeAddress: false,
+      })
+    ).toBe(false);
+  });
+
+  it("keeps HIGHLEVEL_AI inbound continuation without turning Regina into the booker", () => {
+    const webhook = readFileSync(resolve("src/lib/highlevel/webhooks.ts"), "utf8");
+    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
+    expect(webhook).toMatch(/highLevelOwnsConversation/);
+    expect(readFileSync(resolve("src/lib/agent-tools/http.ts"), "utf8")).toMatch(/normalizeAgentToolBody/);
+    expect(readFileSync(resolve("src/lib/agent-tools/select-slot.ts"), "utf8")).toMatch(/sendSelectSms/);
+    expect(readFileSync(resolve("src/lib/agent-tools/select-slot.ts"), "utf8")).toMatch(/logHybridAction/);
+    expect(readFileSync(resolve("src/app/api/health/route.ts"), "utf8")).toMatch(/RAILWAY_GIT_COMMIT_SHA/);
   });
 
   it("accepts the production street-only address", () => {

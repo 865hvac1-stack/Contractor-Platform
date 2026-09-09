@@ -7,7 +7,9 @@ export async function sendActionResultSms(input: {
   body: string;
   send: boolean;
 }) {
-  if (!input.send || !input.phone || !input.body.trim()) return { sent: false as const };
+  if (!input.body.trim()) return { sent: false as const, skipReason: "empty_body" };
+  if (!input.phone) return { sent: false as const, skipReason: "missing_phone" };
+  if (!input.send) return { sent: false as const, skipReason: "send_to_customer_false" };
   const result = await sendCompanyCommunication({
     companyId: input.companyId,
     channel: "SMS",
@@ -16,5 +18,8 @@ export async function sendActionResultSms(input: {
     customerId: input.customerId,
     origin: "CONTRACTORYOU_ACTION_RESULT",
   });
-  return { sent: Boolean(result.ok), outboundId: "ok" in result && result.ok ? result.provider : null };
+  if (!result.ok) {
+    return { sent: false as const, skipReason: result.error || "send_failed" };
+  }
+  return { sent: true as const, skipReason: null, outboundId: result.provider };
 }

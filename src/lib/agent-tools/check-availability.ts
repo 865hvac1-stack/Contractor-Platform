@@ -7,7 +7,7 @@ import { getCustomerMaintenanceSummary } from "@/lib/scheduling/maintenance";
 import { addLocalDays, companyTodayKey, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { interpretSchedulingIntent } from "@/lib/scheduling/intent";
 import { toolError, toolOk } from "@/lib/agent-tools/envelope";
-import { parseToolServiceAddress, toolAddressSchema } from "@/lib/agent-tools/booking-contract";
+import { logHybridAction, parseToolServiceAddress, toolAddressSchema } from "@/lib/agent-tools/booking-contract";
 import { persistOfferedSlots, resolveActionThread } from "@/lib/agent-tools/persist-offers";
 import { sendActionResultSms } from "@/lib/agent-tools/send-result";
 import { signSlotToken } from "@/lib/agent-tools/slot-token";
@@ -177,6 +177,16 @@ export async function checkAvailabilityTool(input: {
       }
     : { status: membership.hasActivePlan ? "none_due" : "no_plan" };
 
+  logHybridAction({
+    action: "CHECK",
+    companyId: input.companyId,
+    threadResolved: Boolean(thread),
+    threadAmbiguous: ambiguousThread,
+    bookingConfirmed: false,
+    sendToCustomer: Boolean(body.send_to_customer),
+    phase: offered.length ? "SLOTS_OFFERED" : "NEED_SERVICE_CONTEXT",
+    errorCode: offered.length ? null : "NO_AVAILABILITY",
+  });
   if (body.send_to_customer) {
     const message = slots.length
       ? offerSlotsMessage({

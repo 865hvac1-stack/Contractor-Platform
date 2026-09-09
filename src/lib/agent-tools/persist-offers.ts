@@ -109,6 +109,7 @@ export async function persistOfferedSlots(input: {
   intake?: SchedulingIntake;
   slots: OfferedSlot[];
   phase?: string;
+  lastInboundMessageId?: string | null;
 }) {
   const existing = await prisma.conversationSchedulingState.findFirst({
     where: {
@@ -132,6 +133,7 @@ export async function persistOfferedSlots(input: {
     intake,
     lastAiAction: input.phase ?? "SLOTS_OFFERED",
     lastIntent: input.phase ?? "SLOTS_OFFERED",
+    lastInboundMessageId: input.lastInboundMessageId ?? existing?.lastInboundMessageId,
     expiresAt,
   };
   if (existing) {
@@ -163,6 +165,8 @@ export async function persistSelectedSlot(input: {
   phase: string;
   offeredSlots?: OfferedSlot[];
   customerConcern?: string | null;
+  lastInboundMessageId?: string | null;
+  lastIntent?: string | null;
 }) {
   const existing = input.stateId
     ? await prisma.conversationSchedulingState.findFirst({
@@ -184,7 +188,8 @@ export async function persistSelectedSlot(input: {
     customerConcern: input.customerConcern ?? existing?.customerConcern,
     intake,
     lastAiAction: input.phase,
-    lastIntent: input.phase,
+    lastIntent: input.lastIntent ?? input.phase,
+    lastInboundMessageId: input.lastInboundMessageId ?? existing?.lastInboundMessageId,
     expiresAt,
   };
   if (existing) {
@@ -229,5 +234,12 @@ export async function loadActiveSchedulingState(companyId: string, threadId: str
   return prisma.conversationSchedulingState.findFirst({
     where: { companyId, threadId },
     orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function markSchedulingInbound(companyId: string, threadId: string, messageId: string) {
+  await prisma.conversationSchedulingState.updateMany({
+    where: { companyId, threadId },
+    data: { lastInboundMessageId: messageId },
   });
 }

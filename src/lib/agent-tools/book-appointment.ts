@@ -7,7 +7,9 @@ import {
   agentInstructionForReadiness,
   blockedBookingPayload,
   evaluateBookingReadiness,
+  logHybridAction,
   mergeSchedulingIntake,
+  normalizeAgentToolBody,
   parseToolPersonName,
   parseToolServiceAddress,
   selectedSlotFromState,
@@ -88,7 +90,7 @@ export async function bookAppointmentTool(input: {
   body: unknown;
   idempotencyKey?: string | null;
 }) {
-  const parsed = bookAppointmentSchema.safeParse(input.body);
+  const parsed = bookAppointmentSchema.safeParse(normalizeAgentToolBody(input.body));
   if (!parsed.success) {
     return {
       status: 400,
@@ -275,15 +277,25 @@ export async function bookAppointmentTool(input: {
         offeredCount: offered.length,
       });
       const message = askNameBeforeFinishingSchedule();
-      if (body.send_to_customer) {
-        await sendActionResultSms({
-          companyId: input.companyId,
-          phone: body.customer_phone || thread?.phone,
-          customerId: null,
-          body: message,
-          send: true,
-        });
-      }
+      const sms = await sendActionResultSms({
+        companyId: input.companyId,
+        phone: body.customer_phone || thread?.phone,
+        customerId: null,
+        body: message,
+        send: true,
+      });
+      logHybridAction({
+        action: "MISSING_INFO",
+        companyId: input.companyId,
+        threadResolved: Boolean(thread),
+        requiresCustomerName: true,
+        readyToBook: false,
+        bookingConfirmed: false,
+        smsSent: sms.sent,
+        smsSkipReason: sms.skipReason,
+        errorCode: "CUSTOMER_NAME_REQUIRED",
+        phase: "SLOT_SELECTED",
+      });
       return {
         status: 200,
         body: toolOk(
@@ -311,15 +323,13 @@ export async function bookAppointmentTool(input: {
         offeredCount: offered.length,
       });
       const message = askAddressMessage();
-      if (body.send_to_customer) {
-        await sendActionResultSms({
-          companyId: input.companyId,
-          phone: body.customer_phone || thread?.phone,
-          customerId: null,
-          body: message,
-          send: true,
-        });
-      }
+      await sendActionResultSms({
+        companyId: input.companyId,
+        phone: body.customer_phone || thread?.phone,
+        customerId: null,
+        body: message,
+        send: true,
+      });
       return {
         status: 200,
         body: toolOk(
@@ -381,15 +391,13 @@ export async function bookAppointmentTool(input: {
   if (!propertyId && customer.property_status === "multiple") {
     const labels = (context?.properties ?? []).map((row, index) => propertyChoiceLabel(row, index));
     const message = askWhichPropertyMessage(labels);
-    if (body.send_to_customer) {
-      await sendActionResultSms({
-        companyId: input.companyId,
-        phone: body.customer_phone || thread?.phone,
-        customerId,
-        body: message,
-        send: true,
-      });
-    }
+    await sendActionResultSms({
+      companyId: input.companyId,
+      phone: body.customer_phone || thread?.phone,
+      customerId,
+      body: message,
+      send: true,
+    });
     return {
       status: 200,
       customerId,
@@ -428,15 +436,13 @@ export async function bookAppointmentTool(input: {
   if (!propertyId && customerId) {
     if (!intake.street) {
       const message = askAddressMessage();
-      if (body.send_to_customer) {
-        await sendActionResultSms({
-          companyId: input.companyId,
-          phone: body.customer_phone || thread?.phone,
-          customerId,
-          body: message,
-          send: true,
-        });
-      }
+      await sendActionResultSms({
+        companyId: input.companyId,
+        phone: body.customer_phone || thread?.phone,
+        customerId,
+        body: message,
+        send: true,
+      });
       return {
         status: 422,
         customerId,
@@ -715,39 +721,40 @@ export async function bookAppointmentTool(input: {
     });
   }
 
-  if (body.send_to_customer && !booked.duplicate) {
-    await sendActionResultSms({
-      companyId: input.companyId,
-      phone: body.customer_phone || thread?.phone || refreshed?.phone,
-      customerId,
-      body: customerMessage,
-      send: true,
-    });
-  } else if (body.send_to_customer && booked.duplicate) {
-    const existingBooking = await prisma.schedulingBooking.findFirst({
-      where: { jobId: job.id, companyId: input.companyId },
-      select: { confirmationStatus: true },
-    });
-    if (existingBooking?.confirmationStatus !== "SENT") {
-      await sendActionResultSms({
+  const alreadySent =
+    booked.duplicate &&
+    (
+      await prisma.schedulingBooking.findFirst({
+        where: { jobId: job.id, companyId: input.companyId },
+        select: { confirmationStatus: true },
+      })
+    )?.confirmationStatus === "SENT";
+  const confirmSms = alreadySent
+    ? { sent: false as const, skipReason: "duplicate_confirmation" }
+    : await sendActionResultSms({
         companyId: input.companyId,
         phone: body.customer_phone || thread?.phone || refreshed?.phone,
         customerId,
         body: customerMessage,
         send: true,
       });
-      await prisma.schedulingBooking.updateMany({
-        where: { jobId: job.id, companyId: input.companyId },
-        data: { confirmationStatus: "SENT" },
-      });
-    }
-  }
-  if (body.send_to_customer && !booked.duplicate) {
+  if (confirmSms.sent) {
     await prisma.schedulingBooking.updateMany({
       where: { jobId: job.id, companyId: input.companyId },
       data: { confirmationStatus: "SENT" },
     });
   }
+  logHybridAction({
+    action: "BOOK",
+    companyId: input.companyId,
+    threadResolved: Boolean(thread),
+    slotDate: booked.date,
+    bookingConfirmed: true,
+    readyToBook: false,
+    smsSent: confirmSms.sent,
+    smsSkipReason: confirmSms.sent ? null : confirmSms.skipReason,
+    phase: "BOOKED",
+  });
 
   return {
     status: 200,

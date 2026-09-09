@@ -80,6 +80,68 @@ export function chooseResolvedThread<T extends { id: string; lastActivityAt: Dat
   return { status: "ambiguous", count: recent.length || pool.length };
 }
 
+export function coerceToolBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(normalized)) return true;
+    if (["false", "0", "no", "n", ""].includes(normalized)) return false;
+  }
+  return undefined;
+}
+
+function firstPresent(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value == null) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    return value;
+  }
+  return undefined;
+}
+
+export function normalizeAgentToolBody(body: unknown): Record<string, unknown> {
+  const raw = body && typeof body === "object" && !Array.isArray(body) ? { ...(body as Record<string, unknown>) } : {};
+  const phone = firstPresent(raw, ["customer_phone", "phone", "customerPhone", "from", "customer_phone_number"]);
+  const reply = firstPresent(raw, ["customer_reply", "reply", "message", "text", "inbound_message", "customerReply"]);
+  const contact = firstPresent(raw, ["contact_id", "contactId", "contactID"]);
+  const conversation = firstPresent(raw, ["conversation_id", "conversationId"]);
+  const address = firstPresent(raw, ["service_address", "address", "serviceAddress"]);
+  const send = coerceToolBoolean(firstPresent(raw, ["send_to_customer", "sendToCustomer", "send_to_customer"]));
+  if (phone !== undefined) raw.customer_phone = phone;
+  if (reply !== undefined) raw.customer_reply = reply;
+  if (contact !== undefined) raw.contact_id = contact;
+  if (conversation !== undefined) raw.conversation_id = conversation;
+  if (address !== undefined) raw.service_address = address;
+  if (send !== undefined) raw.send_to_customer = send;
+  return raw;
+}
+
+export function logHybridAction(event: {
+  action: "CHECK" | "SELECT" | "MISSING_INFO" | "BOOK";
+  companyId: string;
+  threadResolved?: boolean;
+  threadAmbiguous?: boolean;
+  matchStatus?: string | null;
+  slotDate?: string | null;
+  requiresCustomerName?: boolean;
+  readyToBook?: boolean;
+  bookingConfirmed?: boolean;
+  sendToCustomer?: boolean;
+  smsSent?: boolean;
+  smsSkipReason?: string | null;
+  errorCode?: string | null;
+  phase?: string | null;
+  source?: string | null;
+}) {
+  console.info("[hybrid-action]", JSON.stringify(event));
+}
+
+export function actionSmsDedupeKey(kind: string, body: string) {
+  return `SMS:${kind}:${body.trim().slice(0, 80)}`;
+}
+
 export function phoneLookupVariants(value?: string | null) {
   const raw = (value || "").trim();
   const canonical = canonicalizeUsPhone(value);

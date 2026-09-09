@@ -16,12 +16,19 @@ export async function GET() {
 
   const ok = database === "up" && sessionSecret;
 
+  const commit =
+    process.env.RAILWAY_GIT_COMMIT_SHA ||
+    process.env.RAILWAY_GIT_COMMIT ||
+    process.env.COMMIT_SHA ||
+    null;
+
   return NextResponse.json(
     {
       ok,
       service: "contractor-os",
       database,
       sessionSecret,
+      commit: commit ? String(commit).slice(0, 40) : null,
       timestamp: new Date().toISOString(),
     },
     { status: ok ? 200 : 503 }

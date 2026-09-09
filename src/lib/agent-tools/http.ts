@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateAgentToolRequest } from "@/lib/agent-tools/auth";
 import { recordAgentToolCall } from "@/lib/agent-tools/audit";
+import { normalizeAgentToolBody } from "@/lib/agent-tools/booking-contract";
 import { httpStatusForCode, toolError, type AgentToolAction } from "@/lib/agent-tools/envelope";
 import { checkAgentToolRateLimit } from "@/lib/agent-tools/rate-limit";
 
@@ -44,12 +45,12 @@ export async function handleAgentToolPost(input: {
     return NextResponse.json(toolError(input.action, "INVALID_REQUEST", "Request body must be JSON."), { status: 400 });
   }
 
-  const snapshot = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const snapshot = normalizeAgentToolBody(body);
   try {
     const result = await input.run({
       companyId: auth.companyId,
       credentialId: auth.credentialId,
-      body,
+      body: snapshot,
       idempotencyKey: input.request.headers.get("idempotency-key"),
     });
     const errorCode = result.body.error?.code ?? null;

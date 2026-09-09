@@ -45,6 +45,8 @@ HighLevel does not send `conversation_id`. ContractorYou resolves the canonical 
 
 If more than one **active** conversation makes that unsafe, ContractorYou returns `requires_office=true` and does not guess.
 
+If Regina’s Select workflow does not fire, ContractorYou still continues an **already open** scheduling state from the inbound HighLevel SMS. That path is not a second receptionist. It only handles slot selection and missing name/address after Check Availability has stored offered slots. It sends the operational SMS itself so “one moment” cannot become silence.
+
 ## Authentication
 
 1. In ContractorYou go to **Settings → HighLevel → HighLevel Agent Studio tools**.
@@ -76,6 +78,8 @@ Pass these fields on every action when HighLevel has them:
 ```
 
 Phone formats `+18653858079`, `8653858079`, and `(865) 385-8079` resolve to the same canonical US number.
+
+HighLevel string values are accepted: `send_to_customer: "true"`, `phone` instead of `customer_phone`, and `reply` instead of `customer_reply`.
 
 ## Check Availability
 

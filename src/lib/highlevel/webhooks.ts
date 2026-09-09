@@ -375,17 +375,17 @@ export async function processHighLevelWebhook(
           "@/lib/comms/conversation-owner"
         );
         const conversationOwner = await loadCustomerConversationOwner(prisma, input.companyId);
+        const inbound = {
+          companyId: input.companyId,
+          threadId: comms.thread.id,
+          customerId: comms.customerId,
+          messageId: fields.messageId || comms.message.id,
+          body: fields.body,
+          direction: comms.message.direction,
+          channel: comms.message.channel,
+          phone: fields.from || emptyToNull(text(data.phone)),
+        };
         if (contractorYouMayAutoreply(conversationOwner)) {
-          const inbound = {
-            companyId: input.companyId,
-            threadId: comms.thread.id,
-            customerId: comms.customerId,
-            messageId: fields.messageId || comms.message.id,
-            body: fields.body,
-            direction: comms.message.direction,
-            channel: comms.message.channel,
-            phone: fields.from || emptyToNull(text(data.phone)),
-          };
           const { loadReceptionistSettings, receptionistShouldHandleInbound } = await import(
             "@/lib/intelligence/receptionist/settings"
           );
@@ -396,6 +396,19 @@ export async function processHighLevelWebhook(
           } else {
             const { processInboundScheduling } = await import("@/lib/scheduling/conversation");
             await processInboundScheduling(inbound);
+          }
+        } else {
+          const { highLevelOwnsConversation } = await import("@/lib/comms/conversation-owner");
+          if (highLevelOwnsConversation(conversationOwner)) {
+            const { continueHybridSchedulingFromInbound } = await import("@/lib/agent-tools/hybrid-continue");
+            await continueHybridSchedulingFromInbound({
+              companyId: inbound.companyId,
+              threadId: inbound.threadId,
+              messageId: inbound.messageId,
+              phone: inbound.phone,
+              contactId: fields.contactId,
+              body: inbound.body,
+            });
           }
         }
       } catch (error) {

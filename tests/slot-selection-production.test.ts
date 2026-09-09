@@ -100,6 +100,7 @@ describe("production offered-slot resolution", () => {
     expect(contractorYouMayAutoreply("CONTRACTORYOU")).toBe(true);
     const webhook = readFileSync(resolve("src/lib/highlevel/webhooks.ts"), "utf8");
     expect(webhook).toMatch(/contractorYouMayAutoreply/);
+    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
     expect(webhook.indexOf("contractorYouMayAutoreply")).toBeLessThan(webhook.indexOf("processInboundReceptionist"));
     const provider = readFileSync(resolve("src/lib/comms/provider.ts"), "utf8");
     expect(provider).toMatch(/CONTRACTORYOU_ACTION_RESULT/);

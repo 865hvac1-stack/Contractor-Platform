@@ -6,10 +6,13 @@ import {
   DO_NOT_CLAIM_BOOKED,
   HAND_OFF_TO_OFFICE,
   TRIGGER_BOOK_SELECTED_SLOT,
+  actionSmsDedupeKey,
   agentInstructionForReadiness,
   blockedBookingPayload,
   evaluateBookingReadiness,
+  logHybridAction,
   mergeSchedulingIntake,
+  normalizeAgentToolBody,
   parseToolPersonName,
   parseToolServiceAddress,
   selectedSlotFromState,
@@ -61,6 +64,28 @@ function displaySlot(date: string, startMinutes: number, endMinutes: number, tim
   return `${formatLocalDateShort(date, timeZone)} from ${formatWindowChip(startMinutes, endMinutes)}`;
 }
 
+async function sendSelectSms(input: {
+  companyId: string;
+  phone?: string | null;
+  customerId?: string | null;
+  body: string;
+  kind: string;
+  previousIntent?: string | null;
+}) {
+  const dedupe = actionSmsDedupeKey(input.kind, input.body);
+  if (input.previousIntent === dedupe) {
+    return { sent: false as const, skipReason: "duplicate_sms", dedupe };
+  }
+  const result = await sendActionResultSms({
+    companyId: input.companyId,
+    phone: input.phone,
+    customerId: input.customerId,
+    body: input.body,
+    send: true,
+  });
+  return { ...result, dedupe };
+}
+
 function missingMessage(readiness: ReturnType<typeof evaluateBookingReadiness>, properties: Array<{ address: string; isPrimary: boolean }>) {
   if (readiness.requires_customer_name) return askNameBeforeFinishingSchedule();
   if (readiness.requires_property_selection) {
@@ -71,8 +96,8 @@ function missingMessage(readiness: ReturnType<typeof evaluateBookingReadiness>, 
   return null;
 }
 
-export async function selectOfferedSlotTool(input: { companyId: string; body: unknown }) {
-  const parsed = selectOfferedSlotSchema.safeParse(input.body);
+export async function selectOfferedSlotTool(input: { companyId: string; body: unknown; source?: string }) {
+  const parsed = selectOfferedSlotSchema.safeParse(normalizeAgentToolBody(input.body));
   if (!parsed.success) {
     return {
       status: 400,
@@ -96,6 +121,14 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
     contactId: body.contact_id,
   });
   if (resolvedThread.status === "ambiguous") {
+    logHybridAction({
+      action: "SELECT",
+      companyId: input.companyId,
+      threadAmbiguous: true,
+      bookingConfirmed: false,
+      errorCode: "CONVERSATION_AMBIGUOUS",
+      source: input.source ?? "agent_tool",
+    });
     return {
       status: 422,
       body: toolError(
@@ -112,6 +145,14 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
     };
   }
   if (resolvedThread.status === "not_found") {
+    logHybridAction({
+      action: "SELECT",
+      companyId: input.companyId,
+      threadResolved: false,
+      bookingConfirmed: false,
+      errorCode: "CONVERSATION_NOT_FOUND",
+      source: input.source ?? "agent_tool",
+    });
     return {
       status: 422,
       body: toolError("select_offered_slot", "CONVERSATION_NOT_FOUND", "No ContractorYou conversation was found for that request."),
@@ -219,15 +260,53 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
       customerConcern: state?.customerConcern ?? body.service_need,
     });
     const message = missingMessage(readiness, resolved.context?.properties ?? []);
-    if (message && body.send_to_customer) {
-      await sendActionResultSms({
+    let smsSent = false;
+    let smsSkipReason: string | null = message ? null : "no_missing_info";
+    if (message) {
+      const sms = await sendSelectSms({
         companyId: input.companyId,
         phone: body.customer_phone || thread.phone,
         customerId: customer.customer_id,
         body: message,
-        send: true,
+        kind: readiness.missingField || "missing_info",
+        previousIntent: state?.lastIntent,
       });
+      smsSent = sms.sent;
+      smsSkipReason = sms.sent ? null : sms.skipReason ?? "send_failed";
+      if (sms.sent) {
+        await persistSelectedSlot({
+          companyId: input.companyId,
+          threadId: thread.id,
+          stateId: state?.id,
+          date: selection.slot.date,
+          windowId: selection.slot.windowId,
+          customerId: customer.customer_id,
+          propertyId: customer.property_id,
+          serviceTypeId: state?.serviceTypeId,
+          intake: existingIntake,
+          missingField: readiness.missingField,
+          phase: readiness.phase,
+          lastIntent: sms.dedupe,
+          offeredSlots: offered,
+          customerConcern: state?.customerConcern ?? body.service_need,
+        });
+      }
     }
+    logHybridAction({
+      action: message ? "MISSING_INFO" : "SELECT",
+      companyId: input.companyId,
+      threadResolved: true,
+      matchStatus: "exact",
+      slotDate: selection.slot.date,
+      requiresCustomerName: readiness.requires_customer_name,
+      readyToBook: readiness.ready_to_book,
+      bookingConfirmed: false,
+      sendToCustomer: true,
+      smsSent,
+      smsSkipReason,
+      phase: readiness.phase,
+      source: input.source ?? "agent_tool",
+    });
     const instruction = readiness.ready_to_book
       ? TRIGGER_BOOK_SELECTED_SLOT
       : agentInstructionForReadiness(readiness, false);
@@ -315,15 +394,14 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
       });
     }
     const message = missingMessage(readiness, resolved.context?.properties ?? []) || askNameBeforeFinishingSchedule();
-    if (body.send_to_customer) {
-      await sendActionResultSms({
-        companyId: input.companyId,
-        phone: body.customer_phone || thread.phone,
-        customerId: customer.customer_id,
-        body: message,
-        send: true,
-      });
-    }
+    await sendSelectSms({
+      companyId: input.companyId,
+      phone: body.customer_phone || thread.phone,
+      customerId: customer.customer_id,
+      body: message,
+      kind: readiness.missingField || "missing_info",
+      previousIntent: state?.lastIntent,
+    });
     return {
       status: 200,
       customerId: customer.customer_id,
@@ -370,12 +448,13 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
       intake: existingIntake,
       phase: "SLOTS_OFFERED",
     });
-    await sendActionResultSms({
+    await sendSelectSms({
       companyId: input.companyId,
       phone: body.customer_phone || thread.phone,
       customerId: customer.customer_id,
       body: message,
-      send: Boolean(body.send_to_customer),
+      kind: "clarify",
+      previousIntent: state?.lastIntent,
     });
     return {
       status: 200,
@@ -410,12 +489,13 @@ export async function selectOfferedSlotTool(input: { companyId: string; body: un
   }
 
   const message = unmatchedOfferedSlotMessage();
-  await sendActionResultSms({
+  await sendSelectSms({
     companyId: input.companyId,
     phone: body.customer_phone || thread.phone,
     customerId: customer.customer_id,
     body: message,
-    send: Boolean(body.send_to_customer),
+    kind: "unmatched",
+    previousIntent: state?.lastIntent,
   });
   return {
     status: 200,

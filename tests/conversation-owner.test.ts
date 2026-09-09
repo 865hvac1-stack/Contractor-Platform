@@ -43,6 +43,7 @@ describe("customer conversation owner", () => {
     expect(webhook).toMatch(/loadCustomerConversationOwner/);
     expect(webhook).toMatch(/processInboundReceptionist/);
     expect(webhook).toMatch(/processInboundScheduling/);
+    expect(webhook).toMatch(/continueHybridSchedulingFromInbound/);
     const ownerCheck = webhook.indexOf("contractorYouMayAutoreply(conversationOwner)");
     const receptionistCall = webhook.indexOf("processInboundReceptionist(inbound)");
     const processCall = webhook.indexOf("processInboundScheduling(inbound)");
