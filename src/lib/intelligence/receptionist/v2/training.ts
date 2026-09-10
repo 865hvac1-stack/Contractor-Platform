@@ -1,7 +1,7 @@
 import type { ReceptionistV2Intent, VerifiedFacts } from "@/lib/intelligence/receptionist/v2/types";
 
 export const TRAINING_KNOWLEDGE_LIMIT = 3;
-export const TRAINING_RULE_LIMIT = 8;
+export const TRAINING_RULE_LIMIT = 16;
 export const TRAINING_EXAMPLE_LIMIT = 2;
 
 export const STARTER_CONVERSATION_RULES = [
@@ -20,7 +20,21 @@ export const STARTER_CONVERSATION_RULES = [
   "Never invent availability.",
   "Never claim an action succeeded without verified ContractorYou success.",
   "Never say a customer is booked, canceled, rescheduled, paid, enrolled, or updated unless ContractorYou verifies it.",
+  "When a customer describes an actual service problem that likely requires a technician and they do not already have an appointment or active scheduling session, naturally offer to schedule a service visit.",
+  "Do not turn informational questions such as brands, filter size, or SEER into a scheduling offer.",
+  "Keep the current conversation subject. Do not invent objects or appliances the customer did not mention.",
+  "Short replies such as yes, it, that, and okay refer to the outstanding question or current service concern.",
 ];
+
+export const STARTER_SERVICE_CONCERN_OPPORTUNITY = {
+  type: "SERVICE_CONCERN",
+  title: "Service visit",
+  triggerText: "Customer describes an actual service problem that likely needs a technician",
+  verifiedRequirement: "No verified upcoming appointment and no active scheduling session",
+  suggestedBehavior:
+    "Acknowledge the problem safely. Do not invent troubleshooting. If they do not already have an appointment, offer a service visit. Do not start scheduling until they accept.",
+  cta: "That's something we can take a look at. Want me to check our openings?",
+};
 
 export const STARTER_MAINTENANCE_OPPORTUNITY = {
   type: "MAINTENANCE",
@@ -156,7 +170,19 @@ export function qualifyOpportunity(input: {
   rules: TrainingOpportunityRule[];
   text: string;
   intent: string;
-  facts: Pick<VerifiedFacts, "hasActiveMembership" | "membershipStatus" | "invoiceBalance" | "estimateStatus" | "waitingStatus" | "jobStatus">;
+  facts: Pick<
+    VerifiedFacts,
+    | "hasActiveMembership"
+    | "membershipStatus"
+    | "invoiceBalance"
+    | "estimateStatus"
+    | "waitingStatus"
+    | "jobStatus"
+    | "hasActiveAppointment"
+    | "activeSchedulingSession"
+    | "serviceConcernActive"
+    | "offerScheduling"
+  >;
   declinedTypes: string[];
   offeredTypes: string[];
 }): TrainingOpportunityRule | null {
@@ -164,6 +190,12 @@ export function qualifyOpportunity(input: {
   const active = [...input.rules].filter((rule) => rule.active).sort((a, b) => a.priority - b.priority);
   for (const rule of active) {
     if (input.declinedTypes.includes(rule.type) || input.offeredTypes.includes(rule.type)) continue;
+    if (rule.type === "SERVICE_CONCERN") {
+      if (input.facts.hasActiveAppointment === true || input.facts.activeSchedulingSession === true) continue;
+      if (input.intent !== "SERVICE_CONCERN" && !input.facts.serviceConcernActive) continue;
+      if (input.facts.offerScheduling === false) continue;
+      return rule;
+    }
     if (rule.type === "MAINTENANCE" || rule.type === "MEMBERSHIP") {
       if (!qualifiesMaintenanceAsk(input)) continue;
       if (input.facts.hasActiveMembership !== false) continue;
@@ -194,6 +226,9 @@ export function qualifyOpportunity(input: {
 }
 
 export function opportunityLine(rule: TrainingOpportunityRule, facts: Pick<VerifiedFacts, "hasActiveMembership" | "membershipStatus">) {
+  if (rule.type === "SERVICE_CONCERN") {
+    return rule.cta || "That's something we can take a look at. Want me to check our openings?";
+  }
   if ((rule.type === "MAINTENANCE" || rule.type === "MEMBERSHIP") && facts.hasActiveMembership !== false) {
     return null;
   }

@@ -21,6 +21,7 @@ const { mockPrisma } = vi.hoisted(() => ({
     receptionistOpportunityRule: { findMany: vi.fn(async () => []) },
     receptionistApprovedExample: { findMany: vi.fn(async () => []) },
     receptionistOpportunityEvent: { findMany: vi.fn(async () => []), create: vi.fn() },
+    job: { findFirst: vi.fn(async () => null) },
   },
 }));
 
@@ -39,7 +40,13 @@ import {
   receptionistV2MaySendLive,
   receptionistV2ShouldObserve,
 } from "@/lib/intelligence/receptionist/v2/types";
+import { loadCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import { fallbackClassifyReceptionistV2, capabilityAllowsIntent } from "@/lib/intelligence/receptionist/v2/intent";
+import {
+  inferConversationState,
+  isSchedulingOfferAcceptance,
+  responseInventedUnmentionedAppliance,
+} from "@/lib/intelligence/receptionist/v2/conversation-state";
 import { assertResponseUsesOnlyVerifiedFacts, composeVerifiedReceptionistSms } from "@/lib/intelligence/receptionist/v2/compose";
 import {
   answerFromCompanyKnowledge,
@@ -60,9 +67,26 @@ import { resolveOfferedSlotSelection } from "@/lib/scheduling/conversation-turn"
 const settings = DEFAULT_RECEPTIONIST_SETTINGS;
 const personality = { assistantName: "Regina", tone: "warm", responseLength: "short", useCustomerFirstName: true };
 
-function classify(text: string, hasActiveScheduling = false) {
-  return fallbackClassifyReceptionistV2({ text, hasActiveScheduling, assistantName: "Regina" });
+function classify(
+  text: string,
+  hasActiveScheduling = false,
+  history?: Array<{ direction: string; body: string }>,
+  extras?: { lastOutbound?: string | null; hasActiveAppointment?: boolean }
+) {
+  return fallbackClassifyReceptionistV2({
+    text,
+    history,
+    hasActiveScheduling,
+    assistantName: "Regina",
+    lastOutbound: extras?.lastOutbound,
+    hasActiveAppointment: extras?.hasActiveAppointment,
+  });
 }
+
+const hvacRunningHistory = [
+  { direction: "INBOUND", body: "My AC has been running nonstop." },
+  { direction: "OUTBOUND", body: "Got it — is the system still running?" },
+];
 
 describe("ContractorYou AI Receptionist V2", () => {
   it("keeps HighLevel Regina as the default and only observes in shadow or live AI mode", () => {
@@ -407,6 +431,8 @@ describe("Receptionist V2 inbound shadow safety", () => {
       intent: "SCHEDULING",
     });
     mockPrisma.communicationMessage.findMany.mockResolvedValue([]);
+    mockPrisma.receptionistTurn.findFirst.mockResolvedValue(null);
+    mockPrisma.job.findFirst.mockResolvedValue(null);
     mockPrisma.conversationSchedulingState.findFirst.mockResolvedValue({
       id: "st1",
       status: "OPEN",
@@ -468,6 +494,8 @@ describe("Receptionist V2 inbound shadow safety", () => {
     });
     mockPrisma.receptionistTurn.findUnique.mockResolvedValue(null);
     mockPrisma.communicationMessage.findMany.mockResolvedValue([]);
+    mockPrisma.receptionistTurn.findFirst.mockResolvedValue(null);
+    mockPrisma.job.findFirst.mockResolvedValue(null);
     mockPrisma.conversationSchedulingState.findFirst.mockResolvedValue(null);
     mockPrisma.receptionistTurn.create.mockResolvedValue({ id: "turn_2" });
     mockPrisma.aIUsageEvent.create.mockResolvedValue({ id: "u2" });
@@ -504,5 +532,250 @@ describe("Receptionist V2 inbound shadow safety", () => {
         where: expect.objectContaining({ companyId: "co_865", threadId: "th1", shadow: true }),
       })
     );
+  });
+});
+
+describe("Conversation understanding and service-to-scheduling", () => {
+  it("does not classify Yes it's running in isolation after HVAC context", () => {
+    const isolated = classify("Yes it's running!");
+    expect(isolated.intent).not.toBe("SERVICE_CONCERN");
+    const continued = classify("Yes it's running!", false, hvacRunningHistory);
+    expect(continued.intent).toBe("SERVICE_CONCERN");
+    expect(continued.extractedContext.currentSubject?.toLowerCase()).toMatch(/cool|hvac|system/);
+    expect(continued.extractedContext.serviceConcernActive).toBe(true);
+    expect(continued.extractedContext.concern?.toLowerCase()).toMatch(/ac|running|cool/);
+    const reply = composeVerifiedReceptionistSms({
+      text: "Yes it's running!",
+      classification: continued,
+      facts: {
+        assistantName: "Regina",
+        customerFirstName: "JR",
+        currentSubject: continued.extractedContext.currentSubject,
+        currentServiceConcern: continued.extractedContext.concern,
+        serviceConcernActive: true,
+        offerScheduling: true,
+        conversationText: "My AC has been running nonstop.\nYes it's running!",
+      },
+      personality,
+    });
+    expect(reply.toLowerCase()).not.toMatch(/refrigerat|fridge/);
+    expect(reply).not.toMatch(/^Hi JR!/i);
+    expect(reply.toLowerCase()).toMatch(/look at|openings|service visit|someone out/);
+  });
+
+  it("keeps HVAC context for how do I stop it and refuses invented repair", () => {
+    const classified = classify("Well how do I stop it running", false, [
+      ...hvacRunningHistory,
+      { direction: "INBOUND", body: "Yes it's running!" },
+    ]);
+    expect(classified.intent).toBe("SERVICE_CONCERN");
+    expect(classified.extractedContext.concern?.toLowerCase()).toMatch(/ac|running/);
+    const reply = composeVerifiedReceptionistSms({
+      text: "Well how do I stop it running",
+      classification: classified,
+      facts: {
+        assistantName: "Regina",
+        currentSubject: "cooling",
+        currentServiceConcern: "My AC has been running nonstop.",
+        serviceConcernActive: true,
+        offerScheduling: true,
+        isTroubleshootingAsk: true,
+        conversationText: "My AC has been running nonstop.\nYes it's running!\nWell how do I stop it running",
+      },
+      personality,
+    });
+    expect(reply.toLowerCase()).not.toMatch(/refrigerat|fridge|unplug|capacitor|open the panel/);
+    expect(reply.toLowerCase()).toMatch(/unsafe|don't want to walk you through/);
+    expect(reply.toLowerCase()).toMatch(/look at|openings|someone out/);
+    expect(
+      assertResponseUsesOnlyVerifiedFacts({
+        responseText: "Hi JR! It sounds like your refrigerator is running well. Unplug it.",
+        facts: { assistantName: "Regina" },
+        conversationText: "My AC has been running nonstop. Yes it's running!",
+      }).ok
+    ).toBe(false);
+    expect(
+      responseInventedUnmentionedAppliance({
+        responseText: "It sounds like your refrigerator is running well",
+        conversationText: "My AC has been running nonstop. Yes it's running!",
+      })
+    ).toBe(true);
+  });
+
+  it("treats Yes please as acceptance of the outstanding scheduling offer", () => {
+    const offer = "That's something we can take a look at. Want me to check our openings?";
+    expect(isSchedulingOfferAcceptance("Yes please", true)).toBe(true);
+    expect(isSchedulingOfferAcceptance("Yes it's running!", true)).toBe(false);
+    const classified = classify("Yes please", false, [
+      ...hvacRunningHistory,
+      { direction: "INBOUND", body: "Well how do I stop it running" },
+      { direction: "OUTBOUND", body: offer },
+    ], { lastOutbound: offer });
+    expect(classified.intent).toBe("SCHEDULING");
+    expect(classified.extractedContext.acceptedSchedulingOffer).toBe(true);
+    expect(classified.extractedContext.concern?.toLowerCase()).toMatch(/ac|running/);
+    const reply = composeVerifiedReceptionistSms({
+      text: "Yes please",
+      classification: classified,
+      facts: {
+        assistantName: "Regina",
+        currentServiceConcern: "My AC has been running nonstop.",
+        serviceConcernActive: true,
+        acceptedSchedulingOffer: true,
+        nextWorkflowAsk: "What's going on with the system?",
+      },
+      personality,
+    });
+    expect(reply.toLowerCase()).not.toMatch(/what's going on with the system/);
+    expect(reply.toLowerCase()).toMatch(/got it|started|address|name|openings/);
+  });
+
+  it("does not auto-schedule informational HVAC questions", () => {
+    expect(classify("Do you work on Trane?").intent).toBe("SERVICE_QUESTION");
+    expect(classify("What size filter do I need?").intent).toBe("SERVICE_QUESTION");
+    expect(classify("What does SEER mean?").intent).toBe("SERVICE_QUESTION");
+    const trane = composeVerifiedReceptionistSms({
+      text: "Do you work on Trane?",
+      classification: classify("Do you work on Trane?"),
+      facts: { assistantName: "Regina", knowledgeAnswers: ["Yes, we service Trane and most major brands."] },
+      personality,
+    });
+    expect(trane).toMatch(/Trane/);
+    expect(trane.toLowerCase()).not.toMatch(/openings|schedule a service visit/);
+    const filter = composeVerifiedReceptionistSms({
+      text: "What size filter do I need?",
+      classification: classify("What size filter do I need?"),
+      facts: { assistantName: "Regina" },
+      personality,
+    });
+    expect(filter.toLowerCase()).toMatch(/don't want to guess|office/);
+    expect(filter.toLowerCase()).not.toMatch(/check our openings/);
+  });
+
+  it("offers scheduling for an actual service concern and skips a duplicate when an appointment exists", () => {
+    const grinding = classify("My Trane is making a grinding noise");
+    expect(grinding.intent).toBe("SERVICE_CONCERN");
+    expect(
+      composeVerifiedReceptionistSms({
+        text: "My Trane is making a grinding noise",
+        classification: grinding,
+        facts: { assistantName: "Regina", serviceConcernActive: true, offerScheduling: true, currentServiceConcern: "My Trane is making a grinding noise" },
+        personality,
+      }).toLowerCase()
+    ).toMatch(/openings|look at/);
+    const existing = classify(
+      "I already have someone coming Tuesday but it's making another noise",
+      false,
+      undefined,
+      { hasActiveAppointment: true }
+    );
+    expect(existing.extractedContext.nextAction).not.toBe("START_SCHEDULING");
+    const reply = composeVerifiedReceptionistSms({
+      text: "I already have someone coming Tuesday but it's making another noise",
+      classification: existing,
+      facts: {
+        assistantName: "Regina",
+        hasActiveAppointment: true,
+        serviceConcernActive: true,
+        appointmentDisplay: "Tuesday from 9–11 AM",
+      },
+      personality,
+    });
+    expect(reply.toLowerCase()).toMatch(/already have/);
+    expect(reply.toLowerCase()).not.toMatch(/want me to check our openings/);
+  });
+
+  it("answers a verified owner question and refuses to invent one", () => {
+    expect(classify("What's the boss's name at 865HVAC").intent).toBe("GENERAL_QUESTION");
+    expect(
+      composeVerifiedReceptionistSms({
+        text: "What's the boss's name at 865HVAC",
+        classification: classify("What's the boss's name at 865HVAC"),
+        facts: { assistantName: "Regina" },
+        personality,
+      })
+    ).toMatch(/don't want to guess|office/);
+    expect(
+      composeVerifiedReceptionistSms({
+        text: "What's the boss's name at 865HVAC",
+        classification: classify("What's the boss's name at 865HVAC"),
+        facts: { assistantName: "Regina", knowledgeAnswers: ["TJ is the owner."] },
+        personality,
+      })
+    ).toMatch(/TJ is the owner/);
+  });
+
+  it("starts deterministic scheduling when the customer accepts the offer", async () => {
+    vi.mocked(loadCustomerConversationOwner).mockResolvedValueOnce("CONTRACTORYOU");
+    mockPrisma.companyAiReceptionistSetting.findUnique.mockResolvedValue({
+      ...DEFAULT_RECEPTIONIST_SETTINGS,
+      mode: "CONTRACTORYOU_AI",
+      allowScheduling: true,
+    });
+    mockPrisma.company.findFirst.mockResolvedValue({
+      businessName: "865 HVAC",
+      timezone: "America/New_York",
+    });
+    mockPrisma.receptionistTurn.findUnique.mockResolvedValue(null);
+    mockPrisma.receptionistTurn.findFirst.mockResolvedValue({
+      intent: "SERVICE_CONCERN",
+      proposedResponse: "That's something we can take a look at. Want me to check our openings?",
+      extractedFields: { concern: "My AC has been running nonstop.", currentSubject: "cooling" },
+      verifiedFacts: { currentServiceConcern: "My AC has been running nonstop." },
+    });
+    mockPrisma.communicationMessage.findMany.mockResolvedValue([
+      { direction: "OUTBOUND", body: "That's something we can take a look at. Want me to check our openings?" },
+      { direction: "INBOUND", body: "Well how do I stop it running" },
+      { direction: "INBOUND", body: "Yes it's running!" },
+      { direction: "INBOUND", body: "My AC has been running nonstop." },
+    ]);
+    mockPrisma.conversationSchedulingState.findFirst.mockResolvedValue(null);
+    mockPrisma.job.findFirst.mockResolvedValue(null);
+    mockPrisma.receptionistTurn.create.mockResolvedValue({ id: "turn_live" });
+    mockPrisma.aIUsageEvent.create.mockResolvedValue({ id: "u3" });
+    const send = vi.fn(async () => ({ ok: true }));
+    const startScheduling = vi.fn(async () => ({ status: 200, body: {} }));
+    const result = await processReceptionistV2(
+      {
+        companyId: "co_865",
+        threadId: "th_live",
+        messageId: "msg_yes",
+        body: "Yes please",
+        phone: "+18653858079",
+      },
+      {
+        send,
+        startScheduling,
+        runTool: async () => ({ action: "findCustomer", facts: { customerFirstName: "JR", customerId: "c1", properties: [] } }),
+      }
+    );
+    expect(result.intent).toBe("SCHEDULING");
+    expect(startScheduling).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          service_need: expect.stringMatching(/AC|running/i),
+          send_to_customer: false,
+        }),
+      })
+    );
+    expect(result.proposedResponse?.toLowerCase()).not.toMatch(/what's going on with the system/);
+    expect(decideSchedulingNextStep({
+      hasReliableName: true,
+      propertyCount: 1,
+      hasAddress: true,
+      hasConcern: true,
+      offeredCount: 0,
+      selectedSlot: null,
+    }).action).toBe("offer_slots");
+  });
+
+  it("infers subject only from conversation history", () => {
+    const bare = inferConversationState({ text: "Yes it's running!", history: [] });
+    expect(bare.currentSubject).toBeNull();
+    expect(bare.serviceConcernActive).toBe(false);
+    const withHvac = inferConversationState({ text: "Yes it's running!", history: hvacRunningHistory });
+    expect(withHvac.currentSubject).toBe("cooling");
+    expect(withHvac.serviceConcernActive).toBe(true);
+    expect(withHvac.currentServiceConcern?.toLowerCase()).toMatch(/ac|running/);
   });
 });

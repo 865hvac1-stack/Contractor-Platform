@@ -21,6 +21,7 @@ export const RECEPTIONIST_V2_INTENTS = [
   "MEMBERSHIP",
   "MAINTENANCE",
   "SERVICE_QUESTION",
+  "SERVICE_CONCERN",
   "HUMAN_REQUEST",
   "COMPLAINT",
   "EMERGENCY",
@@ -57,6 +58,11 @@ export type ReceptionistV2Extracted = {
   slotHint?: string | null;
   casualAck?: boolean;
   interruptingQuestion?: string | null;
+  currentSubject?: string | null;
+  serviceConcernActive?: boolean;
+  outstandingSchedulingOffer?: boolean;
+  acceptedSchedulingOffer?: boolean;
+  nextAction?: string | null;
 };
 
 export type ReceptionistV2Classification = {
@@ -101,6 +107,17 @@ export type VerifiedFacts = {
   toolError?: string | null;
   hasActiveMembership?: boolean | null;
   opportunityOffer?: string | null;
+  currentSubject?: string | null;
+  currentServiceConcern?: string | null;
+  serviceConcernActive?: boolean;
+  hasActiveAppointment?: boolean;
+  activeSchedulingSession?: boolean;
+  outstandingSchedulingOffer?: boolean;
+  offerScheduling?: boolean;
+  acceptedSchedulingOffer?: boolean;
+  conversationText?: string | null;
+  safeGuidance?: string | null;
+  isTroubleshootingAsk?: boolean;
 };
 
 export function parseReceptionistV2Mode(value: unknown): ReceptionistV2Mode {

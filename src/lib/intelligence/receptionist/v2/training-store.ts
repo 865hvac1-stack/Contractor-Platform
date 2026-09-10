@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import {
   STARTER_CONVERSATION_RULES,
   STARTER_MAINTENANCE_OPPORTUNITY,
+  STARTER_SERVICE_CONCERN_OPPORTUNITY,
   type TrainingExample,
   type TrainingKnowledge,
   type TrainingOpportunityRule,
@@ -93,6 +94,19 @@ export async function ensureReceptionistTrainingStarter(companyId: string) {
         ...STARTER_MAINTENANCE_OPPORTUNITY,
         active: true,
         priority: 10,
+      },
+    });
+  }
+  const serviceConcern = await prisma.receptionistOpportunityRule.count({
+    where: { companyId, type: "SERVICE_CONCERN" },
+  });
+  if (serviceConcern === 0) {
+    await prisma.receptionistOpportunityRule.create({
+      data: {
+        companyId,
+        ...STARTER_SERVICE_CONCERN_OPPORTUNITY,
+        active: true,
+        priority: 20,
       },
     });
   }

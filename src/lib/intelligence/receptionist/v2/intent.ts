@@ -1,5 +1,9 @@
 import { interpretSchedulingIntent } from "@/lib/scheduling/intent";
 import { extractCustomerConcern, parsePersonName, parseServiceAddress } from "@/lib/scheduling/conversation-identity";
+import {
+  inferConversationState,
+  type ReceptionistConversationState,
+} from "@/lib/intelligence/receptionist/v2/conversation-state";
 import type { ReceptionistV2Classification, ReceptionistV2Intent } from "@/lib/intelligence/receptionist/v2/types";
 
 const GREETING = /^(hi|hey|hello|good (morning|afternoon|evening)|howdy)\b/i;
@@ -15,6 +19,7 @@ const PAYMENT = /\b(pay(ment)?|credit card|can i pay)\b/i;
 const MEMBERSHIP = /\b(membership|maintenance plan|service plan)\b/i;
 const MAINTENANCE = /\b(maintenance|tune[- ]?up|membership visit)\b/i;
 const SERVICE_Q = /\b(do you (guys )?(work on|service|fix|install)|what (brands?|areas?)|hours|financing|warranty)\b/i;
+const OWNER_Q = /\b(boss(?:'s)? name|who owns|who is the owner|who'?s the owner|owner'?s name)\b/i;
 const CASUAL = /^(ok|okay|cool|sounds good|got it|yep|yes|no problem|man it'?s been hot|lol|👍+|ok thanks|thanks!?)$/i;
 
 export function fallbackClassifyReceptionistV2(input: {
@@ -23,15 +28,38 @@ export function fallbackClassifyReceptionistV2(input: {
   hasActiveScheduling: boolean;
   assistantName?: string;
   timeZone?: string;
+  conversationState?: ReceptionistConversationState;
+  hasActiveAppointment?: boolean;
+  lastIntent?: string | null;
+  lastOutbound?: string | null;
+  lastConcern?: string | null;
+  schedulingConcern?: string | null;
 }): ReceptionistV2Classification {
   const text = input.text.trim();
+  const state =
+    input.conversationState ??
+    inferConversationState({
+      text,
+      history: input.history,
+      hasActiveScheduling: input.hasActiveScheduling,
+      hasActiveAppointment: input.hasActiveAppointment,
+      lastIntent: input.lastIntent,
+      lastOutbound: input.lastOutbound,
+      lastConcern: input.lastConcern,
+      schedulingConcern: input.schedulingConcern,
+    });
   const extracted = {
-    concern: extractCustomerConcern(text),
+    concern: state.currentServiceConcern || extractCustomerConcern(text),
     customerName: parsePersonName(text) ? `${parsePersonName(text)!.firstName} ${parsePersonName(text)!.lastName}`.trim() : null,
     serviceAddress: parseServiceAddress(text)?.street ?? null,
     slotHint: null as string | null,
     casualAck: CASUAL.test(text) || THANKS.test(text),
-    interruptingQuestion: SERVICE_Q.test(text) ? text : null,
+    interruptingQuestion: SERVICE_Q.test(text) || state.isInformationalQuestion ? text : null,
+    currentSubject: state.currentSubjectLabel,
+    serviceConcernActive: state.serviceConcernActive,
+    outstandingSchedulingOffer: state.outstandingSchedulingOffer,
+    acceptedSchedulingOffer: state.acceptedSchedulingOffer,
+    nextAction: state.nextAction,
   };
 
   if (EMERGENCY.test(text)) {
@@ -58,24 +86,40 @@ export function fallbackClassifyReceptionistV2(input: {
   if (WAITING.test(text)) return pack("WAITING_PART_STATUS", 0.84, extracted, false);
   if (JOB_STATUS.test(text)) return pack("JOB_STATUS", 0.84, extracted, false);
   if (MAINTENANCE.test(text) && !scheduling.serviceIntent) return pack("MAINTENANCE", 0.8, extracted, false);
-  if (SERVICE_Q.test(text)) return pack("SERVICE_QUESTION", 0.82, extracted, false);
-  if (GREETING.test(text) && text.split(/\s+/).length <= 4) return pack("GREETING", 0.8, extracted, false);
+  if (OWNER_Q.test(text)) {
+    return pack("GENERAL_QUESTION", 0.86, { ...extracted, interruptingQuestion: text }, false);
+  }
+  if ((SERVICE_Q.test(text) || state.isInformationalQuestion) && !state.serviceConcernActive) {
+    return pack("SERVICE_QUESTION", 0.82, extracted, false);
+  }
+  if (GREETING.test(text) && text.split(/\s+/).length <= 4 && !state.serviceConcernActive) {
+    return pack("GREETING", 0.8, extracted, false);
+  }
 
   if (input.hasActiveScheduling) {
     if (scheduling.requestedDate || scheduling.requestedDaypart || scheduling.requestedWindowId) {
-      return pack("SCHEDULING", 0.93, { ...extracted, slotHint: text }, false);
+      return pack("SCHEDULING", 0.93, { ...extracted, slotHint: text, nextAction: "CONTINUE_SCHEDULING" }, false);
     }
     if (extracted.casualAck && !extracted.interruptingQuestion) {
-      return pack("SCHEDULING", 0.7, extracted, false);
+      return pack("SCHEDULING", 0.7, { ...extracted, nextAction: "CONTINUE_SCHEDULING" }, false);
     }
     if (extracted.interruptingQuestion) {
       return pack("SERVICE_QUESTION", 0.78, extracted, false);
     }
-    return pack("SCHEDULING", 0.75, extracted, false);
+    return pack("SCHEDULING", 0.75, { ...extracted, nextAction: "CONTINUE_SCHEDULING" }, false);
   }
 
-  if (scheduling.serviceIntent || scheduling.availabilityAsk || scheduling.requestedDate || extracted.concern) {
-    return pack("SCHEDULING", scheduling.confidence === "high" ? 0.94 : 0.8, extracted, false);
+  if (state.mentionsExistingAppointment || input.hasActiveAppointment) {
+    return pack("SERVICE_CONCERN", 0.86, { ...extracted, nextAction: "none" }, false);
+  }
+  if (state.acceptedSchedulingOffer || state.nextAction === "START_SCHEDULING") {
+    return pack("SCHEDULING", 0.93, extracted, false);
+  }
+  if (scheduling.serviceIntent || scheduling.availabilityAsk || scheduling.requestedDate) {
+    return pack("SCHEDULING", scheduling.confidence === "high" ? 0.94 : 0.8, { ...extracted, nextAction: "START_SCHEDULING" }, false);
+  }
+  if (state.serviceConcernActive || state.isServiceProblem) {
+    return pack("SERVICE_CONCERN", 0.88, extracted, false);
   }
   if (THANKS.test(text) || CASUAL.test(text)) return pack("GREETING", 0.6, extracted, false);
   return pack("UNKNOWN", 0.35, extracted, false);
@@ -102,7 +146,9 @@ export function capabilityAllowsIntent(input: {
   allowMembershipQuestions: boolean;
   allowWaitingQuestions: boolean;
 }) {
-  if (input.intent === "SCHEDULING" || input.intent === "MAINTENANCE") return input.allowScheduling;
+  if (input.intent === "SCHEDULING" || input.intent === "MAINTENANCE" || input.intent === "SERVICE_CONCERN") {
+    return input.intent === "SERVICE_CONCERN" ? true : input.allowScheduling;
+  }
   if (input.intent === "RESCHEDULE") return input.allowRescheduling;
   if (input.intent === "CANCEL_APPOINTMENT") return input.allowCancellations;
   if (input.intent === "JOB_STATUS") return input.allowJobStatus;

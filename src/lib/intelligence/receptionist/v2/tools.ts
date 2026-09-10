@@ -52,21 +52,32 @@ export async function runReceptionistTool(input: {
   if (!context) return { action: input.action, facts };
 
   if (input.action === "getCustomerJobs" || input.action === "getAppointmentStatus") {
-    const job = await prisma.job.findFirst({
-      where: { companyId: input.companyId, customerId: context.customerId },
-      orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        status: true,
-        jobNumber: true,
-        scheduledStart: true,
-        schedulingBooking: { select: { id: true } },
-      },
+    const appointment = await loadVerifiedActiveAppointment({
+      companyId: input.companyId,
+      customerId: context.customerId,
     });
-    if (job) {
-      facts.jobId = job.id;
-      facts.bookingId = job.schedulingBooking?.id ?? null;
-      facts.jobStatus = `Job ${job.jobNumber} is ${job.status.toLowerCase().replaceAll("_", " ")}.`;
+    if (appointment.hasActiveAppointment) {
+      facts.hasActiveAppointment = true;
+      facts.jobId = appointment.jobId;
+      facts.bookingId = appointment.bookingId;
+      facts.jobStatus = appointment.jobStatus;
+    } else {
+      const job = await prisma.job.findFirst({
+        where: { companyId: input.companyId, customerId: context.customerId },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          jobNumber: true,
+          scheduledStart: true,
+          schedulingBooking: { select: { id: true } },
+        },
+      });
+      if (job) {
+        facts.jobId = job.id;
+        facts.bookingId = job.schedulingBooking?.id ?? null;
+        facts.jobStatus = `Job ${job.jobNumber} is ${job.status.toLowerCase().replaceAll("_", " ")}.`;
+      }
     }
   }
 
@@ -115,6 +126,42 @@ export async function runReceptionistTool(input: {
   return { action: input.action, facts };
 }
 
+export async function loadVerifiedActiveAppointment(input: { companyId: string; customerId: string }) {
+  const since = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const job = await prisma.job.findFirst({
+    where: {
+      companyId: input.companyId,
+      customerId: input.customerId,
+      status: { in: ["SCHEDULED", "DISPATCHED", "IN_PROGRESS"] },
+      OR: [{ scheduledStart: { gte: since } }, { scheduledStart: null }],
+    },
+    orderBy: { scheduledStart: "asc" },
+    select: {
+      id: true,
+      status: true,
+      jobNumber: true,
+      scheduledStart: true,
+      schedulingBooking: { select: { id: true } },
+    },
+  });
+  if (!job) {
+    return {
+      hasActiveAppointment: false as const,
+      jobId: null,
+      bookingId: null,
+      jobStatus: null,
+      scheduledStart: null,
+    };
+  }
+  return {
+    hasActiveAppointment: true as const,
+    jobId: job.id,
+    bookingId: job.schedulingBooking?.id ?? null,
+    jobStatus: `Job ${job.jobNumber} is ${job.status.toLowerCase().replaceAll("_", " ")}.`,
+    scheduledStart: job.scheduledStart,
+  };
+}
+
 export function actionForIntent(intent: string): ReceptionistV2Action {
   if (intent === "INVOICE_BALANCE" || intent === "PAYMENT_QUESTION") return "getInvoiceBalance";
   if (intent === "ESTIMATE_STATUS") return "getEstimateStatus";
@@ -124,5 +171,6 @@ export function actionForIntent(intent: string): ReceptionistV2Action {
   if (intent === "SCHEDULING" || intent === "RESCHEDULE") return "startScheduling";
   if (intent === "HUMAN_REQUEST" || intent === "COMPLAINT" || intent === "EMERGENCY") return "requestHumanHandoff";
   if (intent === "SERVICE_QUESTION" || intent === "GENERAL_QUESTION") return "answer_from_knowledge";
+  if (intent === "SERVICE_CONCERN") return "continue_workflow";
   return "continue_workflow";
 }

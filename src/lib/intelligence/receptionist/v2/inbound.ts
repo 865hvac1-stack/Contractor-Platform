@@ -12,11 +12,17 @@ import { sanitizeCustomerSms } from "@/lib/intelligence/receptionist/sanitize";
 import { getAiReceptionistProvider } from "@/lib/intelligence/receptionist/v2/provider";
 import { capabilityAllowsIntent } from "@/lib/intelligence/receptionist/v2/intent";
 import { answerFromCompanyKnowledge, loadCompanyKnowledgeFromSettings } from "@/lib/intelligence/receptionist/v2/knowledge";
-import { actionForIntent, runReceptionistTool } from "@/lib/intelligence/receptionist/v2/tools";
+import { actionForIntent, loadVerifiedActiveAppointment, runReceptionistTool } from "@/lib/intelligence/receptionist/v2/tools";
 import { buildTrainingContext, customerDeclinedOpportunity, qualifiesMaintenanceAsk } from "@/lib/intelligence/receptionist/v2/training";
 import { loadCompanyTraining, recordOpportunityEvent, threadOpportunityTypes } from "@/lib/intelligence/receptionist/v2/training-store";
 import { assertResponseUsesOnlyVerifiedFacts } from "@/lib/intelligence/receptionist/v2/compose";
 import { boundConversationHistory } from "@/lib/intelligence/receptionist/v2/context";
+import {
+  actionFromConversationState,
+  conversationCorpus,
+  inferConversationState,
+  type ConversationSubject,
+} from "@/lib/intelligence/receptionist/v2/conversation-state";
 import { recordReceptionistV2Usage } from "@/lib/intelligence/receptionist/v2/usage";
 import {
   parseReceptionistV2Mode,
@@ -73,7 +79,7 @@ export async function processReceptionistV2(
     return { handled: true, duplicate: true, mode, shadow, intent: existing.intent };
   }
 
-  const [company, history, scheduling, trainingPack] = await Promise.all([
+  const [company, history, scheduling, trainingPack, lastTurn] = await Promise.all([
     prisma.company.findFirst({
       where: { id: input.companyId },
       select: { businessName: true, timezone: true, hoursNote: true, serviceArea: true, description: true, phone: true },
@@ -86,10 +92,30 @@ export async function processReceptionistV2(
     }),
     loadOpenSchedulingSession(input.companyId, input.threadId),
     loadCompanyTraining(input.companyId),
+    prisma.receptionistTurn.findFirst({
+      where: { companyId: input.companyId, threadId: input.threadId },
+      orderBy: { createdAt: "desc" },
+      select: { intent: true, proposedResponse: true, extractedFields: true, verifiedFacts: true },
+    }),
   ]);
 
   const boundedHistory = boundConversationHistory(history, { newestFirst: true });
   const activeScheduling = Boolean(scheduling && isActiveSchedulingSession(scheduling));
+  const lastFields = asRecord(lastTurn?.extractedFields);
+  const lastFacts = asRecord(lastTurn?.verifiedFacts);
+  let conversationState = inferConversationState({
+    text,
+    history: boundedHistory,
+    hasActiveScheduling: activeScheduling,
+    lastIntent: lastTurn?.intent ?? null,
+    lastOutbound: lastTurn?.proposedResponse ?? null,
+    lastConcern:
+      asNullableString(lastFields?.concern) ||
+      asNullableString(lastFacts?.currentServiceConcern) ||
+      (typeof scheduling?.customerConcern === "string" ? scheduling.customerConcern : null),
+    lastSubject: asConversationSubject(lastFields?.currentSubject),
+    schedulingConcern: typeof scheduling?.customerConcern === "string" ? scheduling.customerConcern : null,
+  });
   const provider = deps.provider ?? getAiReceptionistProvider();
   const runTool = deps.runTool ?? runReceptionistTool;
   const send = deps.send ?? sendCompanyCommunication;
@@ -100,6 +126,8 @@ export async function processReceptionistV2(
     history: boundedHistory,
     hasActiveScheduling: activeScheduling,
     assistantName: settings.assistantName,
+    conversationState,
+    hasActiveAppointment: conversationState.mentionsExistingAppointment,
   });
 
   if (!capabilityAllowsIntent({ intent: classified.data.intent, ...settings }) && classified.data.intent !== "HUMAN_REQUEST") {
@@ -115,14 +143,23 @@ export async function processReceptionistV2(
     settings,
   });
   const knowledgeAnswer =
-    classified.data.extractedContext.interruptingQuestion || classified.data.intent === "SERVICE_QUESTION"
+    classified.data.extractedContext.interruptingQuestion ||
+    classified.data.intent === "SERVICE_QUESTION" ||
+    conversationState.isInformationalQuestion
       ? answerFromCompanyKnowledge({ question: text, knowledge })
-      : null;
+      : conversationState.isTroubleshootingAsk
+        ? answerFromCompanyKnowledge({ question: text, knowledge })
+        : null;
 
-  const requestedAction = actionForIntent(classified.data.intent);
+  const defaultAction = actionForIntent(classified.data.intent);
+  let requestedAction = actionFromConversationState({
+    intent: classified.data.intent,
+    nextAction: conversationState.nextAction,
+    defaultAction,
+  });
   const tool = await runTool({
     companyId: input.companyId,
-    action: requestedAction,
+    action: requestedAction === "startScheduling" ? "findCustomer" : requestedAction,
     phone: input.phone,
     customerId: input.customerId,
     contactId: input.contactId,
@@ -145,6 +182,50 @@ export async function processReceptionistV2(
     tool.facts.hasActiveMembership = membership.facts.hasActiveMembership;
     tool.facts.membershipStatus = membership.facts.membershipStatus ?? tool.facts.membershipStatus;
   }
+
+  const customerIdForAppt = tool.facts.customerId ?? input.customerId ?? null;
+  if (customerIdForAppt && !tool.facts.hasActiveAppointment) {
+    try {
+      const appointment = await loadVerifiedActiveAppointment({
+        companyId: input.companyId,
+        customerId: customerIdForAppt,
+      });
+      if (appointment.hasActiveAppointment) {
+        tool.facts.hasActiveAppointment = true;
+        tool.facts.jobId = appointment.jobId ?? tool.facts.jobId;
+        tool.facts.bookingId = appointment.bookingId ?? tool.facts.bookingId;
+        tool.facts.jobStatus = appointment.jobStatus ?? tool.facts.jobStatus;
+      }
+    } catch {
+      // Appointment lookup is verified-context only; never fail the turn.
+    }
+  }
+
+  conversationState = inferConversationState({
+    text,
+    history: boundedHistory,
+    hasActiveScheduling: activeScheduling,
+    hasActiveAppointment: Boolean(tool.facts.hasActiveAppointment) || conversationState.mentionsExistingAppointment,
+    lastIntent: lastTurn?.intent ?? classified.data.intent,
+    lastOutbound: lastTurn?.proposedResponse ?? null,
+    lastConcern: conversationState.currentServiceConcern,
+    lastSubject: conversationState.currentSubject,
+    schedulingConcern: typeof scheduling?.customerConcern === "string" ? scheduling.customerConcern : null,
+  });
+  requestedAction = actionFromConversationState({
+    intent: classified.data.intent,
+    nextAction: conversationState.nextAction,
+    defaultAction,
+  });
+  classified.data.extractedContext = {
+    ...classified.data.extractedContext,
+    concern: conversationState.currentServiceConcern ?? classified.data.extractedContext.concern,
+    currentSubject: conversationState.currentSubjectLabel,
+    serviceConcernActive: conversationState.serviceConcernActive,
+    outstandingSchedulingOffer: conversationState.outstandingSchedulingOffer,
+    acceptedSchedulingOffer: conversationState.acceptedSchedulingOffer,
+    nextAction: conversationState.nextAction,
+  };
 
   const offered = parseOfferedSlots(scheduling?.offeredSlots);
   const selected = selectedSlotFromState({
@@ -172,7 +253,11 @@ export async function processReceptionistV2(
       ? `${formatLocalDateShort(selected.date, timeZone)} from ${formatWindowChip(selected.startMinutes, selected.endMinutes)}`
       : null,
     serviceAddress: tool.facts.properties?.length === 1 ? tool.facts.properties[0]!.address : scheduling ? parseStreet(scheduling.intake) : null,
-    nextWorkflowAsk: nextAskFromPhase(scheduling?.lastAiAction, tool.facts.properties?.length ?? 0),
+    nextWorkflowAsk: nextAskFromPhase(
+      scheduling?.lastAiAction,
+      tool.facts.properties?.length ?? 0,
+      Boolean(conversationState.currentServiceConcern)
+    ),
     knowledgeAnswers: knowledgeAnswer ? [knowledgeAnswer] : [],
     invoiceBalance: tool.facts.invoiceBalance ?? null,
     estimateStatus: tool.facts.estimateStatus ?? null,
@@ -181,6 +266,24 @@ export async function processReceptionistV2(
     jobStatus: tool.facts.jobStatus ?? null,
     toolError: tool.skipped ?? null,
     hasActiveMembership: tool.facts.hasActiveMembership ?? null,
+    currentSubject: conversationState.currentSubjectLabel,
+    currentServiceConcern: conversationState.currentServiceConcern,
+    serviceConcernActive: conversationState.serviceConcernActive,
+    hasActiveAppointment: Boolean(tool.facts.hasActiveAppointment) || conversationState.mentionsExistingAppointment,
+    activeSchedulingSession: activeScheduling,
+    outstandingSchedulingOffer: conversationState.outstandingSchedulingOffer,
+    offerScheduling:
+      conversationState.nextAction === "OFFER_SCHEDULING" &&
+      settings.allowScheduling &&
+      !activeScheduling &&
+      !tool.facts.hasActiveAppointment &&
+      !conversationState.mentionsExistingAppointment,
+    acceptedSchedulingOffer: conversationState.acceptedSchedulingOffer,
+    conversationText: conversationCorpus(boundedHistory, text),
+    isTroubleshootingAsk: conversationState.isTroubleshootingAsk,
+    safeGuidance: conversationState.isTroubleshootingAsk && !knowledgeAnswer
+      ? "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
+      : null,
   };
 
   const threadOffers = threadOpportunityTypes(trainingPack.events, input.threadId, trainingPack.opportunities);
@@ -233,14 +336,24 @@ export async function processReceptionistV2(
     },
   });
 
-  const guard = assertResponseUsesOnlyVerifiedFacts({ responseText: generated.data.responseText, facts });
+  const guard = assertResponseUsesOnlyVerifiedFacts({
+    responseText: generated.data.responseText,
+    facts,
+    conversationText: facts.conversationText || "",
+  });
+  const invented = !guard.ok && (guard.reason === "invented_subject" || guard.reason === "invented_repair" || guard.reason === "restarted_greeting");
   const safeText = sanitizeCustomerSms(
     guard.ok
       ? generated.data.responseText
-      : "I don't want to give you the wrong information on that. Let me get the office to take a look."
+      : invented && conversationState.serviceConcernActive
+        ? facts.offerScheduling
+          ? "I don't want to walk you through anything that could be unsafe. That's something we can take a look at. Want me to check our openings?"
+          : "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
+        : "I don't want to give you the wrong information on that. Let me get the office to take a look."
   );
-  const shouldHandoff = generated.data.shouldHandoff || classified.data.shouldHandoff || !guard.ok;
-  const handoffReason = generated.data.handoffReason || classified.data.handoffReason || (!guard.ok ? guard.reason : null);
+  const shouldHandoff =
+    generated.data.shouldHandoff || classified.data.shouldHandoff || (!guard.ok && !invented);
+  const handoffReason = generated.data.handoffReason || classified.data.handoffReason || (!guard.ok && !invented ? guard.reason : null);
   const lowConfidence = generated.data.confidence < 0.45 && classified.data.intent === "UNKNOWN";
   const finalHandoff = shouldHandoff || (lowConfidence && settings.humanHandoffFallback);
 
@@ -258,14 +371,19 @@ export async function processReceptionistV2(
         replyText: safeText,
       });
       outboundSent = true;
-    } else if (requestedAction === "startScheduling" && settings.allowScheduling && !activeScheduling) {
+    } else if (
+      requestedAction === "startScheduling" &&
+      settings.allowScheduling &&
+      !activeScheduling &&
+      !facts.hasActiveAppointment
+    ) {
       await startScheduling({
         companyId: input.companyId,
         body: {
           customer_phone: input.phone,
           contact_id: input.contactId,
           customer_reply: text,
-          service_need: classified.data.extractedContext.concern,
+          service_need: conversationState.currentServiceConcern || classified.data.extractedContext.concern,
           send_to_customer: false,
         },
         source: "receptionist_v2",
@@ -487,13 +605,43 @@ export async function loadReceptionistV2Review(companyId: string, take = 8) {
   });
 }
 
-function nextAskFromPhase(phase?: string | null, propertyCount = 0) {
+function nextAskFromPhase(phase?: string | null, propertyCount = 0, hasConcern = false) {
+  if (phase === "NEED_SERVICE_CONTEXT" && hasConcern) return null;
   if (phase === "NEED_SERVICE_CONTEXT") return "What's going on with the system?";
   if (phase === "NEED_CUSTOMER_NAME") return "What's your name?";
   if (phase === "NEED_PROPERTY" && propertyCount > 1) return "Which property do you need service at?";
   if (phase === "NEED_PROPERTY") return "What's the address where you're needing service?";
   if (phase === "WAITING_FOR_SLOT_SELECTION" || phase === "SLOTS_OFFERED") return "Which of those openings works best?";
   if (phase === "SLOT_SELECTED") return "Before I finish scheduling that, what's your name?";
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function asNullableString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function asConversationSubject(value: unknown): ConversationSubject | null {
+  const raw = typeof value === "string" ? value.trim().toLowerCase().replace(/\s+/g, "_") : "";
+  if (
+    raw === "hvac_system" ||
+    raw === "heating" ||
+    raw === "cooling" ||
+    raw === "thermostat" ||
+    raw === "indoor_unit" ||
+    raw === "outdoor_unit" ||
+    raw === "fan_blower" ||
+    raw === "maintenance" ||
+    raw === "appointment" ||
+    raw === "invoice" ||
+    raw === "estimate" ||
+    raw === "membership"
+  ) {
+    return raw;
+  }
   return null;
 }
 

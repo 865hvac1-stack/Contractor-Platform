@@ -10,6 +10,7 @@ import {
 } from "@/lib/intelligence/receptionist/v2/types";
 import { fallbackClassifyReceptionistV2 } from "@/lib/intelligence/receptionist/v2/intent";
 import { composeVerifiedReceptionistSms } from "@/lib/intelligence/receptionist/v2/compose";
+import type { ReceptionistConversationState } from "@/lib/intelligence/receptionist/v2/conversation-state";
 
 export type AiReceptionistProviderResult<T> = {
   ok: boolean;
@@ -29,6 +30,8 @@ export type AiReceptionistProvider = {
     history: Array<{ direction: string; body: string }>;
     hasActiveScheduling: boolean;
     assistantName: string;
+    conversationState?: ReceptionistConversationState;
+    hasActiveAppointment?: boolean;
   }): Promise<AiReceptionistProviderResult<ReceptionistV2Classification>>;
   extractStructuredContext(input: {
     text: string;
@@ -69,6 +72,8 @@ export class FallbackReceptionistProvider implements AiReceptionistProvider {
     history: Array<{ direction: string; body: string }>;
     hasActiveScheduling: boolean;
     assistantName: string;
+    conversationState?: ReceptionistConversationState;
+    hasActiveAppointment?: boolean;
   }): Promise<AiReceptionistProviderResult<ReceptionistV2Classification>> {
     return {
       ok: true,
@@ -112,7 +117,11 @@ export class FallbackReceptionistProvider implements AiReceptionistProvider {
       data: {
         intent: input.classification.intent,
         responseText,
-        requestedAction: input.classification.shouldHandoff ? "requestHumanHandoff" : "continue_workflow",
+        requestedAction: input.classification.shouldHandoff
+          ? "requestHumanHandoff"
+          : input.classification.extractedContext.nextAction === "START_SCHEDULING"
+            ? "startScheduling"
+            : "continue_workflow",
         extractedFields: input.classification.extractedContext,
         confidence: input.classification.confidence,
         shouldHandoff: input.classification.shouldHandoff,
@@ -131,6 +140,8 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
     history: Array<{ direction: string; body: string }>;
     hasActiveScheduling: boolean;
     assistantName: string;
+    conversationState?: ReceptionistConversationState;
+    hasActiveAppointment?: boolean;
   }): Promise<AiReceptionistProviderResult<ReceptionistV2Classification>> {
     const key = getOpenAIApiKey();
     const fallback = await this.fallback.classifyIntent(input);
@@ -147,7 +158,12 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
           {
             role: "system",
             content: [
-              `You classify inbound HVAC office SMS for ${input.assistantName}.`,
+              `You classify inbound contractor office SMS for ${input.assistantName}.`,
+              "Classify the conversation, not the latest SMS in isolation.",
+              "Short replies such as yes, it, that, the unit, and okay refer to the current conversation subject.",
+              "Do not invent a subject. Never assume a refrigerator or other appliance unless the customer said that.",
+              "SERVICE_CONCERN is a service problem that may need a technician. SERVICE_QUESTION is an informational question.",
+              "If the customer accepts an outstanding scheduling offer, use SCHEDULING.",
               "Return JSON only. Do not invent appointments, prices, or diagnoses.",
               `Valid intents: ${RECEPTIONIST_V2_INTENTS.join(", ")}.`,
               'Schema: {"intent":"UNKNOWN","confidence":0.5,"concern":null,"customerName":null,"serviceAddress":null,"slotHint":null,"casualAck":false,"interruptingQuestion":null,"shouldHandoff":false,"handoffReason":null}',
@@ -159,12 +175,28 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               text: input.text,
               history: input.history.slice(-8),
               hasActiveScheduling: input.hasActiveScheduling,
+              hasActiveAppointment: input.hasActiveAppointment ?? false,
+              conversationState: input.conversationState
+                ? {
+                    currentSubject: input.conversationState.currentSubjectLabel,
+                    currentServiceConcern: input.conversationState.currentServiceConcern,
+                    serviceConcernActive: input.conversationState.serviceConcernActive,
+                    outstandingSchedulingOffer: input.conversationState.outstandingSchedulingOffer,
+                    nextAction: input.conversationState.nextAction,
+                  }
+                : null,
             }),
           },
         ],
       });
       const raw = JSON.parse(response.choices[0]?.message.content || "{}") as Record<string, unknown>;
-      const intent = asIntent(raw.intent) === "UNKNOWN" && fallback.data.intent !== "UNKNOWN" ? fallback.data.intent : asIntent(raw.intent);
+      let intent = asIntent(raw.intent) === "UNKNOWN" && fallback.data.intent !== "UNKNOWN" ? fallback.data.intent : asIntent(raw.intent);
+      if (fallback.data.intent === "SERVICE_CONCERN" && (intent === "GENERAL_QUESTION" || intent === "UNKNOWN")) {
+        intent = "SERVICE_CONCERN";
+      }
+      if (fallback.data.intent === "SCHEDULING" && fallback.data.extractedContext.acceptedSchedulingOffer) {
+        intent = "SCHEDULING";
+      }
       const inputTokens = response.usage?.prompt_tokens ?? 0;
       const outputTokens = response.usage?.completion_tokens ?? 0;
       return {
@@ -180,6 +212,11 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
             slotHint: asNullableString(raw.slotHint),
             casualAck: Boolean(raw.casualAck),
             interruptingQuestion: asNullableString(raw.interruptingQuestion),
+            currentSubject: fallback.data.extractedContext.currentSubject,
+            serviceConcernActive: fallback.data.extractedContext.serviceConcernActive,
+            outstandingSchedulingOffer: fallback.data.extractedContext.outstandingSchedulingOffer,
+            acceptedSchedulingOffer: fallback.data.extractedContext.acceptedSchedulingOffer,
+            nextAction: fallback.data.extractedContext.nextAction,
           },
           shouldHandoff: Boolean(raw.shouldHandoff) || fallback.data.shouldHandoff,
           handoffReason: asNullableString(raw.handoffReason) ?? fallback.data.handoffReason,
@@ -240,6 +277,16 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               `You are ${input.personality.assistantName}, a friendly virtual office receptionist.`,
               `Tone: ${input.personality.tone}. Keep SMS short, generally 1-3 sentences.`,
               "Use only verified facts. Never invent availability, appointments, prices, balances, parts, or job status.",
+              "This is a continuing conversation. Do not restart it. Do not greet with Hi {name}! on follow-up turns.",
+              "Use the customer's name only occasionally and naturally, not every message.",
+              "Keep the current conversation subject. Never invent a refrigerator or other object the customer did not mention.",
+              "Pronouns such as it, that, the unit, and the system refer to the current subject.",
+              "Do not provide repair or troubleshooting steps unless they are in verified knowledge.",
+              "If the customer asks how to stop or fix equipment and no approved guidance exists, say you do not want to walk them through anything unsafe and offer a service visit when appropriate.",
+              "If facts.offerScheduling is true and there is no active appointment or scheduling session, naturally offer to check openings.",
+              "Do not offer scheduling for informational questions such as brands, filter size, or SEER.",
+              "If an appointment already exists, do not offer another one.",
+              "If the customer accepted a scheduling offer and the service concern is already known, do not ask what is going on with the system again.",
               "If a workflow question is outstanding, acknowledge any casual reply and still ask that question.",
               "If asked something not in verified facts, say you do not want to guess and offer the office.",
               "Do not mention AI, ContractorYou, HighLevel, tools, or APIs.",
@@ -256,7 +303,7 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               intent: input.classification.intent,
               facts: input.facts,
               useFirstName: input.personality.useCustomerFirstName,
-              conversationRules: (input.training?.rules || []).slice(0, 8),
+              conversationRules: (input.training?.rules || []).slice(0, 16),
               approvedExamples: (input.training?.examples || []).slice(0, 2),
               opportunity: input.training?.opportunity ?? null,
             }),

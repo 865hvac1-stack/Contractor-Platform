@@ -193,6 +193,7 @@ export function TrainingCenter(props: {
             <ActionForm action={saveOpportunityRuleAction} className="space-y-2 rounded-2xl border bg-white p-4">
               <div className="grid gap-2 sm:grid-cols-2">
                 <select name="type" defaultValue="MAINTENANCE" className="rounded-xl border px-3 py-2 text-sm">
+                  <option value="SERVICE_CONCERN">Service concern / visit</option>
                   <option value="MAINTENANCE">Maintenance / membership</option>
                   <option value="ESTIMATE_FOLLOW_UP">Estimate follow-up</option>
                   <option value="PAYMENT">Payment</option>

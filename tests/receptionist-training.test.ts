@@ -10,6 +10,7 @@ import {
   retrieveRelevantExamples,
   retrieveRelevantKnowledge,
   STARTER_MAINTENANCE_OPPORTUNITY,
+  STARTER_SERVICE_CONCERN_OPPORTUNITY,
   trainingContextIsBounded,
 } from "@/lib/intelligence/receptionist/v2/training";
 import { composeVerifiedReceptionistSms } from "@/lib/intelligence/receptionist/v2/compose";
@@ -39,6 +40,15 @@ describe("AI Receptionist Training Center", () => {
     expect(migration).not.toMatch(/Summit/);
     expect(migration).not.toMatch(/customerConversationOwner/);
     expect(migration).not.toMatch(/CONTRACTORYOU_AI|HIGHLEVEL_REGINA/);
+    const understanding = readFileSync(
+      resolve("prisma/migrations/20260910033000_conversation_understanding_training/migration.sql"),
+      "utf8"
+    );
+    expect(understanding).toMatch(/businessName" = '865 HVAC' AND "isDemo" = false/);
+    expect(understanding).toMatch(/actual HVAC problem that likely requires service/);
+    expect(understanding).toMatch(/SERVICE_CONCERN/);
+    expect(understanding).not.toMatch(/Summit/);
+    expect(understanding).not.toMatch(/customerConversationOwner|CONTRACTORYOU_AI/);
   });
 
   it("retrieves only relevant knowledge for the inbound question", () => {
@@ -213,6 +223,45 @@ describe("AI Receptionist Training Center", () => {
     expect(can("MANAGER", "receptionist:train")).toBe(true);
     expect(can("OFFICE", "receptionist:train")).toBe(false);
     expect(can("TECHNICIAN", "receptionist:train")).toBe(false);
+  });
+
+  it("offers a service visit from Training Center only for a real service concern", () => {
+    const rule = {
+      id: "opp_svc",
+      ...STARTER_SERVICE_CONCERN_OPPORTUNITY,
+      active: true,
+      priority: 5,
+    };
+    expect(
+      qualifyOpportunity({
+        rules: [rule],
+        text: "My AC has been running nonstop.",
+        intent: "SERVICE_CONCERN",
+        facts: { offerScheduling: true, serviceConcernActive: true, hasActiveAppointment: false, activeSchedulingSession: false },
+        declinedTypes: [],
+        offeredTypes: [],
+      })?.id
+    ).toBe("opp_svc");
+    expect(
+      qualifyOpportunity({
+        rules: [rule],
+        text: "Do you work on Trane?",
+        intent: "SERVICE_QUESTION",
+        facts: { offerScheduling: false, serviceConcernActive: false },
+        declinedTypes: [],
+        offeredTypes: [],
+      })
+    ).toBeNull();
+    expect(
+      qualifyOpportunity({
+        rules: [rule],
+        text: "My Trane is making another noise",
+        intent: "SERVICE_CONCERN",
+        facts: { offerScheduling: true, serviceConcernActive: true, hasActiveAppointment: true },
+        declinedTypes: [],
+        offeredTypes: [],
+      })
+    ).toBeNull();
   });
 
   it("does not change the scheduling state machine", () => {
