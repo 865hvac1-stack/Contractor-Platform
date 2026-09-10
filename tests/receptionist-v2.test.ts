@@ -733,8 +733,8 @@ describe("Conversation understanding and service-to-scheduling", () => {
     mockPrisma.job.findFirst.mockResolvedValue(null);
     mockPrisma.receptionistTurn.create.mockResolvedValue({ id: "turn_live" });
     mockPrisma.aIUsageEvent.create.mockResolvedValue({ id: "u3" });
-    const send = vi.fn(async () => ({ ok: true }));
-    const startScheduling = vi.fn(async () => ({ status: 200, body: {} }));
+    const send = vi.fn();
+    const startScheduling = vi.fn();
     const result = await processReceptionistV2(
       {
         companyId: "co_865",
