@@ -19,6 +19,19 @@ export function getOpenAIApiKey() {
   return key || null;
 }
 
+/** True when the server can construct the OpenAI client. Never logs or returns the key. */
+export async function openaiProviderCanInitialize() {
+  const key = getOpenAIApiKey();
+  if (!key) return false;
+  try {
+    const OpenAI = (await import("openai")).default;
+    const client = new OpenAI({ apiKey: key });
+    return Boolean(client);
+  } catch {
+    return false;
+  }
+}
+
 /** gpt-4o-mini list prices used only for internal usage estimates (micro-USD). */
 export function estimateCostMicrousd(inputTokens: number, outputTokens: number) {
   const input = Math.round((inputTokens / 1_000_000) * 150_000);

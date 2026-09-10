@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { openaiProviderCanInitialize } from "@/lib/intelligence/config";
 
 export async function GET() {
   let database: "up" | "down" = "down";
@@ -13,6 +14,7 @@ export async function GET() {
   const sessionSecret = Boolean(
     process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32
   );
+  const openaiConfigured = await openaiProviderCanInitialize();
 
   const ok = database === "up" && sessionSecret;
 
@@ -28,6 +30,7 @@ export async function GET() {
       service: "contractor-os",
       database,
       sessionSecret,
+      openaiConfigured,
       commit: commit ? String(commit).slice(0, 40) : null,
       timestamp: new Date().toISOString(),
     },

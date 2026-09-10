@@ -360,6 +360,24 @@ describe("ContractorYou AI Receptionist V2", () => {
       selectedSlot: null,
     }).action).toBe("offer_slots");
   });
+
+  it("limits the live switch to production 865 HVAC and never prints the OpenAI key", () => {
+    const migration = readFileSync(
+      resolve("prisma/migrations/20260910020600_865_hvac_contractoryou_ai_live/migration.sql"),
+      "utf8"
+    );
+    expect(migration).toMatch(/businessName" = '865 HVAC' AND "isDemo" = false/);
+    expect(migration).toMatch(/CONTRACTORYOU_AI/);
+    expect(migration).toMatch(/customerConversationOwner" = 'CONTRACTORYOU'/);
+    expect(migration).not.toMatch(/Summit/);
+    expect(migration).not.toMatch(/OPENAI_API_KEY|sk-/);
+    const health = readFileSync(resolve("src/app/api/health/route.ts"), "utf8");
+    expect(health).toMatch(/openaiConfigured/);
+    expect(health).not.toMatch(/getOpenAIApiKey\(\)|OPENAI_API_KEY/);
+    expect(readFileSync(resolve("src/lib/intelligence/config.ts"), "utf8")).not.toMatch(
+      /console\.(log|info|debug).*OPENAI|console\.(log|info|debug).*apiKey/
+    );
+  });
 });
 
 describe("Receptionist V2 inbound shadow safety", () => {
