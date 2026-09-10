@@ -41,7 +41,7 @@ function firstId(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const entity = (record.Customer || record.Invoice || record.Payment || record.Purchase || record.CompanyInfo || record) as Record<string, unknown>;
-  return typeof entity.Id === "string" ? entity.Id : undefined;
+  return qboEntityId(entity.Id) || undefined;
 }
 
 function queryId(json: unknown, key: string): string | undefined {

@@ -558,18 +558,16 @@ export async function maybeAutoSyncPayment(input: {
   if (settings.invoiceSyncTrigger !== "WHEN_PAYMENT_RECEIVED") return;
   const loaded = await loadQuickBooksTransport(input.companyId);
   if (!loaded.ok) return;
-  const invoiceMap = await prisma.quickBooksMapping.findFirst({
-    where: {
-      companyId: input.companyId,
-      entityType: "INVOICE",
-      internalId: (
-        await prisma.payment.findFirst({
-          where: { id: input.paymentId, companyId: input.companyId },
-          select: { invoiceId: true },
-        })
-      )?.invoiceId,
-    },
+  const payment = await prisma.payment.findFirst({
+    where: { id: input.paymentId, companyId: input.companyId },
+    select: { invoiceId: true, invoice: { select: { id: true } } },
   });
-  if (!invoiceMap) return;
+  if (!payment) return;
+  const { resolveQuickBooksInvoiceMapping } = await import("@/lib/quickbooks/mappings");
+  const invoiceMap = await resolveQuickBooksInvoiceMapping(prisma, {
+    companyId: input.companyId,
+    invoiceId: payment.invoice?.id || payment.invoiceId,
+  });
+  if ("error" in invoiceMap) return;
   await syncPaymentToQuickBooks(prisma, loaded.transport, input);
 }

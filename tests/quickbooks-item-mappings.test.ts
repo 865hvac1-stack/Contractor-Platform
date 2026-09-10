@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient, QuickBooksMapping } from "@prisma/client";
 import {
+  ENTITY_INVOICE,
+  ENTITY_PAYMENT,
+  invoiceMappingIdentity,
   listCompanyItemMappings,
+  persistInvoiceMapping,
   persistItemMapping,
+  persistPaymentMapping,
   resolveInvoiceItemMapping,
+  resolveQuickBooksInvoiceMapping,
   saveCompanyItemMappings,
 } from "@/lib/quickbooks/mappings";
-import { qboCreateOrUpdateInvoice, qboListItems, type QboTransport } from "@/lib/quickbooks/client";
+import { qboCreateOrUpdateInvoice, qboCreatePayment, qboListItems, type QboTransport } from "@/lib/quickbooks/client";
 import { canAutoSyncInvoice, syncInvoiceToQuickBooks, syncPaymentToQuickBooks } from "@/lib/quickbooks/sync";
 
 type Row = QuickBooksMapping;
@@ -225,6 +231,21 @@ describe("QuickBooks Product/Service mappings", () => {
     expect(items).toEqual([{ id: "3", name: "Services", type: "Service", active: true }]);
   });
 
+  it("reads a numeric QuickBooks Payment Id after apply", async () => {
+    const transport: QboTransport = async () => ({
+      ok: true,
+      status: 200,
+      json: { Payment: { Id: 88 } },
+    });
+    const id = await qboCreatePayment(transport, {
+      customerId: "1",
+      invoiceId: "145",
+      amount: 10,
+      txnDate: "2026-09-10",
+    });
+    expect(id).toBe("88");
+  });
+
   it("sends the mapped QuickBooks ItemRef, not the ContractorYou service name", async () => {
     const calls: { path: string; body?: unknown }[] = [];
     const transport: QboTransport = async ({ path, body }) => {
@@ -286,6 +307,10 @@ function syncMemory() {
     id: "inv-1",
     companyId: "co-a",
     invoiceNumber: "INV-00003",
+    status: "PAID",
+    balanceCents: 0,
+    amountPaidCents: 1000,
+    totalCents: 1000,
     issueDate: new Date("2026-09-10"),
     dueDate: new Date("2026-09-17"),
     notes: null,
@@ -312,7 +337,7 @@ function syncMemory() {
     paidAt: new Date("2026-09-10"),
     externalRef: "stripe_10",
     importMode: "LIVE",
-    invoice: { customer: invoice.customer },
+    invoice,
   };
   const client = {
     company: {
@@ -343,8 +368,43 @@ function syncMemory() {
         events.push(data);
         return data;
       },
+      async findFirst({
+        where,
+      }: {
+        where: {
+          companyId: string;
+          entityType: string;
+          internalId?: string;
+          status?: string;
+          quickbooksId?: { not: null };
+          action?: { in: string[] };
+        };
+      }) {
+        const matches = (events as Array<Record<string, unknown>>).filter((row) => {
+          if (row.companyId !== where.companyId || row.entityType !== where.entityType) return false;
+          if (where.internalId && row.internalId !== where.internalId) return false;
+          if (where.status && row.status !== where.status) return false;
+          if (where.quickbooksId?.not === null && !row.quickbooksId) return false;
+          if (where.action?.in && !where.action.in.includes(String(row.action))) return false;
+          return true;
+        });
+        return matches[matches.length - 1] ?? null;
+      },
     },
     quickBooksMapping: {
+      async findUnique({
+        where,
+      }: {
+        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+      }) {
+        const key = where.companyId_entityType_internalId;
+        return (
+          mappings.find(
+            (row) =>
+              row.companyId === key.companyId && row.entityType === key.entityType && row.internalId === key.internalId
+          ) ?? null
+        );
+      },
       async findFirst({
         where,
       }: {
@@ -494,7 +554,14 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
     expect(second.ok).toBe(true);
     expect(first.quickbooksId).toBe("QB-INV-1");
     expect(second.quickbooksId).toBe("QB-INV-1");
-    expect(db.mappings.filter((row) => row.entityType === "INVOICE")).toHaveLength(1);
+    expect(db.mappings.filter((row) => row.entityType === ENTITY_INVOICE)).toHaveLength(1);
+    const invoiceIdentity = invoiceMappingIdentity({ companyId: "co-a", invoiceId: db.invoice.id });
+    expect(db.mappings.find((row) => row.entityType === ENTITY_INVOICE)).toMatchObject({
+      ...invoiceIdentity,
+      quickbooksId: "QB-INV-1",
+    });
+    expect(invoiceIdentity.internalId).toBe(db.payment.invoiceId);
+    expect(invoiceIdentity.internalId).toBe(db.invoice.id);
     const creates = calls.filter((call) => call.path === "/invoice" && !(call.body as { Id?: string } | undefined)?.Id);
     expect(creates).toHaveLength(1);
     const itemRef = (creates[0]?.body as { Line: Array<{ SalesItemLineDetail?: { ItemRef?: { value?: string; name?: string } } }> })
@@ -513,6 +580,111 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
     expect(paySecond.ok).toBe(true);
     expect(payFirst.quickbooksId).toBe(paySecond.quickbooksId);
     expect(calls.filter((call) => call.path === "/payment")).toHaveLength(1);
-    expect(db.mappings.filter((row) => row.entityType === "PAYMENT")).toHaveLength(1);
+    const paymentBody = calls.find((call) => call.path === "/payment")?.body as {
+      Line: Array<{ LinkedTxn?: Array<{ TxnId?: string; TxnType?: string }> }>;
+    };
+    expect(paymentBody.Line[0]?.LinkedTxn?.[0]).toEqual({ TxnId: "QB-INV-1", TxnType: "Invoice" });
+    expect(db.mappings.filter((row) => row.entityType === ENTITY_PAYMENT)).toHaveLength(1);
+    expect(db.mappings.find((row) => row.entityType === ENTITY_PAYMENT)?.internalId).toBe(db.payment.id);
+  });
+
+  it("lets a paid ContractorYou invoice still send its $10 payment to the persisted QuickBooks invoice", async () => {
+    const db = syncMemory();
+    expect(db.invoice.status).toBe("PAID");
+    expect(db.invoice.balanceCents).toBe(0);
+    await persistItemMapping(db.client, {
+      companyId: "co-a",
+      entityType: "DEFAULT_ITEM",
+      internalId: "default",
+      quickbooksId: "3",
+      name: "Services",
+    });
+    await persistInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: db.invoice.id,
+      quickbooksId: "145",
+      realmId: "realm-a",
+    });
+    const resolved = await resolveQuickBooksInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: db.payment.invoice.id,
+      realmId: "realm-a",
+    });
+    expect(resolved).toMatchObject({
+      quickbooksId: "145",
+      invoiceId: db.invoice.id,
+      identity: invoiceMappingIdentity({ companyId: "co-a", invoiceId: db.invoice.id }),
+    });
+    const calls: { path: string; body?: unknown }[] = [];
+    const result = await syncPaymentToQuickBooks(db.client, invoiceTransport(calls), {
+      companyId: "co-a",
+      paymentId: db.payment.id,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.quickbooksId).toBe("QB-PAY-1");
+    expect((calls.find((call) => call.path === "/payment")?.body as { Line: Array<{ LinkedTxn?: Array<{ TxnId?: string }> }> }).Line[0]?.LinkedTxn?.[0]?.TxnId).toBe("145");
+  });
+
+  it("uses the same identity for invoice.create and payment.sync and heals a missing mapping from the invoice event", async () => {
+    const db = syncMemory();
+    const persisted = await persistInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: "inv-1",
+      quickbooksId: "145",
+      realmId: "realm-a",
+    });
+    expect(persisted).toMatchObject(invoiceMappingIdentity({ companyId: "co-a", invoiceId: "inv-1" }));
+    const resolved = await resolveQuickBooksInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: db.payment.invoiceId,
+      realmId: "realm-a",
+    });
+    expect("quickbooksId" in resolved && resolved.quickbooksId).toBe("145");
+    expect("identity" in resolved && resolved.identity).toEqual(invoiceMappingIdentity({ companyId: "co-a", invoiceId: "inv-1" }));
+
+    const other = await resolveQuickBooksInvoiceMapping(db.client, { companyId: "co-b", invoiceId: "inv-1" });
+    expect("error" in other).toBe(true);
+
+    const realm = await resolveQuickBooksInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: "inv-1",
+      realmId: "realm-other",
+    });
+    expect("error" in realm && realm.error).toMatch(/different QuickBooks company/);
+
+    db.mappings.splice(0, db.mappings.length);
+    db.events.push({
+      companyId: "co-a",
+      entityType: ENTITY_INVOICE,
+      internalId: "inv-1",
+      quickbooksId: "145",
+      status: "SYNCED",
+      action: "invoice.create",
+    });
+    const healed = await resolveQuickBooksInvoiceMapping(db.client, {
+      companyId: "co-a",
+      invoiceId: "inv-1",
+      realmId: "realm-a",
+    });
+    expect(healed).toMatchObject({ quickbooksId: "145", invoiceId: "inv-1" });
+    expect(db.mappings).toHaveLength(1);
+    expect(db.mappings[0]).toMatchObject(invoiceMappingIdentity({ companyId: "co-a", invoiceId: "inv-1" }));
+  });
+
+  it("does not reuse another tenant payment mapping", async () => {
+    const db = syncMemory();
+    await persistPaymentMapping(db.client, {
+      companyId: "co-b",
+      paymentId: "pay-1",
+      quickbooksId: "QB-PAY-OTHER",
+      invoiceId: "inv-other",
+      qboInvoiceId: "999",
+    });
+    const result = await syncPaymentToQuickBooks(db.client, invoiceTransport([]), {
+      companyId: "co-a",
+      paymentId: "pay-1",
+    });
+    expect(result.ok).toBe(false);
+    expect(db.mappings.filter((row) => row.companyId === "co-a" && row.entityType === ENTITY_PAYMENT)).toHaveLength(0);
   });
 });

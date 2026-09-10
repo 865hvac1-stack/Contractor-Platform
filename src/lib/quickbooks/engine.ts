@@ -8,6 +8,7 @@ import {
   syncPaymentToQuickBooks,
 } from "@/lib/quickbooks/sync";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
+import { ENTITY_INVOICE, ENTITY_PAYMENT } from "@/lib/quickbooks/mappings";
 
 export type QuickBooksSyncRun = {
   preview: QuickBooksPreview;
@@ -53,7 +54,7 @@ export async function runQuickBooksSync(
       continue;
     }
     const existing = await prisma.quickBooksMapping.findFirst({
-      where: { companyId: input.companyId, entityType: "INVOICE", internalId: invoice.id, status: "SYNCED" },
+      where: { companyId: input.companyId, entityType: ENTITY_INVOICE, internalId: invoice.id, status: "SYNCED" },
     });
     if (existing) continue;
     const result = await syncInvoiceToQuickBooks(prisma, loaded.transport, {
@@ -85,7 +86,7 @@ export async function runQuickBooksSync(
       continue;
     }
     const existing = await prisma.quickBooksMapping.findFirst({
-      where: { companyId: input.companyId, entityType: "PAYMENT", internalId: payment.id, status: "SYNCED" },
+      where: { companyId: input.companyId, entityType: ENTITY_PAYMENT, internalId: payment.id, status: "SYNCED" },
     });
     if (existing) continue;
     const result = await syncPaymentToQuickBooks(prisma, loaded.transport, {

@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QuickBooksInvoicePanel } from "@/components/quickbooks-invoice-panel";
+import { ENTITY_INVOICE, ENTITY_PAYMENT, invoiceMappingIdentity } from "@/lib/quickbooks/mappings";
 
 export default async function InvoiceDetailPage({
   params,
@@ -61,17 +62,17 @@ export default async function InvoiceDetailPage({
     : [];
 
   const [invoiceMap, lastEvent, paymentMaps, stripeAccount] = await Promise.all([
-    prisma.quickBooksMapping.findFirst({
-      where: { companyId: ctx.company.id, entityType: "INVOICE", internalId: invoice.id },
+    prisma.quickBooksMapping.findUnique({
+      where: { companyId_entityType_internalId: invoiceMappingIdentity({ companyId: ctx.company.id, invoiceId: invoice.id }) },
     }),
     prisma.quickBooksSyncEvent.findFirst({
-      where: { companyId: ctx.company.id, entityType: "INVOICE", internalId: invoice.id },
+      where: { companyId: ctx.company.id, entityType: ENTITY_INVOICE, internalId: invoice.id },
       orderBy: { createdAt: "desc" },
     }),
     prisma.quickBooksMapping.findMany({
       where: {
         companyId: ctx.company.id,
-        entityType: "PAYMENT",
+        entityType: ENTITY_PAYMENT,
         internalId: { in: invoice.payments.map((payment) => payment.id) },
       },
     }),

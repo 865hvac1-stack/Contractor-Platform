@@ -5,6 +5,25 @@ export const DEFAULT_ITEM_INTERNAL_ID = "default";
 export const ENTITY_DEFAULT_ITEM = "DEFAULT_ITEM";
 export const ENTITY_SERVICE_ITEM = "SERVICE_ITEM";
 export const ENTITY_EXPENSE_ACCOUNT = "EXPENSE_ACCOUNT";
+export const ENTITY_INVOICE = "INVOICE";
+export const ENTITY_PAYMENT = "PAYMENT";
+export const INVOICE_MISSING_IN_QBO = "Invoice is not in QuickBooks yet.";
+
+export function invoiceMappingIdentity(input: { companyId: string; invoiceId: string }) {
+  return {
+    companyId: input.companyId,
+    entityType: ENTITY_INVOICE,
+    internalId: input.invoiceId,
+  };
+}
+
+export function paymentMappingIdentity(input: { companyId: string; paymentId: string }) {
+  return {
+    companyId: input.companyId,
+    entityType: ENTITY_PAYMENT,
+    internalId: input.paymentId,
+  };
+}
 
 export type QboItemOption = {
   id: string;
@@ -44,6 +63,11 @@ function metadataRealm(metadata: unknown) {
   if (!metadata || typeof metadata !== "object") return null;
   const realmId = (metadata as { realmId?: unknown }).realmId;
   return typeof realmId === "string" ? realmId : null;
+}
+
+function isPersistedQboId(value?: string | null) {
+  const id = (value || "").trim();
+  return Boolean(id) && id !== "REVIEW";
 }
 
 export function mappingFromRow(row: MappingRow): ItemMappingRecord {
@@ -256,4 +280,174 @@ export async function resolveInvoiceItemMapping(
     return { error: "The saved QuickBooks Product/Service is missing or inactive.", review: true };
   }
   return { itemId: chosen.quickbooksId, name: check.item?.name ?? metadataName(chosen.metadata) };
+}
+
+export async function persistInvoiceMapping(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    invoiceId: string;
+    quickbooksId: string;
+    realmId?: string | null;
+    syncToken?: string | null;
+    qboBalance?: string | null;
+    qboTotal?: number | null;
+  }
+) {
+  const identity = invoiceMappingIdentity({ companyId: input.companyId, invoiceId: input.invoiceId });
+  const metadata = {
+    realmId: input.realmId ?? null,
+    qboBalance: input.qboBalance ?? null,
+    qboTotal: input.qboTotal ?? null,
+  };
+  return prisma.quickBooksMapping.upsert({
+    where: { companyId_entityType_internalId: identity },
+    create: {
+      ...identity,
+      quickbooksId: input.quickbooksId,
+      status: "SYNCED",
+      lastSyncedAt: new Date(),
+      lastSyncError: null,
+      syncToken: input.syncToken ?? null,
+      metadata,
+    },
+    update: {
+      quickbooksId: input.quickbooksId,
+      status: "SYNCED",
+      lastSyncedAt: new Date(),
+      lastSyncError: null,
+      syncToken: input.syncToken ?? undefined,
+      metadata,
+    },
+  });
+}
+
+export async function persistPaymentMapping(
+  prisma: PrismaClient,
+  input: {
+    companyId: string;
+    paymentId: string;
+    quickbooksId: string;
+    invoiceId: string;
+    qboInvoiceId: string;
+    realmId?: string | null;
+  }
+) {
+  const identity = paymentMappingIdentity({ companyId: input.companyId, paymentId: input.paymentId });
+  const metadata = {
+    realmId: input.realmId ?? null,
+    invoiceId: input.invoiceId,
+    qboInvoiceId: input.qboInvoiceId,
+  };
+  return prisma.quickBooksMapping.upsert({
+    where: { companyId_entityType_internalId: identity },
+    create: {
+      ...identity,
+      quickbooksId: input.quickbooksId,
+      status: "SYNCED",
+      lastSyncedAt: new Date(),
+      lastSyncError: null,
+      metadata,
+    },
+    update: {
+      quickbooksId: input.quickbooksId,
+      status: "SYNCED",
+      lastSyncedAt: new Date(),
+      lastSyncError: null,
+      metadata,
+    },
+  });
+}
+
+async function loadInvoiceMappingRow(
+  prisma: PrismaClient,
+  input: { companyId: string; invoiceId: string }
+) {
+  const identity = invoiceMappingIdentity(input);
+  const unique = await prisma.quickBooksMapping.findUnique({
+    where: { companyId_entityType_internalId: identity },
+  });
+  if (unique) return unique;
+  return prisma.quickBooksMapping.findFirst({
+    where: identity,
+  });
+}
+
+async function healInvoiceMappingFromEvent(
+  prisma: PrismaClient,
+  input: { companyId: string; invoiceId: string; realmId?: string | null }
+) {
+  const event = await prisma.quickBooksSyncEvent.findFirst({
+    where: {
+      companyId: input.companyId,
+      entityType: ENTITY_INVOICE,
+      internalId: input.invoiceId,
+      status: "SYNCED",
+      quickbooksId: { not: null },
+      action: { in: ["invoice.create", "invoice.update"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!isPersistedQboId(event?.quickbooksId)) return null;
+  return persistInvoiceMapping(prisma, {
+    companyId: input.companyId,
+    invoiceId: input.invoiceId,
+    quickbooksId: event!.quickbooksId!,
+    realmId: input.realmId,
+  });
+}
+
+export async function resolveQuickBooksInvoiceMapping(
+  prisma: PrismaClient,
+  input: { companyId: string; invoiceId: string; realmId?: string | null }
+): Promise<{ quickbooksId: string; invoiceId: string; identity: ReturnType<typeof invoiceMappingIdentity> } | { error: string; review: true }> {
+  const invoiceId = (input.invoiceId || "").trim();
+  if (!invoiceId) {
+    return { error: INVOICE_MISSING_IN_QBO, review: true };
+  }
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, companyId: input.companyId },
+    select: { id: true },
+  });
+  if (!invoice) {
+    return { error: INVOICE_MISSING_IN_QBO, review: true };
+  }
+  const canonical = invoiceMappingIdentity({ companyId: input.companyId, invoiceId: invoice.id });
+  let row = await loadInvoiceMappingRow(prisma, { companyId: input.companyId, invoiceId: invoice.id });
+  if (!isPersistedQboId(row?.quickbooksId) || row?.status === "FAILED") {
+    row = await healInvoiceMappingFromEvent(prisma, {
+      companyId: input.companyId,
+      invoiceId: invoice.id,
+      realmId: input.realmId,
+    });
+  }
+  if (!isPersistedQboId(row?.quickbooksId)) {
+    return { error: INVOICE_MISSING_IN_QBO, review: true };
+  }
+  if (row!.status === "NEEDS_REVIEW" && row!.lastSyncError) {
+    return { error: row!.lastSyncError, review: true };
+  }
+  const savedRealm = metadataRealm(row!.metadata);
+  if (input.realmId && savedRealm && savedRealm !== input.realmId) {
+    await markItemMappingNeedsReview(prisma, {
+      ...canonical,
+      error: "This invoice mapping belongs to a different QuickBooks company.",
+    });
+    return { error: "This invoice mapping belongs to a different QuickBooks company.", review: true };
+  }
+  return { quickbooksId: row!.quickbooksId, invoiceId: invoice.id, identity: canonical };
+}
+
+export async function resolveQuickBooksPaymentMapping(
+  prisma: PrismaClient,
+  input: { companyId: string; paymentId: string }
+) {
+  const identity = paymentMappingIdentity(input);
+  const row = await prisma.quickBooksMapping.findUnique({
+    where: { companyId_entityType_internalId: identity },
+  });
+  if (row?.status === "SYNCED" && isPersistedQboId(row.quickbooksId)) {
+    return { quickbooksId: row.quickbooksId, identity };
+  }
+  return null;
 }

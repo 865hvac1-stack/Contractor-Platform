@@ -14,7 +14,16 @@ import {
 } from "@/lib/quickbooks/client";
 import { decideCustomerMatch } from "@/lib/quickbooks/match";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
-import { resolveInvoiceItemMapping } from "@/lib/quickbooks/mappings";
+import {
+  ENTITY_INVOICE,
+  ENTITY_PAYMENT,
+  INVOICE_MISSING_IN_QBO,
+  persistInvoiceMapping,
+  persistPaymentMapping,
+  resolveInvoiceItemMapping,
+  resolveQuickBooksInvoiceMapping,
+  resolveQuickBooksPaymentMapping,
+} from "@/lib/quickbooks/mappings";
 
 export function canAutoSyncInvoice(input: {
   trigger: QuickBooksInvoiceTrigger;
@@ -248,7 +257,7 @@ export async function syncInvoiceToQuickBooks(
     if ("error" in item) {
       await recordEvent(prisma, {
         companyId: input.companyId,
-        entityType: "INVOICE",
+        entityType: ENTITY_INVOICE,
         internalId: invoice.id,
         status: "NEEDS_REVIEW",
         action: "invoice.sync",
@@ -264,7 +273,7 @@ export async function syncInvoiceToQuickBooks(
     if ("error" in customer) {
       await recordEvent(prisma, {
         companyId: input.companyId,
-        entityType: "INVOICE",
+        entityType: ENTITY_INVOICE,
         internalId: invoice.id,
         status: "NEEDS_REVIEW",
         action: "invoice.sync",
@@ -272,11 +281,14 @@ export async function syncInvoiceToQuickBooks(
       });
       return { ok: false, error: customer.error };
     }
-    const existing = await prisma.quickBooksMapping.findFirst({
-      where: { companyId: input.companyId, entityType: "INVOICE", internalId: invoice.id },
+    const existing = await resolveQuickBooksInvoiceMapping(prisma, {
+      companyId: input.companyId,
+      invoiceId: invoice.id,
+      realmId: connection?.externalAccountId,
     });
+    const existingId = "quickbooksId" in existing ? existing.quickbooksId : null;
     const qbId = await qboCreateOrUpdateInvoice(transport, {
-      existingId: existing?.quickbooksId,
+      existingId,
       customerId: customer.quickbooksId,
       docNumber: invoice.invoiceNumber,
       txnDate: invoice.issueDate.toISOString().slice(0, 10),
@@ -292,35 +304,22 @@ export async function syncInvoiceToQuickBooks(
       })),
     });
     const remote = await qboGetInvoice(transport, qbId);
-    await upsertMapping(prisma, {
+    await persistInvoiceMapping(prisma, {
       companyId: input.companyId,
-      entityType: "INVOICE",
-      internalId: invoice.id,
+      invoiceId: invoice.id,
       quickbooksId: qbId,
+      realmId: connection?.externalAccountId,
       syncToken: remote?.syncToken,
-    });
-    await prisma.quickBooksMapping.update({
-      where: {
-        companyId_entityType_internalId: {
-          companyId: input.companyId,
-          entityType: "INVOICE",
-          internalId: invoice.id,
-        },
-      },
-      data: {
-        metadata: {
-          qboBalance: remote?.balance != null ? `$${Number(remote.balance).toFixed(2)}` : null,
-          qboTotal: remote?.total ?? null,
-        },
-      },
+      qboBalance: remote?.balance != null ? `$${Number(remote.balance).toFixed(2)}` : null,
+      qboTotal: remote?.total ?? null,
     });
     await recordEvent(prisma, {
       companyId: input.companyId,
-      entityType: "INVOICE",
+      entityType: ENTITY_INVOICE,
       internalId: invoice.id,
       quickbooksId: qbId,
       status: "SYNCED",
-      action: existing ? "invoice.update" : "invoice.create",
+      action: existingId ? "invoice.update" : "invoice.create",
     });
     await prisma.integrationConnection.updateMany({
       where: { companyId: input.companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
@@ -331,7 +330,7 @@ export async function syncInvoiceToQuickBooks(
     const message = error instanceof Error ? error.message : "QuickBooks sync failed.";
     await recordEvent(prisma, {
       companyId: input.companyId,
-      entityType: "INVOICE",
+      entityType: ENTITY_INVOICE,
       internalId: invoice.id,
       status: "FAILED",
       action: "invoice.sync",
@@ -354,28 +353,44 @@ export async function syncPaymentToQuickBooks(
     include: { invoice: { include: { customer: true } } },
   });
   if (!payment) return { ok: false, error: "Payment not found." };
+  if (!payment.invoice) return { ok: false, error: "Payment is not linked to a ContractorYou invoice." };
   if (isHistoricalImport(payment.importMode)) {
     return { ok: false, error: "Historical imported payments do not sync automatically." };
   }
-  const invoiceMap = await prisma.quickBooksMapping.findFirst({
-    where: { companyId: input.companyId, entityType: "INVOICE", internalId: payment.invoiceId },
+  const alreadySynced = await resolveQuickBooksPaymentMapping(prisma, {
+    companyId: input.companyId,
+    paymentId: payment.id,
   });
-  if (!invoiceMap) {
+  if (alreadySynced) {
+    return { ok: true, quickbooksId: alreadySynced.quickbooksId };
+  }
+  const connection = await prisma.integrationConnection.findFirst({
+    where: { companyId: input.companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
+    select: { externalAccountId: true },
+  });
+  const invoiceId = payment.invoice?.id || payment.invoiceId;
+  const invoiceMap = await resolveQuickBooksInvoiceMapping(prisma, {
+    companyId: input.companyId,
+    invoiceId,
+    realmId: connection?.externalAccountId,
+  });
+  if ("error" in invoiceMap) {
     await recordEvent(prisma, {
       companyId: input.companyId,
-      entityType: "PAYMENT",
+      entityType: ENTITY_PAYMENT,
       internalId: payment.id,
       status: "NEEDS_REVIEW",
       action: "payment.sync",
-      errorMessage: "Invoice is not in QuickBooks yet.",
+      errorMessage: invoiceMap.error,
     });
-    return { ok: false, review: true, error: "Sync the invoice first, then we can record this payment in QuickBooks." };
-  }
-  const existing = await prisma.quickBooksMapping.findFirst({
-    where: { companyId: input.companyId, entityType: "PAYMENT", internalId: payment.id },
-  });
-  if (existing) {
-    return { ok: true, quickbooksId: existing.quickbooksId };
+    return {
+      ok: false,
+      review: true,
+      error:
+        invoiceMap.error === INVOICE_MISSING_IN_QBO
+          ? "Sync the invoice first, then we can record this payment in QuickBooks."
+          : invoiceMap.error,
+    };
   }
   try {
     const customer = await resolveQuickBooksCustomer(prisma, transport, {
@@ -393,15 +408,17 @@ export async function syncPaymentToQuickBooks(
       txnDate: payment.paidAt.toISOString().slice(0, 10),
       reference: payment.externalRef,
     });
-    await upsertMapping(prisma, {
+    await persistPaymentMapping(prisma, {
       companyId: input.companyId,
-      entityType: "PAYMENT",
-      internalId: payment.id,
+      paymentId: payment.id,
       quickbooksId: qbId,
+      invoiceId: invoiceMap.invoiceId,
+      qboInvoiceId: invoiceMap.quickbooksId,
+      realmId: connection?.externalAccountId,
     });
     await recordEvent(prisma, {
       companyId: input.companyId,
-      entityType: "PAYMENT",
+      entityType: ENTITY_PAYMENT,
       internalId: payment.id,
       quickbooksId: qbId,
       status: "SYNCED",
@@ -412,7 +429,7 @@ export async function syncPaymentToQuickBooks(
     const message = error instanceof Error ? error.message : "Payment sync failed.";
     await recordEvent(prisma, {
       companyId: input.companyId,
-      entityType: "PAYMENT",
+      entityType: ENTITY_PAYMENT,
       internalId: payment.id,
       status: "FAILED",
       action: "payment.sync",
