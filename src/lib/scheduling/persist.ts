@@ -99,3 +99,43 @@ export function dayCapacitySummary(
   if (open.length === 0) return { available: false as const, capacity: 0 };
   return { available: true as const, capacity: open.reduce((sum, slot) => sum + slot.capacity, 0) };
 }
+
+export function technicianIsScheduled(
+  slots: Array<{ userId: string; available: boolean }>,
+  userId: string
+) {
+  return slots.some((slot) => slot.userId === userId && slot.available === true);
+}
+
+export function applyWorkingHoursToWindows<T extends { id: string; startMinutes: number; endMinutes: number }>(
+  windows: T[],
+  input: { working: boolean; startMinutes: number; endMinutes: number; capacity?: number }
+) {
+  return windows.map((window) => ({
+    windowId: window.id,
+    available:
+      input.working &&
+      window.startMinutes < input.endMinutes &&
+      input.startMinutes < window.endMinutes,
+    capacity: input.capacity ?? 1,
+  }));
+}
+
+export function summarizeWindowCapacity(
+  rows: Array<{
+    windowId: string;
+    remainingCapacity: number;
+    configuredCapacity: number;
+    usedCapacity: number;
+    technicianId: string;
+  }>,
+  windowId: string
+) {
+  const matched = rows.filter((row) => row.windowId === windowId);
+  return {
+    remaining: matched.reduce((sum, row) => sum + row.remainingCapacity, 0),
+    configured: matched.reduce((sum, row) => sum + row.configuredCapacity, 0),
+    used: matched.reduce((sum, row) => sum + row.usedCapacity, 0),
+    technicians: new Set(matched.map((row) => row.technicianId)).size,
+  };
+}

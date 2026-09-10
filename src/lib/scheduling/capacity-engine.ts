@@ -220,6 +220,75 @@ function policyGate(
   return reasons;
 }
 
+export type DayWindowSummary = {
+  windowId: string;
+  configuredCapacity: number;
+  usedCapacity: number;
+  remainingCapacity: number;
+  technicianCount: number;
+  technicians: Array<{
+    technicianId: string;
+    technicianName: string;
+    configuredCapacity: number;
+    usedCapacity: number;
+    remainingCapacity: number;
+    eligible: boolean;
+  }>;
+};
+
+/** Same slot math as evaluateCapacity, including fully booked technicians. */
+export function summarizeDayWindows(snapshot: EngineSnapshot, query: CapacityQuery): DayWindowSummary[] {
+  const result = evaluateCapacity(snapshot, query);
+  const date = query.date;
+  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+  const windows = snapshot.windows.filter(
+    (window) => window.active && (!query.appointmentWindowId || window.id === query.appointmentWindowId)
+  );
+
+  return windows.map((window) => {
+    const technicians = snapshot.technicians.flatMap((tech) => {
+      const override = snapshot.overrides.find(
+        (row) => row.userId === tech.id && row.windowId === window.id && dateKey(row.date) === date
+      );
+      const weekly = snapshot.weekly.find(
+        (row) => row.userId === tech.id && row.windowId === window.id && row.weekday === weekday
+      );
+      const available = override ? override.available === true : weekly?.available === true;
+      if ((!weekly && !override) || !available) return [];
+      const configuredCapacity = override?.capacity ?? weekly?.capacity ?? 0;
+      const usedCapacity = snapshot.bookings.filter(
+        (row) => row.technicianId === tech.id && row.windowId === window.id && dateKey(row.date) === date
+      ).length;
+      const option = result.options.find((row) => row.technicianId === tech.id && row.windowId === window.id);
+      const rejected = result.rejected.find((row) => row.technicianId === tech.id && row.windowId === window.id);
+      const remainingCapacity = option?.remainingCapacity ?? Math.max(0, configuredCapacity - usedCapacity);
+      const policyBlocked = Boolean(
+        rejected?.reasons.some((reason) =>
+          ["outside_horizon", "same_day_disabled", "weekend_disabled", "min_notice", "window_inactive"].includes(reason)
+        )
+      );
+      return [
+        {
+          technicianId: tech.id,
+          technicianName: tech.name,
+          configuredCapacity,
+          usedCapacity,
+          remainingCapacity: policyBlocked ? 0 : remainingCapacity,
+          eligible: Boolean(option),
+        },
+      ];
+    });
+    return {
+      windowId: window.id,
+      configuredCapacity: technicians.reduce((sum, row) => sum + row.configuredCapacity, 0),
+      usedCapacity: technicians.reduce((sum, row) => sum + row.usedCapacity, 0),
+      remainingCapacity: technicians.reduce((sum, row) => sum + row.remainingCapacity, 0),
+      technicianCount: technicians.length,
+      technicians,
+    };
+  });
+}
+
 export function firstEligibleOption(result: CapacityResult) {
   return result.options[0] ?? null;
 }

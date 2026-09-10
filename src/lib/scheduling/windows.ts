@@ -17,6 +17,25 @@ export type WindowOverlapIssue = {
   message: string;
 };
 
+export function windowNameFromTimes(startMinutes: number, endMinutes: number) {
+  const hours = (minutes: number) => {
+    const hours24 = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const period = hours24 >= 12 ? "PM" : "AM";
+    const hours12 = hours24 % 12 || 12;
+    return mins === 0 ? `${hours12} ${period}` : `${hours12}:${String(mins).padStart(2, "0")} ${period}`;
+  };
+  return `${hours(startMinutes)}–${hours(endMinutes)}`;
+}
+
+export function windowOverlapsHours(
+  window: { startMinutes: number; endMinutes: number },
+  startMinutes: number,
+  endMinutes: number
+) {
+  return window.startMinutes < endMinutes && startMinutes < window.endMinutes;
+}
+
 export function inferDaypart(startMinutes: number): AppointmentDaypart {
   if (startMinutes >= 17 * 60) return "EVENING";
   if (startMinutes >= 12 * 60) return "AFTERNOON";

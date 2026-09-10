@@ -9,6 +9,7 @@ import {
   serviceRuleStatus,
   technicianWeekIdentity,
   upsertAvailabilityInMemory,
+  applyWorkingHoursToWindows,
 } from "@/lib/scheduling/persist";
 import { conversationCanAutoBook } from "@/lib/scheduling/auto-book";
 
@@ -123,6 +124,26 @@ describe("technician availability persistence", () => {
     ];
     expect(dayCapacitySummary(slots, "tj", 3)).toEqual({ available: true, capacity: 2 });
     expect(dayCapacitySummary(slots, "tj", 4)).toEqual({ available: false, capacity: 0 });
+  });
+
+  it("maps working hours onto overlapping appointment windows", () => {
+    const windows = [
+      { id: "w9", startMinutes: 9 * 60, endMinutes: 11 * 60 },
+      { id: "w15", startMinutes: 15 * 60, endMinutes: 17 * 60 },
+    ];
+    const working = applyWorkingHoursToWindows(windows, {
+      working: true,
+      startMinutes: 8 * 60,
+      endMinutes: 13 * 60,
+      capacity: 1,
+    });
+    expect(working).toEqual([
+      { windowId: "w9", available: true, capacity: 1 },
+      { windowId: "w15", available: false, capacity: 1 },
+    ]);
+    expect(applyWorkingHoursToWindows(windows, { working: false, startMinutes: 8 * 60, endMinutes: 17 * 60 })[0].available).toBe(
+      false
+    );
   });
 });
 

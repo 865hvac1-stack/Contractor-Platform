@@ -32,6 +32,8 @@ import {
   validateHighLevelLocation,
 } from "@/lib/agent-tools/context";
 import { mapContactToCustomer } from "@/lib/highlevel/contacts";
+import { conversationCanAutoBook } from "@/lib/scheduling/auto-book";
+import { loadSchedulingPolicy } from "@/lib/scheduling/capacity";
 import { bookAppointment, findNextAvailableOptions, getAvailability } from "@/lib/scheduling";
 import {
   createCustomerForConversation,
@@ -49,6 +51,7 @@ import {
   askNameBeforeFinishingSchedule,
   askWhichPropertyMessage,
   contractorYouBookingConfirmation,
+  officeReviewMessage,
 } from "@/lib/scheduling/templates";
 import { companyTodayKey, formatLocalDateShort, formatWindowChip, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { propertyChoiceLabel } from "@/lib/scheduling/conversation-identity";
@@ -228,6 +231,38 @@ export async function bookAppointmentTool(input: {
           clarification: { field: "service_type", options: service.options },
         },
         { instruction: DO_NOT_CLAIM_BOOKED }
+      ),
+    };
+  }
+
+  const policy = await loadSchedulingPolicy(prisma, input.companyId);
+  const serviceRule = await prisma.serviceTypeSchedulingRule.findFirst({
+    where: { companyId: input.companyId, serviceTypeId: service.serviceType.id },
+  });
+  if (!conversationCanAutoBook(policy, serviceRule)) {
+    const message = officeReviewMessage();
+    return {
+      status: 200,
+      serviceTypeId: service.serviceType.id,
+      body: toolOk(
+        "book_appointment",
+        {
+          ...blockedBookingPayload({
+            readiness: evaluateBookingReadiness({
+              selectedSlot: slot,
+              intake,
+              hasServiceContext: true,
+              requiresOffice: true,
+            }),
+            customer_message: message,
+            error_code: "AUTO_BOOK_DISABLED",
+            slot_selected: true,
+          }),
+          requires_office: true,
+          booking_confirmed: false,
+          agent_instruction: HAND_OFF_TO_OFFICE,
+        },
+        { instruction: HAND_OFF_TO_OFFICE }
       ),
     };
   }

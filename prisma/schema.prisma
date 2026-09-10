@@ -3243,6 +3243,7 @@ model AvailabilityOverride {
   date      DateTime @db.Date
   available Boolean
   capacity  Int?
+  kind      String?
   reason    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

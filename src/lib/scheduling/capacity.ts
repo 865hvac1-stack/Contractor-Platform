@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { evaluateCapacity, type EngineSnapshot } from "@/lib/scheduling/capacity-engine";
+import { loadSchedulingRoster } from "@/lib/scheduling/roster";
 import { DEFAULT_POLICY, type CapacityQuery, type SchedulingPolicyView } from "@/lib/scheduling/types";
 import { addLocalDays, companyTodayKey, zonedLocalDateTime } from "@/lib/scheduling/time";
 import { matchesDaypart } from "@/lib/scheduling/daypart";
@@ -55,16 +56,13 @@ export async function loadCapacitySnapshot(
   const rangeStart = zonedLocalDateTime(company.timezone, start, 0);
   const rangeEnd = zonedLocalDateTime(company.timezone, addLocalDays(end, 1), 0);
 
-  const [policy, windows, techs, weekly, overrides, eligibility, bookings, assignedJobs] = await Promise.all([
+  const [policy, windows, roster, weekly, overrides, eligibility, bookings, assignedJobs] = await Promise.all([
     loadSchedulingPolicy(db, companyId),
     db.appointmentWindow.findMany({
       where: { companyId },
       orderBy: [{ sortOrder: "asc" }, { startMinutes: "asc" }],
     }),
-    db.membership.findMany({
-      where: { companyId, status: "ACTIVE", role: { in: ["TECHNICIAN", "INSTALLER"] } },
-      include: { user: { select: { id: true, firstName: true, lastName: true } } },
-    }),
+    loadSchedulingRoster(db, companyId),
     db.technicianWindowAvailability.findMany({ where: { companyId } }),
     db.availabilityOverride.findMany({
       where: { companyId, date: { gte: new Date(`${start}T00:00:00.000Z`), lte: new Date(`${end}T00:00:00.000Z`) } },
@@ -130,9 +128,9 @@ export async function loadCapacitySnapshot(
       daypart: window.daypart,
       active: window.active,
     })),
-    technicians: techs.map((row) => ({
-      id: row.user.id,
-      name: `${row.user.firstName} ${row.user.lastName}`.trim(),
+    technicians: roster.technicians.map((row) => ({
+      id: row.userId,
+      name: row.name,
       active: true,
     })),
     weekly: weekly.map((row) => ({
