@@ -42,6 +42,8 @@ describe("scheduling settings UX v2 wiring", () => {
     expect(view).toMatch(/Advanced scheduling settings/);
     expect(view).toMatch(/saveAutoBookingEnabledAction/);
     expect(view).toMatch(/saveServiceTypeRulesBatchAction/);
+    expect(view).toMatch(/name="allowTechnicianPreference"/);
+    expect(view).toMatch(/!showAdvanced/);
     expect(view).toMatch(/\+ Add Technician/);
     expect(view).toMatch(/\+ Add Exception/);
     expect(loader).toMatch(/evaluateCapacity/);

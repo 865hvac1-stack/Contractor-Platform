@@ -1223,6 +1223,20 @@ function PolicyForm({ data, showAdvanced }: { data: SchedulingSettingsData; show
         <Label>Maximum appointments / day</Label>
         <Input name="maxJobsPerDay" type="number" min={1} defaultValue={data.policy.maxJobsPerDay ?? ""} placeholder="Optional" />
       </div>
+      {!showAdvanced ? (
+        <>
+          <input type="hidden" name="timezone" value={data.policy.timezone} />
+          <input type="hidden" name="allowTechnicianPreference" value={data.policy.allowTechnicianPreference ? "yes" : "no"} />
+          <input type="hidden" name="maxJobsPerWindow" value={data.policy.maxJobsPerWindow ?? ""} />
+          <input type="hidden" name="allowEmergencyReserveUse" value={data.policy.allowEmergencyReserveUse ? "yes" : "no"} />
+          <input type="hidden" name="showTechnicianName" value={data.policy.showTechnicianName ? "yes" : "no"} />
+          <input type="hidden" name="allowPaidOneTimeMaintenance" value={data.policy.allowPaidOneTimeMaintenance ? "yes" : "no"} />
+          <input type="hidden" name="defaultServiceTypeId" value={data.policy.defaultServiceTypeId ?? ""} />
+          <input type="hidden" name="maintenanceServiceTypeId" value={data.policy.maintenanceServiceTypeId ?? ""} />
+          <input type="hidden" name="confirmationTemplate" value={data.policy.confirmationTemplate ?? ""} />
+          <input type="hidden" name="proactiveOutreachEnabled" value={data.policy.proactiveOutreachEnabled ? "yes" : "no"} />
+        </>
+      ) : null}
       {showAdvanced ? (
         <>
           <div className="space-y-1.5">
