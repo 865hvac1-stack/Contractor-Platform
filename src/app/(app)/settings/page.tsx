@@ -139,7 +139,8 @@ export default async function SettingsPage() {
           </p>
           <h2 className="mt-2 font-medium">QuickBooks</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Connect QuickBooks to sync invoices. ContractorYou still runs the job; QuickBooks keeps the books.
+            Connect this company&apos;s QuickBooks Online. ContractorYou stays the operating system. QuickBooks stays
+            the accounting ledger. Connection starts in safe mode and never floods historical records.
           </p>
         </Link>
       ) : null}

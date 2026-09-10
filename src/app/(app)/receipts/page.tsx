@@ -46,7 +46,8 @@ export default async function ReceiptsPage({
         <div>
           <h1 className="font-display text-3xl tracking-tight">Receipts</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Snap a photo, assign it, and confirm. Confirmed receipts become job costs or company expenses.
+            Snap a photo, assign it, and confirm. Suggestions are a starting point only. Confirmed receipts become
+            ContractorYou expenses — they never post to QuickBooks until a person approves accounting sync.
           </p>
         </div>
         <Link href="/receipts/new" className={cn(buttonVariants(), "min-h-11 px-5")}>

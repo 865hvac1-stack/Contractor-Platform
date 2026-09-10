@@ -53,6 +53,8 @@ export type FinancialSnapshot = {
   arCents: number;
   openEstimateCents: number;
   overdueArCents: number;
+  expenseCents: number;
+  receiptsToReview: number;
   averageTicketCents: number | null;
   readyToInvoiceCount: number;
   grossProfitCents: number | null;
@@ -70,6 +72,8 @@ export type FinancialSnapshot = {
     overdueAr: string;
     averageTicket: string;
     readyToInvoice: string;
+    expenses: string;
+    receipts: string;
     money: string;
     reports: string;
   };
@@ -89,7 +93,7 @@ export async function loadFinancialSnapshot(
   const period = financePeriod(parseFinanceRange(range), now);
   const { start, end } = period;
 
-  const [paidInvoices, payments, outstanding, overdue, openEstimates, readyJobs] = await Promise.all([
+  const [paidInvoices, payments, outstanding, overdue, openEstimates, readyJobs, expenses, receiptsToReview] = await Promise.all([
     prisma.invoice.findMany({
       where: revenueInvoiceWhere(companyId, start, end),
       select: {
@@ -118,6 +122,17 @@ export async function loadFinancialSnapshot(
       _sum: { totalCents: true },
     }),
     prisma.job.count({ where: readyToInvoiceWhere(companyId) }),
+    prisma.expense.aggregate({
+      where: {
+        companyId,
+        date: { gte: start, lte: end },
+        status: { in: ["APPROVED", "POSTED"] },
+      },
+      _sum: { amountCents: true },
+    }),
+    prisma.receipt.count({
+      where: { companyId, processingStatus: { in: ["UPLOADED", "REVIEW_REQUIRED", "PROCESSING"] } },
+    }),
   ]);
 
   const revenueCents = paidInvoices.reduce((sum, invoice) => sum + invoice.totalCents, 0);
@@ -145,6 +160,8 @@ export async function loadFinancialSnapshot(
     arCents,
     openEstimateCents,
     overdueArCents,
+    expenseCents: expenses._sum.amountCents ?? 0,
+    receiptsToReview,
     averageTicketCents,
     readyToInvoiceCount: readyJobs,
     grossProfitCents: gross.cents,
@@ -162,6 +179,8 @@ export async function loadFinancialSnapshot(
       overdueAr: financeHref("/invoices", { status: "overdue", view: "overdue" }),
       averageTicket: financeHref("/invoices", { period, status: "PAID", view: "ticket" }),
       readyToInvoice: "/jobs?status=COMPLETED&needsInvoice=1&source=home",
+      expenses: "/expenses",
+      receipts: "/receipts",
       money: financeHref("/money", { period }),
       reports: financeHref("/reports", { period }),
     },

@@ -1409,6 +1409,11 @@ model QuickBooksSettings {
   appSecretAuthTag    Bytes?
   appSecretKeyVersion Int?
   appEnvironment      String?
+  syncActivated       Boolean                  @default(false)
+  syncStartDate       DateTime?                @db.Date
+  qboCompanyName      String?
+  qboCompanyVerifiedAt DateTime?
+  wizardCompletedAt   DateTime?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 
@@ -1423,6 +1428,9 @@ model QuickBooksMapping {
   quickbooksId  String
   lastSyncedAt  DateTime?
   status        QuickBooksSyncStatus @default(SYNCED)
+  lastSyncError String?
+  syncToken     String?
+  metadata      Json?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 

@@ -153,3 +153,47 @@ export async function createExpenseAction(
     throw e;
   }
 }
+
+export async function approveExpenseAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const expenseId = String(formData.get("expenseId") || "");
+    const expense = await prisma.expense.findFirst({
+      where: { id: expenseId, companyId: ctx.company.id },
+    });
+    if (!expense) return { ok: false, error: "Expense not found." };
+    await prisma.expense.update({
+      where: { id: expense.id },
+      data: { status: "APPROVED" },
+    });
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "expense.approved",
+      entityType: "Expense",
+      entityId: expense.id,
+    });
+    const { getQuickBooksSettings } = await import("@/lib/quickbooks/connection");
+    const { loadQuickBooksTransport } = await import("@/lib/quickbooks/connection");
+    const { syncExpenseToQuickBooks } = await import("@/lib/quickbooks/sync");
+    const settings = await getQuickBooksSettings(ctx.company.id);
+    if (settings.syncActivated && expense.importMode !== "HISTORICAL") {
+      const loaded = await loadQuickBooksTransport(ctx.company.id);
+      if (loaded.ok) {
+        await syncExpenseToQuickBooks(prisma, loaded.transport, {
+          companyId: ctx.company.id,
+          expenseId: expense.id,
+        });
+      }
+    }
+    revalidatePath(`/expenses/${expense.id}`);
+    revalidatePath("/expenses");
+    return { ok: true, message: "Expense approved. It can sync to QuickBooks when mapping is ready." };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not approve that expense." };
+  }
+}

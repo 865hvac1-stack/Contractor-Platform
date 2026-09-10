@@ -10,15 +10,21 @@ export function QuickBooksInvoicePanel({
   role,
   invoiceId,
   importMode,
+  invoiceStatus,
+  contractorYouBalance,
   mapping,
   lastEvent,
+  qboBalance,
   payments,
 }: {
   role: CompanyRole;
   invoiceId: string;
   importMode: string;
+  invoiceStatus: string;
+  contractorYouBalance: string;
   mapping: { quickbooksId: string; lastSyncedAt: Date | null; status: QuickBooksSyncStatus } | null;
   lastEvent: { status: QuickBooksSyncStatus; errorMessage: string | null; createdAt: Date } | null;
+  qboBalance?: string | null;
   payments: { id: string; amountLabel: string; mapping: { quickbooksId: string } | null }[];
 }) {
   const canSync = can(role, "accounting:manage");
@@ -45,8 +51,26 @@ export function QuickBooksInvoicePanel({
         </div>
         {mapping ? <StatusBadge status="SYNCED" /> : failed ? <StatusBadge status="SYNC FAILED" /> : <StatusBadge status="NOT SYNCED" />}
       </div>
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-[var(--muted-foreground)]">ContractorYou status</dt>
+          <dd>
+            {invoiceStatus.replaceAll("_", " ")} · {contractorYouBalance} open
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">QuickBooks accounting</dt>
+          <dd>
+            {mapping
+              ? qboBalance
+                ? `Linked · ${qboBalance} open in QuickBooks`
+                : `Linked · QB Invoice #${mapping.quickbooksId}`
+              : "Not linked"}
+          </dd>
+        </div>
+      </dl>
       {failed && lastEvent?.errorMessage ? (
-        <p className="text-sm text-rose-700">See error: we could not finish that sync. Reconnect if QuickBooks asks you to sign in again.</p>
+        <p className="text-sm text-rose-700">{lastEvent.errorMessage}</p>
       ) : null}
       {canSync ? (
         <ActionForm action={syncInvoiceToQuickBooksAction} successMessage="Invoice sent to QuickBooks.">

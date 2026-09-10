@@ -6,13 +6,17 @@ import { getCompanyConnection } from "@/lib/integrations/store";
 import { describeSavedQuickBooksApp } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY, quickbooksConfigured, quickbooksSetupSnapshot } from "@/lib/quickbooks/config";
 import { getQuickBooksSettings } from "@/lib/quickbooks/connection";
-import { INVOICE_TRIGGER_COPY, QUICKBOOKS_STATUS_COPY, publicQuickBooksStatus } from "@/lib/quickbooks/status";
+import { INVOICE_TRIGGER_COPY, QUICKBOOKS_STATUS_COPY, publicQuickBooksStatus, quickBooksCardState } from "@/lib/quickbooks/status";
+import { maskRealmId } from "@/lib/quickbooks/errors";
+import { verifyQuickBooksCompany } from "@/lib/quickbooks/verify";
+import { quickbooksWebhookConfigured } from "@/lib/quickbooks/webhook";
 import { formatDateTime } from "@/lib/datetime";
 import {
   clearQuickBooksAppAction,
   disconnectQuickBooksAction,
   saveQuickBooksAppAction,
   saveQuickBooksSettingsAction,
+  syncNowQuickBooksAction,
 } from "@/server/actions/quickbooks";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -28,20 +32,29 @@ export default async function QuickBooksSettingsPage({
 }) {
   const ctx = await requirePermission("accounting:view");
   const { error, connected } = await searchParams;
-  const [connection, settings, history] = await Promise.all([
+  const [connection, settings] = await Promise.all([
     getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
     getQuickBooksSettings(ctx.company.id),
-    prisma.quickBooksSyncEvent.findMany({
-      where: { companyId: ctx.company.id },
-      orderBy: { createdAt: "desc" },
-      take: 40,
-    }),
   ]);
+  if (
+    connection?.status === "CONNECTED" &&
+    connection.externalAccountId &&
+    !settings.qboCompanyName &&
+    can(ctx.role, "accounting:manage")
+  ) {
+    await verifyQuickBooksCompany(prisma, ctx.company.id);
+  }
+  const freshSettings = await getQuickBooksSettings(ctx.company.id);
   const status = publicQuickBooksStatus(connection);
-  const savedApp = describeSavedQuickBooksApp(settings);
+  const card = quickBooksCardState({
+    connection,
+    verifiedCompanyName: freshSettings.qboCompanyName,
+  });
+  const savedApp = describeSavedQuickBooksApp(freshSettings);
   const setup = quickbooksSetupSnapshot(savedApp);
   const configured = quickbooksConfigured(savedApp);
   const canManage = can(ctx.role, "accounting:manage");
+  const environment = savedApp.environment === "production" ? "Production" : "Sandbox";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -51,8 +64,8 @@ export default async function QuickBooksSettingsPage({
         </Link>
         <h1 className="mt-2 font-display text-3xl tracking-tight">QuickBooks</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          ContractorYou runs the job. QuickBooks keeps the books. Connect only if you want invoices and recorded
-          payments copied over.
+          ContractorYou runs the job. QuickBooks keeps the books. Connecting never pushes historical invoices on its
+          own.
         </p>
       </div>
 
@@ -63,38 +76,70 @@ export default async function QuickBooksSettingsPage({
             : decodeURIComponent(error)}
         </p>
       ) : null}
-      {connected ? (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">QuickBooks is connected.</p>
+      {connected && card === "CONNECTED" ? (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          QuickBooks company verified. Finish setup before automatic sync turns on.
+        </p>
       ) : null}
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Connection</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Integrations</p>
             <h2 className="mt-2 font-medium">QuickBooks Online</h2>
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              {connection?.accountLabel
-                ? `Company ${connection.accountLabel}`
-                : "No QuickBooks company is linked."}
+              {card === "CONNECTED"
+                ? "Connected"
+                : card === "NEEDS_ATTENTION"
+                  ? "Needs attention — verify the QuickBooks company or reconnect."
+                  : card === "REAUTH_REQUIRED"
+                    ? "Authorization expired. Reconnect to continue."
+                    : card === "CONNECTING"
+                      ? "Waiting for QuickBooks approval."
+                      : "No QuickBooks company is linked."}
             </p>
           </div>
-          <StatusBadge status={QUICKBOOKS_STATUS_COPY[status] ?? status} />
+          <StatusBadge status={QUICKBOOKS_STATUS_COPY[card] ?? card} />
         </div>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-[var(--muted-foreground)]">Last successful sync</dt>
-            <dd className="mt-0.5">{connection?.lastSyncAt ? formatDateTime(connection.lastSyncAt, ctx.company.timezone) : "Never"}</dd>
+            <dt className="text-[var(--muted-foreground)]">Company</dt>
+            <dd className="mt-0.5">{freshSettings.qboCompanyName || "Not verified"}</dd>
           </div>
           <div>
-            <dt className="text-[var(--muted-foreground)]">Last error</dt>
-            <dd className="mt-0.5">{connection?.errorMessage || "None"}</dd>
+            <dt className="text-[var(--muted-foreground)]">Realm / Company ID</dt>
+            <dd className="mt-0.5">{maskRealmId(connection?.externalAccountId)}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Environment</dt>
+            <dd className="mt-0.5">{environment}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Last successful sync</dt>
+            <dd className="mt-0.5">
+              {connection?.lastSyncAt ? formatDateTime(connection.lastSyncAt, ctx.company.timezone) : "Never"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Automatic sync</dt>
+            <dd className="mt-0.5">
+              {freshSettings.syncActivated
+                ? "On after the chosen start date"
+                : "Safe mode — preview only until you finish setup"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Webhooks</dt>
+            <dd className="mt-0.5">
+              {quickbooksWebhookConfigured() ? "Verifier token is set" : "Not configured — polling and Sync Now remain the guarantee"}
+            </dd>
           </div>
         </dl>
         <div className="mt-5 flex flex-wrap gap-2">
-          {canManage && status !== "CONNECTED" ? (
+          {canManage && card !== "CONNECTED" && card !== "NEEDS_ATTENTION" ? (
             configured ? (
               <Link href="/api/integrations/quickbooks/start" className={cn(buttonVariants())}>
-                {status === "REAUTH_REQUIRED" ? "Reconnect QuickBooks" : "Connect QuickBooks"}
+                {card === "REAUTH_REQUIRED" ? "Reconnect QuickBooks" : "Connect QuickBooks"}
               </Link>
             ) : (
               <p className="text-sm text-[var(--muted-foreground)]">
@@ -102,17 +147,37 @@ export default async function QuickBooksSettingsPage({
               </p>
             )
           ) : null}
-          {canManage && status === "CONNECTED" ? (
-            <form
-              action={async () => {
-                "use server";
-                await disconnectQuickBooksAction();
-              }}
-            >
-              <Button type="submit" variant="outline" size="sm">
-                Disconnect
-              </Button>
-            </form>
+          {canManage && (card === "CONNECTED" || card === "NEEDS_ATTENTION") ? (
+            <>
+              <ActionForm action={syncNowQuickBooksAction}>
+                <Button type="submit" size="sm">
+                  Sync now
+                </Button>
+              </ActionForm>
+              <Link href="/settings/quickbooks/manage" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                Manage
+              </Link>
+              {!freshSettings.wizardCompletedAt ? (
+                <Link href="/settings/quickbooks/setup" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                  Finish setup
+                </Link>
+              ) : null}
+              <form
+                action={async () => {
+                  "use server";
+                  await disconnectQuickBooksAction();
+                }}
+              >
+                <Button type="submit" variant="outline" size="sm">
+                  Disconnect
+                </Button>
+              </form>
+            </>
+          ) : null}
+          {canManage && card === "REAUTH_REQUIRED" && configured ? (
+            <Link href="/api/integrations/quickbooks/start" className={cn(buttonVariants())}>
+              Reauthorize
+            </Link>
           ) : null}
         </div>
         {status === "CONNECTED" ? (
@@ -220,7 +285,8 @@ export default async function QuickBooksSettingsPage({
       >
         <h2 className="font-medium">When to send invoices</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Default is manual only. Imported history never goes to QuickBooks unless you press Sync on that invoice.
+          These rules apply only after setup activates automatic sync. Imported history still stays here unless you
+          press Sync on that invoice.
         </p>
         <fieldset className="space-y-3">
           {INVOICE_TRIGGER_COPY.map((option) => (
@@ -229,7 +295,7 @@ export default async function QuickBooksSettingsPage({
                 type="radio"
                 name="invoiceSyncTrigger"
                 value={option.value}
-                defaultChecked={settings.invoiceSyncTrigger === option.value}
+                defaultChecked={freshSettings.invoiceSyncTrigger === option.value}
                 className="mt-1"
                 disabled={!canManage}
               />
@@ -242,33 +308,6 @@ export default async function QuickBooksSettingsPage({
         </fieldset>
         {canManage ? <Button type="submit">Save setting</Button> : null}
       </ActionForm>
-
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
-        <h2 className="font-medium">Sync history</h2>
-        {history.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--muted-foreground)]">No QuickBooks syncs yet.</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-[var(--border)] text-sm">
-            {history.map((event) => (
-              <li key={event.id} className="flex flex-wrap items-start justify-between gap-2 py-3">
-                <div>
-                  <p className="font-medium">
-                    {event.entityType} · {event.action}
-                  </p>
-                  <p className="text-[var(--muted-foreground)]">
-                    {event.quickbooksId ? `QuickBooks ${event.quickbooksId}` : "No QuickBooks id"}
-                    {event.errorMessage ? ` · ${event.errorMessage}` : ""}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <StatusBadge status={event.status} />
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">{formatDateTime(event.createdAt, ctx.company.timezone)}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

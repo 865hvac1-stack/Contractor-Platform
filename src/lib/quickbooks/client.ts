@@ -40,7 +40,7 @@ export function liveQboTransport(input: {
 function firstId(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
-  const entity = (record.Customer || record.Invoice || record.Payment || record) as Record<string, unknown>;
+  const entity = (record.Customer || record.Invoice || record.Payment || record.Purchase || record.CompanyInfo || record) as Record<string, unknown>;
   return typeof entity.Id === "string" ? entity.Id : undefined;
 }
 
@@ -52,18 +52,155 @@ function queryId(json: unknown, key: string): string | undefined {
   return id;
 }
 
+export type QboCustomerRecord = {
+  id: string;
+  displayName: string;
+  givenName?: string | null;
+  familyName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
+
+function escapeQbo(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
+function customerRows(json: unknown): QboCustomerRecord[] {
+  const query = (json as { QueryResponse?: { Customer?: unknown } })?.QueryResponse;
+  const rows = query?.Customer;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as {
+      Id?: string;
+      DisplayName?: string;
+      GivenName?: string;
+      FamilyName?: string;
+      PrimaryEmailAddr?: { Address?: string };
+      PrimaryPhone?: { FreeFormNumber?: string };
+    };
+    if (!record.Id) return [];
+    return [
+      {
+        id: record.Id,
+        displayName: record.DisplayName || "",
+        givenName: record.GivenName ?? null,
+        familyName: record.FamilyName ?? null,
+        email: record.PrimaryEmailAddr?.Address ?? null,
+        phone: record.PrimaryPhone?.FreeFormNumber ?? null,
+      },
+    ];
+  });
+}
+
 export async function qboFindCustomer(
   transport: QboTransport,
   displayName: string
 ): Promise<string | null> {
-  const safe = displayName.replaceAll("'", "\\'");
+  const matches = await qboSearchCustomers(transport, { displayName });
+  return matches[0]?.id ?? null;
+}
+
+export async function qboSearchCustomers(
+  transport: QboTransport,
+  input: { displayName?: string | null; email?: string | null }
+): Promise<QboCustomerRecord[]> {
+  const queries: string[] = [];
+  if (input.email?.includes("@")) {
+    queries.push(`select * from Customer where PrimaryEmailAddr = '${escapeQbo(input.email.trim())}'`);
+  }
+  if (input.displayName?.trim()) {
+    queries.push(`select * from Customer where DisplayName = '${escapeQbo(input.displayName.trim())}'`);
+  }
+  const found = new Map<string, QboCustomerRecord>();
+  for (const query of queries) {
+    const result = await transport({ method: "GET", path: "/query", query });
+    if (!result.ok) continue;
+    for (const row of customerRows(result.json)) found.set(row.id, row);
+  }
+  return [...found.values()];
+}
+
+export async function qboCompanyInfo(
+  transport: QboTransport,
+  realmId: string
+): Promise<{ name: string } | null> {
+  const result = await transport({ method: "GET", path: `/companyinfo/${realmId}` });
+  if (!result.ok) return null;
+  const info = (result.json as { CompanyInfo?: { CompanyName?: string } })?.CompanyInfo;
+  return info?.CompanyName ? { name: info.CompanyName } : null;
+}
+
+export async function qboListItems(transport: QboTransport) {
   const result = await transport({
     method: "GET",
     path: "/query",
-    query: `select * from Customer where DisplayName = '${safe}'`,
+    query: "select Id, Name, Type from Item where Active = true maxresults 100",
   });
+  if (!result.ok) return [];
+  const rows = (result.json as { QueryResponse?: { Item?: Array<{ Id?: string; Name?: string; Type?: string }> } })
+    ?.QueryResponse?.Item;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => (row.Id && row.Name ? [{ id: row.Id, name: row.Name, type: row.Type || "Service" }] : []));
+}
+
+export async function qboListExpenseAccounts(transport: QboTransport) {
+  const result = await transport({
+    method: "GET",
+    path: "/query",
+    query: "select Id, Name, AccountType from Account where Active = true and AccountType = 'Expense' maxresults 100",
+  });
+  if (!result.ok) return [];
+  const rows = (result.json as { QueryResponse?: { Account?: Array<{ Id?: string; Name?: string; AccountType?: string }> } })
+    ?.QueryResponse?.Account;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => (row.Id && row.Name ? [{ id: row.Id, name: row.Name, type: row.AccountType || "Expense" }] : []));
+}
+
+export async function qboGetInvoice(transport: QboTransport, id: string) {
+  const result = await transport({ method: "GET", path: `/invoice/${id}` });
   if (!result.ok) return null;
-  return queryId(result.json, "Customer") ?? null;
+  const invoice = (result.json as { Invoice?: { Id?: string; Balance?: number; TotalAmt?: number; SyncToken?: string } })
+    ?.Invoice;
+  if (!invoice?.Id) return null;
+  return {
+    id: invoice.Id,
+    balance: invoice.Balance ?? null,
+    total: invoice.TotalAmt ?? null,
+    syncToken: invoice.SyncToken ?? null,
+  };
+}
+
+export async function qboCreatePurchase(
+  transport: QboTransport,
+  input: {
+    amount: number;
+    txnDate: string;
+    accountId: string;
+    memo?: string | null;
+    vendor?: string | null;
+  }
+) {
+  const result = await transport({
+    method: "POST_JSON",
+    path: "/purchase",
+    body: {
+      PaymentType: "Cash",
+      AccountRef: { value: input.accountId },
+      TxnDate: input.txnDate,
+      PrivateNote: [input.vendor, input.memo].filter(Boolean).join(" · ") || undefined,
+      Line: [
+        {
+          Amount: input.amount,
+          DetailType: "AccountBasedExpenseLineDetail",
+          AccountBasedExpenseLineDetail: { AccountRef: { value: input.accountId } },
+        },
+      ],
+    },
+  });
+  const id = firstId(result.json);
+  if (!result.ok || !id) throw new Error("QuickBooks did not accept that expense.");
+  return id;
 }
 
 export async function qboCreateCustomer(
@@ -95,7 +232,7 @@ export async function qboCreateOrUpdateInvoice(
     txnDate: string;
     dueDate?: string | null;
     memo?: string | null;
-    lines: { description: string; quantity: number; unitPrice: number; amount: number }[];
+    lines: { description: string; quantity: number; unitPrice: number; amount: number; itemId?: string | null }[];
   }
 ): Promise<string> {
   const line = input.lines.length
@@ -103,7 +240,11 @@ export async function qboCreateOrUpdateInvoice(
         Amount: item.amount,
         DetailType: "SalesItemLineDetail",
         Description: item.description,
-        SalesItemLineDetail: { Qty: item.quantity, UnitPrice: item.unitPrice },
+        SalesItemLineDetail: {
+          Qty: item.quantity,
+          UnitPrice: item.unitPrice,
+          ...(item.itemId ? { ItemRef: { value: item.itemId } } : {}),
+        },
       }))
     : [{ Amount: 0, DetailType: "SalesItemLineDetail", Description: "ContractorYou invoice", SalesItemLineDetail: { Qty: 1, UnitPrice: 0 } }];
   const body: Record<string, unknown> = {

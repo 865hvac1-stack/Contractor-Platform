@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/tenant";
+import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ActionForm } from "@/components/action-form";
+import { approveExpenseAction } from "@/server/actions/expenses";
+import { syncExpenseToQuickBooksAction } from "@/server/actions/quickbooks";
 
 export default async function ExpenseDetailPage({
   params,
@@ -24,6 +29,10 @@ export default async function ExpenseDetailPage({
     },
   });
   if (!expense) notFound();
+  const mapping = await prisma.quickBooksMapping.findFirst({
+    where: { companyId: ctx.company.id, entityType: "EXPENSE", internalId: expense.id },
+  });
+  const canApprove = can(ctx.role, "accounting:manage");
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -110,6 +119,31 @@ export default async function ExpenseDetailPage({
         ) : (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No receipt attached.</p>
         )}
+      </div>
+
+      <div className="rounded-xl border border-[var(--border)] bg-white p-4 space-y-3">
+        <h2 className="font-medium">QuickBooks</h2>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          {mapping
+            ? `Synced · QB Purchase #${mapping.quickbooksId}`
+            : "Not in QuickBooks. Approval is required before accounting sync."}
+        </p>
+        {canApprove && expense.status !== "APPROVED" && expense.status !== "REJECTED" ? (
+          <ActionForm action={approveExpenseAction}>
+            <input type="hidden" name="expenseId" value={expense.id} />
+            <Button type="submit" size="sm">
+              Approve for accounting
+            </Button>
+          </ActionForm>
+        ) : null}
+        {canApprove && (expense.status === "APPROVED" || expense.status === "POSTED") && !mapping ? (
+          <ActionForm action={syncExpenseToQuickBooksAction}>
+            <input type="hidden" name="expenseId" value={expense.id} />
+            <Button type="submit" size="sm" variant="outline">
+              Sync to QuickBooks
+            </Button>
+          </ActionForm>
+        ) : null}
       </div>
 
       <Link href="/expenses" className={cn(buttonVariants({ variant: "outline" }))}>

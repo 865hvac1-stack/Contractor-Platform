@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { exchangeQuickBooksCode } from "@/lib/quickbooks/oauth";
+import { verifyQuickBooksCompany } from "@/lib/quickbooks/verify";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -37,9 +38,9 @@ export async function GET(request: Request) {
       providerKey: QUICKBOOKS_PROVIDER_KEY,
       status: "CONNECTED",
       externalAccountId: realmId,
-      accountLabel: "QuickBooks Online",
+      accountLabel: null,
       scopes: tokens.scopes ?? [],
-      healthMessage: "Connected. Invoices sync only when you choose.",
+      healthMessage: "Connected. Verifying QuickBooks company.",
       errorMessage: null,
     });
     await saveConnectionTokens({
@@ -47,14 +48,19 @@ export async function GET(request: Request) {
       connectionId: connection.id,
       tokens,
     });
+    const verified = await verifyQuickBooksCompany(prisma, row.companyId);
     await writeAudit({
       companyId: row.companyId,
       actorId: row.userId,
       action: "quickbooks.connected",
       entityType: "IntegrationConnection",
       entityId: connection.id,
-      metadata: { realmPresent: true },
+      metadata: { realmPresent: true, verified: verified.ok },
     });
+    const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId: row.companyId } });
+    if (!settings?.wizardCompletedAt) {
+      return NextResponse.redirect(new URL("/settings/quickbooks/setup", url.origin));
+    }
     return NextResponse.redirect(new URL("/settings/quickbooks?connected=1", url.origin));
   } catch {
     await upsertConnection({

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { can } from "@/lib/permissions";
-import { canAutoSyncInvoice, syncInvoiceToQuickBooks, syncPaymentToQuickBooks } from "@/lib/quickbooks/sync";
+import { canAutoSyncInvoice, syncExpenseToQuickBooks, syncInvoiceToQuickBooks, syncPaymentToQuickBooks } from "@/lib/quickbooks/sync";
+import { isEligibleForBulkSync } from "@/lib/quickbooks/sync";
 import { publicQuickBooksStatus } from "@/lib/quickbooks/status";
 import { quickbooksSetupSnapshot, resolveQuickBooksApp } from "@/lib/quickbooks/config";
 import { decryptCompanyQuickBooksApp, describeSavedQuickBooksApp, saveCompanyQuickBooksApp } from "@/lib/quickbooks/app";
@@ -16,6 +17,7 @@ function mockTransport(calls: { path: string; body?: unknown }[]): QboTransport 
   return async ({ method, path, body }) => {
     calls.push({ path, body });
     if (path === "/query") return { ok: true, status: 200, json: { QueryResponse: {} } };
+    if (path === "/purchase") return { ok: true, status: 200, json: { Purchase: { Id: "QB-EXP-1" } } };
     if (path === "/customer") return { ok: true, status: 200, json: { Customer: { Id: "QB-CUST-1" } } };
     if (path.startsWith("/invoice/") && method === "GET") {
       return { ok: true, status: 200, json: { Invoice: { Id: path.split("/").pop(), SyncToken: "1" } } };
@@ -99,6 +101,7 @@ describe("QuickBooks sync isolation and idempotency", () => {
     paymentA: "",
     historicalInvoice: "",
     historicalPayment: "",
+    expenseA: "",
   };
 
   beforeAll(async () => {
@@ -174,6 +177,25 @@ describe("QuickBooks sync isolation and idempotency", () => {
         quickbooksId: "QB-B-SECRET",
       },
     });
+    await prisma.quickBooksMapping.create({
+      data: {
+        companyId: companyA.id,
+        entityType: "DEFAULT_ITEM",
+        internalId: "default",
+        quickbooksId: "QB-ITEM-1",
+        status: "SYNCED",
+      },
+    });
+    const expense = await prisma.expense.create({
+      data: {
+        companyId: companyA.id,
+        vendor: "Supply House",
+        amountCents: 2500,
+        status: "DRAFT",
+        createdById: userA.id,
+      },
+    });
+    ids.expenseA = expense.id;
   });
 
   afterAll(async () => {
@@ -181,6 +203,7 @@ describe("QuickBooks sync isolation and idempotency", () => {
     await prisma.quickBooksSyncEvent.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.quickBooksMapping.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.quickBooksSettings.deleteMany({ where: { companyId: { in: companyIds } } });
+    await prisma.expense.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.payment.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.invoice.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.customer.deleteMany({ where: { companyId: { in: companyIds } } });
@@ -269,6 +292,56 @@ describe("QuickBooks sync isolation and idempotency", () => {
         importMode: "HISTORICAL",
       }).allowed
     ).toBe(false);
+  });
+
+  it("refuses invoice sync without a Product/Service mapping", async () => {
+    await prisma.quickBooksMapping.deleteMany({
+      where: { companyId: ids.companyA, entityType: { in: ["DEFAULT_ITEM", "SERVICE_ITEM"] } },
+    });
+    const result = await syncInvoiceToQuickBooks(prisma, mockTransport([]), {
+      companyId: ids.companyA,
+      invoiceId: ids.invoiceA,
+      actorId: ids.userA,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Product\/Service mapping is missing/);
+    await prisma.quickBooksMapping.create({
+      data: {
+        companyId: ids.companyA,
+        entityType: "DEFAULT_ITEM",
+        internalId: "default",
+        quickbooksId: "QB-ITEM-1",
+        status: "SYNCED",
+      },
+    });
+  });
+
+  it("Company A cannot sync Company B records", async () => {
+    const leaked = await syncInvoiceToQuickBooks(prisma, mockTransport([]), {
+      companyId: ids.companyA,
+      invoiceId: "not-this-company",
+      actorId: ids.userA,
+    });
+    expect(leaked.ok).toBe(false);
+    const foreign = await prisma.quickBooksMapping.findMany({
+      where: { companyId: ids.companyA, quickbooksId: "QB-B-SECRET" },
+    });
+    expect(foreign).toHaveLength(0);
+  });
+
+  it("does not sync a draft expense to QuickBooks", async () => {
+    const result = await syncExpenseToQuickBooks(prisma, mockTransport([]), {
+      companyId: ids.companyA,
+      expenseId: ids.expenseA,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/approved/i);
+  });
+
+  it("safe mode blocks bulk historical and pre-start records", () => {
+    expect(isEligibleForBulkSync({ importMode: "LIVE", recordDate: new Date(), syncActivated: false }).allowed).toBe(
+      false
+    );
   });
 
   it("historical payment sync is refused", async () => {

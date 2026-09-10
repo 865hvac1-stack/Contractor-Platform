@@ -410,10 +410,27 @@ export function Job360View({
               </CardContent>
             </Card>
           </div>
+          <ul className="space-y-2 text-sm">
+            {view.costing.breakdown.map((row) => (
+              <li key={row.category} className="flex items-start justify-between gap-3 border-b border-[var(--border)] py-2 last:border-0">
+                <span>
+                  {row.label}
+                  {!row.recorded ? (
+                    <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">
+                      {row.unavailableNote || "Not recorded"}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="tabular-nums">
+                  {row.recorded ? formatMoney(row.amountCents) : "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
           <p className="text-sm text-[var(--muted-foreground)]">
             {view.costing.isFinal
-              ? "Uses confirmed invoices and confirmed costs only."
-              : "Not final while receipts still need review."}
+              ? "Uses confirmed invoices and confirmed costs only. Labor payroll is not in ContractorYou."
+              : "Not final while receipts still need review. Labor payroll is not in ContractorYou."}
           </p>
         </Section>
       ) : null}

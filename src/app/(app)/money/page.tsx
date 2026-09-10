@@ -10,6 +10,9 @@ import { loadFinancialSnapshot } from "@/lib/finance/snapshot";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { MoneySubnav } from "@/components/hub-subnav";
+import { getCompanyConnection } from "@/lib/integrations/store";
+import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
+import { quickBooksCardState, QUICKBOOKS_STATUS_COPY } from "@/lib/quickbooks/status";
 
 export default async function MoneyPage({
   searchParams,
@@ -25,6 +28,14 @@ export default async function MoneyPage({
   const ctx = await requirePermission("invoices:view");
   const finance = parseFinanceSearch(await searchParams);
   const snapshot = await loadFinancialSnapshot(ctx.company.id, finance.range);
+  const [qboConnection, qboSettings] = await Promise.all([
+    getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
+    prisma.quickBooksSettings.findUnique({ where: { companyId: ctx.company.id } }),
+  ]);
+  const qboCard = quickBooksCardState({
+    connection: qboConnection,
+    verifiedCompanyName: qboSettings?.qboCompanyName,
+  });
   const isDay = finance.view === "day" && finance.start && finance.end;
   const copy = financeFilterCopy(finance) ?? (finance.source === "home"
     ? { title: "Money", detail: snapshot.period.label }
@@ -69,26 +80,45 @@ export default async function MoneyPage({
         />
       ) : null}
 
-      {snapshot.hasData ? (
-        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MoneyStat
-            label={isDay ? "Revenue this period" : `Revenue · ${snapshot.period.label}`}
-            value={formatMoney(isDay ? dayRevenue : snapshot.revenueCents)}
-            href={snapshot.hrefs.revenue}
-          />
-          <MoneyStat
-            label={isDay ? "Collected this period" : `Collected · ${snapshot.period.label}`}
-            value={formatMoney(isDay ? dayCollected : snapshot.collectedCents)}
-            href={snapshot.hrefs.collected}
-          />
-          <MoneyStat label="A/R" value={formatMoney(snapshot.arCents)} href={snapshot.hrefs.ar} />
-          <MoneyStat label="Open estimates" value={formatMoney(snapshot.openEstimateCents)} href={snapshot.hrefs.openEstimates} />
-        </dl>
-      ) : (
-        <p className="rounded-2xl border border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
-          We&apos;re still building your business picture. Verified invoices and payments will show here.
-        </p>
-      )}
+      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MoneyStat
+          label={isDay ? "Revenue this period" : `Revenue · ${snapshot.period.label}`}
+          value={formatMoney(isDay ? dayRevenue : snapshot.revenueCents)}
+          href={snapshot.hrefs.revenue}
+        />
+        <MoneyStat
+          label={isDay ? "Collected this period" : `Collected · ${snapshot.period.label}`}
+          value={formatMoney(isDay ? dayCollected : snapshot.collectedCents)}
+          href={snapshot.hrefs.collected}
+        />
+        <MoneyStat label="A/R" value={formatMoney(snapshot.arCents)} href={snapshot.hrefs.ar} />
+        <MoneyStat label="Overdue" value={formatMoney(snapshot.overdueArCents)} href={snapshot.hrefs.overdueAr} />
+        <MoneyStat label="Open estimates" value={formatMoney(snapshot.openEstimateCents)} href={snapshot.hrefs.openEstimates} />
+        <MoneyStat
+          label={`Expenses · ${snapshot.period.label}`}
+          value={formatMoney(snapshot.expenseCents)}
+          href={snapshot.hrefs.expenses}
+        />
+        <MoneyStat
+          label="Receipts to review"
+          value={String(snapshot.receiptsToReview)}
+          href={snapshot.hrefs.receipts}
+        />
+        <MoneyStat
+          label="Job profit"
+          value={
+            snapshot.grossProfitAvailable && snapshot.grossProfitCents != null
+              ? formatMoney(snapshot.grossProfitCents)
+              : "Needs confirmed job costs"
+          }
+          href={snapshot.hrefs.grossProfit}
+        />
+        <MoneyStat
+          label="QuickBooks"
+          value={qboSettings?.qboCompanyName && qboCard === "CONNECTED" ? qboSettings.qboCompanyName : QUICKBOOKS_STATUS_COPY[qboCard]}
+          href="/settings/quickbooks"
+        />
+      </dl>
 
       {dayRecords ? (
         <div className="grid gap-4 lg:grid-cols-2">

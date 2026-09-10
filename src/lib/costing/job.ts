@@ -5,10 +5,19 @@ import type { JobCostCategory } from "@prisma/client";
 
 const VERIFIED_INVOICE = { notIn: ["DRAFT", "VOID"] as Array<"DRAFT" | "VOID"> };
 
+export const PHASE1_COST_ROWS: Array<{ category: JobCostCategory; label: string; unavailableNote?: string }> = [
+  { category: "MATERIALS", label: "Materials" },
+  { category: "LABOR", label: "Labor", unavailableNote: "Not recorded. Payroll is not in ContractorYou." },
+  { category: "SUBCONTRACTOR", label: "Subcontractor" },
+  { category: "OTHER", label: "Other" },
+];
+
 export type JobCostLine = {
   category: JobCostCategory;
   label: string;
   amountCents: number;
+  recorded: boolean;
+  unavailableNote?: string;
   sources: { id: string; description: string; amountCents: number; sourceType: string }[];
 };
 
@@ -54,6 +63,7 @@ export async function loadJobFinancials(companyId: string, jobId: string): Promi
       category: cost.category,
       label: JOB_COST_LABELS[cost.category],
       amountCents: 0,
+      recorded: true,
       sources: [],
     };
     current.amountCents += cost.amountCents;
@@ -71,6 +81,7 @@ export async function loadJobFinancials(companyId: string, jobId: string): Promi
       category,
       label: JOB_COST_LABELS[category],
       amountCents: 0,
+      recorded: true,
       sources: [],
     };
     current.amountCents += expense.amountCents;
@@ -94,7 +105,21 @@ export async function loadJobFinancials(companyId: string, jobId: string): Promi
     jobNumber: job.jobNumber,
     jobType: job.serviceType?.name || job.jobType,
     ...profit,
-    breakdown: [...byCategory.values()].sort((a, b) => b.amountCents - a.amountCents),
+    breakdown: PHASE1_COST_ROWS.map((row) => {
+      const recorded = byCategory.get(row.category);
+      return (
+        recorded ?? {
+          category: row.category,
+          label: row.label,
+          amountCents: 0,
+          recorded: false,
+          unavailableNote: row.unavailableNote,
+          sources: [],
+        }
+      );
+    }).concat(
+      [...byCategory.values()].filter((row) => !PHASE1_COST_ROWS.some((expected) => expected.category === row.category))
+    ),
     unconfirmedReceipts: job.receipts,
     missingCosts: profit.revenueCents > 0 && profit.directCostCents === 0,
     lastUpdated: lastCost && lastInvoice ? (lastCost > lastInvoice ? lastCost : lastInvoice) : lastCost ?? lastInvoice,

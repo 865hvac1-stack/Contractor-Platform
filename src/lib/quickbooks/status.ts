@@ -1,5 +1,13 @@
 import type { IntegrationStatus } from "@prisma/client";
 
+export type QuickBooksCardState =
+  | "NOT_CONNECTED"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "NEEDS_ATTENTION"
+  | "REAUTH_REQUIRED"
+  | "ERROR";
+
 export function publicQuickBooksStatus(connection: {
   status: IntegrationStatus;
   externalAccountId: string | null;
@@ -9,13 +17,32 @@ export function publicQuickBooksStatus(connection: {
   return connection.status;
 }
 
+export function quickBooksCardState(input: {
+  connection: {
+    status: IntegrationStatus;
+    externalAccountId: string | null;
+    errorMessage?: string | null;
+  } | null;
+  verifiedCompanyName?: string | null;
+  reviewCount?: number;
+}): QuickBooksCardState {
+  const status = publicQuickBooksStatus(input.connection);
+  if (status === "NOT_CONNECTED" || status === "DISABLED") return "NOT_CONNECTED";
+  if (status === "CONNECTING" || status === "SELECT_ACCOUNT" || status === "SYNCING") return "CONNECTING";
+  if (status === "REAUTH_REQUIRED") return "REAUTH_REQUIRED";
+  if (status === "ERROR") return "ERROR";
+  if (!input.verifiedCompanyName || input.connection?.errorMessage) return "NEEDS_ATTENTION";
+  return "CONNECTED";
+}
+
 export const QUICKBOOKS_STATUS_COPY: Record<string, string> = {
   NOT_CONNECTED: "Not connected",
   CONNECTING: "Connecting",
   SELECT_ACCOUNT: "Select company",
   CONNECTED: "Connected",
   SYNCING: "Syncing",
-  REAUTH_REQUIRED: "Reauth required",
+  REAUTH_REQUIRED: "Token expired — reauthorize",
+  NEEDS_ATTENTION: "Needs attention",
   ERROR: "Error",
   DISABLED: "Disabled",
 };

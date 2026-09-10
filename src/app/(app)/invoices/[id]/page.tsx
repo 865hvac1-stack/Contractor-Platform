@@ -309,8 +309,15 @@ export default async function InvoiceDetailPage({
         role={ctx.role}
         invoiceId={invoice.id}
         importMode={invoice.importMode}
+        invoiceStatus={invoice.status}
+        contractorYouBalance={formatMoney(invoice.balanceCents)}
         mapping={invoiceMap}
         lastEvent={lastEvent}
+        qboBalance={
+          invoiceMap?.metadata && typeof invoiceMap.metadata === "object" && "qboBalance" in invoiceMap.metadata
+            ? String((invoiceMap.metadata as { qboBalance?: string }).qboBalance)
+            : null
+        }
         payments={invoice.payments.map((payment) => ({
           id: payment.id,
           amountLabel: formatMoney(payment.amountCents),
