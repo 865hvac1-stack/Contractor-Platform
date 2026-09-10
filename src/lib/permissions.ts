@@ -37,6 +37,7 @@ export type Permission =
   | "leads:manage"
   | "intelligence:view"
   | "intelligence:manage"
+  | "receptionist:train"
   | "playbooks:view"
   | "playbooks:manage"
   | "imports:manage"
@@ -94,6 +95,7 @@ const ALL_COMPANY: Permission[] = [
   "leads:manage",
   "intelligence:view",
   "intelligence:manage",
+  "receptionist:train",
   "playbooks:view",
   "playbooks:manage",
   "imports:manage",
@@ -274,6 +276,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "compensation:view_all",
     "performance:view_own",
     "performance:view_team",
+    "receptionist:train",
   ],
 };
 

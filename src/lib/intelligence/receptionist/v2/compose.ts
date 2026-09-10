@@ -45,6 +45,9 @@ export function composeVerifiedReceptionistSms(input: {
   if (input.facts.estimateStatus) {
     return sanitizeCustomerSms(`${hey}${input.facts.estimateStatus}`);
   }
+  if (input.facts.opportunityOffer && input.facts.hasActiveMembership === false) {
+    return sanitizeCustomerSms(input.facts.opportunityOffer);
+  }
   if (input.facts.membershipStatus) {
     return sanitizeCustomerSms(`${hey}${input.facts.membershipStatus}`);
   }
@@ -97,6 +100,7 @@ export function assertResponseUsesOnlyVerifiedFacts(input: { responseText: strin
     input.facts.invoiceBalance,
     input.facts.estimateStatus,
     input.facts.membershipStatus,
+    input.facts.opportunityOffer,
     input.facts.waitingStatus,
     input.facts.jobStatus,
     ...(input.facts.properties || []).map((row) => row.address),
@@ -110,6 +114,9 @@ export function assertResponseUsesOnlyVerifiedFacts(input: { responseText: strin
   const money = text.match(/\$[\d,]+(?:\.\d{2})?/);
   if (money && !allowed.some((value) => value.includes(money[0]!.replace("$", "")))) {
     return { ok: false as const, reason: "unverified_money" };
+  }
+  if (/\b(save \d+%|off this (month|week)|limited time|premium membership today)\b/i.test(input.responseText)) {
+    return { ok: false as const, reason: "unverified_promotion" };
   }
   if (
     /\b(you're booked|you are booked|you're scheduled|you are scheduled|appointment is confirmed|you're all set|you are all set|all set for)\b/.test(

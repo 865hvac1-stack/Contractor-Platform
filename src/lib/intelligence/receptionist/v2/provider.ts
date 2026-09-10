@@ -45,6 +45,11 @@ export type AiReceptionistProvider = {
       responseLength: string;
       useCustomerFirstName: boolean;
     };
+    training?: {
+      rules: string[];
+      examples: Array<{ customerMessage: string; preferredResponse: string }>;
+      opportunity: string | null;
+    };
   }): Promise<AiReceptionistProviderResult<ReceptionistV2Generation>>;
 };
 
@@ -211,6 +216,11 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
       responseLength: string;
       useCustomerFirstName: boolean;
     };
+    training?: {
+      rules: string[];
+      examples: Array<{ customerMessage: string; preferredResponse: string }>;
+      opportunity: string | null;
+    };
   }): Promise<AiReceptionistProviderResult<ReceptionistV2Generation>> {
     const key = getOpenAIApiKey();
     const fallback = await this.fallback.generateResponse(input);
@@ -233,6 +243,8 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               "If a workflow question is outstanding, acknowledge any casual reply and still ask that question.",
               "If asked something not in verified facts, say you do not want to guess and offer the office.",
               "Do not mention AI, ContractorYou, HighLevel, tools, or APIs.",
+              "Verified ContractorYou facts override FAQs, examples, and inferred opportunities.",
+              "At most one helpful opportunity. Never invent prices, benefits, or discounts.",
               'Return JSON: {"responseText":"","requestedAction":"continue_workflow","shouldHandoff":false,"handoffReason":null,"confidence":0.8}',
             ].join(" "),
           },
@@ -244,6 +256,9 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               intent: input.classification.intent,
               facts: input.facts,
               useFirstName: input.personality.useCustomerFirstName,
+              conversationRules: (input.training?.rules || []).slice(0, 8),
+              approvedExamples: (input.training?.examples || []).slice(0, 2),
+              opportunity: input.training?.opportunity ?? null,
             }),
           },
         ],

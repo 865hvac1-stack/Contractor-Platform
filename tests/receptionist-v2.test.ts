@@ -16,6 +16,11 @@ const { mockPrisma } = vi.hoisted(() => ({
     communicationMessage: { findMany: vi.fn() },
     conversationSchedulingState: { findFirst: vi.fn() },
     aIUsageEvent: { create: vi.fn(), aggregate: vi.fn() },
+    receptionistKnowledgeItem: { findMany: vi.fn(async () => []) },
+    receptionistConversationRule: { findMany: vi.fn(async () => []) },
+    receptionistOpportunityRule: { findMany: vi.fn(async () => []) },
+    receptionistApprovedExample: { findMany: vi.fn(async () => []) },
+    receptionistOpportunityEvent: { findMany: vi.fn(async () => []), create: vi.fn() },
   },
 }));
 

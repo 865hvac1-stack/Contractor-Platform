@@ -13,6 +13,8 @@ import { getAiReceptionistProvider } from "@/lib/intelligence/receptionist/v2/pr
 import { capabilityAllowsIntent } from "@/lib/intelligence/receptionist/v2/intent";
 import { answerFromCompanyKnowledge, loadCompanyKnowledgeFromSettings } from "@/lib/intelligence/receptionist/v2/knowledge";
 import { actionForIntent, runReceptionistTool } from "@/lib/intelligence/receptionist/v2/tools";
+import { buildTrainingContext, customerDeclinedOpportunity, qualifiesMaintenanceAsk } from "@/lib/intelligence/receptionist/v2/training";
+import { loadCompanyTraining, recordOpportunityEvent, threadOpportunityTypes } from "@/lib/intelligence/receptionist/v2/training-store";
 import { assertResponseUsesOnlyVerifiedFacts } from "@/lib/intelligence/receptionist/v2/compose";
 import { boundConversationHistory } from "@/lib/intelligence/receptionist/v2/context";
 import { recordReceptionistV2Usage } from "@/lib/intelligence/receptionist/v2/usage";
@@ -71,7 +73,7 @@ export async function processReceptionistV2(
     return { handled: true, duplicate: true, mode, shadow, intent: existing.intent };
   }
 
-  const [company, history, scheduling] = await Promise.all([
+  const [company, history, scheduling, trainingPack] = await Promise.all([
     prisma.company.findFirst({
       where: { id: input.companyId },
       select: { businessName: true, timezone: true, hoursNote: true, serviceArea: true, description: true, phone: true },
@@ -83,6 +85,7 @@ export async function processReceptionistV2(
       select: { direction: true, body: true },
     }),
     loadOpenSchedulingSession(input.companyId, input.threadId),
+    loadCompanyTraining(input.companyId),
   ]);
 
   const boundedHistory = boundConversationHistory(history, { newestFirst: true });
@@ -126,6 +129,22 @@ export async function processReceptionistV2(
     threadId: input.threadId,
     shadow,
   });
+  if (
+    qualifiesMaintenanceAsk({ text, intent: classified.data.intent }) &&
+    requestedAction !== "getMembershipStatus"
+  ) {
+    const membership = await runTool({
+      companyId: input.companyId,
+      action: "getMembershipStatus",
+      phone: input.phone,
+      customerId: input.customerId,
+      contactId: input.contactId,
+      threadId: input.threadId,
+      shadow,
+    });
+    tool.facts.hasActiveMembership = membership.facts.hasActiveMembership;
+    tool.facts.membershipStatus = membership.facts.membershipStatus ?? tool.facts.membershipStatus;
+  }
 
   const offered = parseOfferedSlots(scheduling?.offeredSlots);
   const selected = selectedSlotFromState({
@@ -161,7 +180,37 @@ export async function processReceptionistV2(
     waitingStatus: tool.facts.waitingStatus ?? null,
     jobStatus: tool.facts.jobStatus ?? null,
     toolError: tool.skipped ?? null,
+    hasActiveMembership: tool.facts.hasActiveMembership ?? null,
   };
+
+  const threadOffers = threadOpportunityTypes(trainingPack.events, input.threadId, trainingPack.opportunities);
+  if (customerDeclinedOpportunity(text) && trainingPack.opportunities[0] && threadOffers.offeredTypes.length) {
+    const offered = trainingPack.opportunities.find((rule) => threadOffers.offeredTypes.includes(rule.type));
+    if (offered) {
+      await recordOpportunityEvent({
+        companyId: input.companyId,
+        threadId: input.threadId,
+        ruleId: offered.id,
+        status: "DECLINED",
+      });
+      threadOffers.declinedTypes.push(offered.type);
+    }
+  }
+  const trained = buildTrainingContext({
+    text,
+    intent: classified.data.intent,
+    facts,
+    knowledge: trainingPack.knowledge,
+    rules: trainingPack.rules,
+    opportunities: trainingPack.opportunities,
+    examples: trainingPack.examples,
+    declinedTypes: threadOffers.declinedTypes,
+    offeredTypes: threadOffers.offeredTypes,
+  });
+  if (trained.knowledgeAnswers.length) {
+    facts.knowledgeAnswers = [...(facts.knowledgeAnswers || []), ...trained.knowledgeAnswers];
+  }
+  if (trained.opportunityText) facts.opportunityOffer = trained.opportunityText;
 
   const generated = await provider.generateResponse({
     text,
@@ -173,6 +222,14 @@ export async function processReceptionistV2(
       tone: settings.tone,
       responseLength: settings.responseLength,
       useCustomerFirstName: settings.useCustomerFirstName,
+    },
+    training: {
+      rules: trained.rules.map((rule) => rule.body),
+      examples: trained.examples.map((example) => ({
+        customerMessage: example.customerMessage,
+        preferredResponse: example.preferredResponse,
+      })),
+      opportunity: trained.opportunityText,
     },
   });
 
@@ -259,6 +316,8 @@ export async function processReceptionistV2(
     shadow,
     toolUsed: tool.skipped ? `${requestedAction}:${tool.skipped}` : requestedAction,
     activeWorkflow: activeScheduling ? "scheduling" : null,
+    trainingSources: trained.sources,
+    reviewStatus: "PENDING",
   };
 
   let turnId = existing?.id ?? null;
@@ -314,6 +373,18 @@ export async function processReceptionistV2(
     errorCode: turnData.errorCode,
     handoffReason: finalHandoff ? handoffReason : null,
   });
+  if (trained.opportunity && trained.opportunityText) {
+    try {
+      await recordOpportunityEvent({
+        companyId: input.companyId,
+        threadId: input.threadId,
+        ruleId: trained.opportunity.id,
+        status: "OFFERED",
+      });
+    } catch {
+      // Offer tracking is diagnostics-only.
+    }
+  }
   try {
     await recordReceptionistV2Usage({
       companyId: input.companyId,

@@ -95,9 +95,10 @@ export async function runReceptionistTool(input: {
       where: { companyId: input.companyId, customerId: context.customerId, status: "ACTIVE" },
       select: { status: true },
     });
+    facts.hasActiveMembership = Boolean(membership);
     facts.membershipStatus = membership
       ? `I show a ${membership.status.toLowerCase().replaceAll("_", " ")} maintenance plan on your account.`
-      : "I don’t see an active maintenance plan on your account.";
+      : "I don't see an active maintenance plan on your account right now.";
   }
 
   if (input.action === "getWaitingStatus") {
@@ -117,7 +118,7 @@ export async function runReceptionistTool(input: {
 export function actionForIntent(intent: string): ReceptionistV2Action {
   if (intent === "INVOICE_BALANCE" || intent === "PAYMENT_QUESTION") return "getInvoiceBalance";
   if (intent === "ESTIMATE_STATUS") return "getEstimateStatus";
-  if (intent === "MEMBERSHIP") return "getMembershipStatus";
+  if (intent === "MEMBERSHIP" || intent === "MAINTENANCE") return "getMembershipStatus";
   if (intent === "WAITING_PART_STATUS") return "getWaitingStatus";
   if (intent === "JOB_STATUS") return "getAppointmentStatus";
   if (intent === "SCHEDULING" || intent === "RESCHEDULE") return "startScheduling";

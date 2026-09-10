@@ -96,6 +96,22 @@ export default async function SettingsPage() {
         </Link>
       ) : null}
 
+      {can(ctx.role, "receptionist:train") || can(ctx.role, "intelligence:view") ? (
+        <Link
+          href="/settings/highlevel/training"
+          className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
+            AI receptionist
+          </p>
+          <h2 className="mt-2 font-medium">Training</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Teach Regina how your company operates. Add knowledge, conversation rules, opportunities,
+            and approved examples. Customer texts do not retrain her automatically.
+          </p>
+        </Link>
+      ) : null}
+
       {can(ctx.role, "marketing:view") ? (
         <Link
           href="/settings/highlevel"

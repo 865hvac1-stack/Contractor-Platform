@@ -577,6 +577,12 @@ model Company {
   intelligenceSetting CompanyIntelligenceSetting?
   aiReceptionistSetting CompanyAiReceptionistSetting?
   receptionistTurns ReceptionistTurn[]
+  receptionistKnowledgeItems ReceptionistKnowledgeItem[]
+  receptionistConversationRules ReceptionistConversationRule[]
+  receptionistOpportunityRules ReceptionistOpportunityRule[]
+  receptionistApprovedExamples ReceptionistApprovedExample[]
+  receptionistTrainingReviews ReceptionistTrainingReview[]
+  receptionistOpportunityEvents ReceptionistOpportunityEvent[]
   importSessions ImportSession[]
   importRows ImportRow[]
   importExternalRefs ImportExternalRef[]
@@ -2096,14 +2102,119 @@ model ReceptionistTurn {
   shadow             Boolean  @default(false)
   toolUsed           String?
   activeWorkflow     String?
+  reviewStatus       String?
+  trainingSources    Json?
   createdAt          DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  trainingReviews ReceptionistTrainingReview[]
 
   @@unique([companyId, inboundMessageId])
   @@index([companyId, threadId, createdAt])
   @@index([companyId, createdAt])
   @@index([companyId, shadow, createdAt])
+}
+
+model ReceptionistKnowledgeItem {
+  id         String   @id @default(cuid())
+  companyId  String
+  question   String
+  answer     String
+  category   String   @default("FAQ")
+  notes      String?
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, active, category])
+}
+
+model ReceptionistConversationRule {
+  id         String   @id @default(cuid())
+  companyId  String
+  body       String
+  active     Boolean  @default(true)
+  priority   Int      @default(100)
+  createdById String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, active, priority])
+}
+
+model ReceptionistOpportunityRule {
+  id                   String   @id @default(cuid())
+  companyId            String
+  type                 String
+  title                String
+  triggerText          String
+  verifiedRequirement  String
+  suggestedBehavior    String
+  cta                  String?
+  active               Boolean  @default(true)
+  priority             Int      @default(100)
+  createdById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  events  ReceptionistOpportunityEvent[]
+
+  @@index([companyId, active, type])
+}
+
+model ReceptionistApprovedExample {
+  id                 String   @id @default(cuid())
+  companyId          String
+  customerMessage    String
+  preferredResponse  String
+  intent             String   @default("GENERAL_QUESTION")
+  notes              String?
+  active             Boolean  @default(true)
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, active, intent])
+}
+
+model ReceptionistTrainingReview {
+  id            String   @id @default(cuid())
+  companyId     String
+  turnId        String
+  decision      String
+  improvedText  String?
+  savedAs       String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  turn    ReceptionistTurn @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([turnId])
+}
+
+model ReceptionistOpportunityEvent {
+  id        String   @id @default(cuid())
+  companyId String
+  threadId  String
+  ruleId    String
+  status    String
+  createdAt DateTime @default(now())
+
+  company Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rule    ReceptionistOpportunityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, threadId, createdAt])
 }
 
 model AIConversation {

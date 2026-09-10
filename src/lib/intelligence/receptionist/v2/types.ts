@@ -99,6 +99,8 @@ export type VerifiedFacts = {
   waitingStatus?: string | null;
   jobStatus?: string | null;
   toolError?: string | null;
+  hasActiveMembership?: boolean | null;
+  opportunityOffer?: string | null;
 };
 
 export function parseReceptionistV2Mode(value: unknown): ReceptionistV2Mode {

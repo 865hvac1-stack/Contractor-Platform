@@ -375,6 +375,16 @@ export default async function HighLevelSettingsPage({
 
       <ConversationOwnerForm value={parseCustomerConversationOwner(ctx.company.customerConversationOwner)} />
       <ReceptionistSettingsForm settings={receptionistSettings} />
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <h2 className="font-medium">Train Regina</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Teach her your knowledge, conversation style, and opportunities. She still uses ContractorYou
+          records for anything factual.
+        </p>
+        <Link href="/settings/highlevel/training" className="mt-3 inline-block text-sm underline">
+          Open Training
+        </Link>
+      </section>
       <ReceptionistV2Review rows={receptionistReview} usage={receptionistUsage} timezone={ctx.company.timezone} />
       <AgentToolSettings
         keys={agentToolKeys.map((row) => ({
