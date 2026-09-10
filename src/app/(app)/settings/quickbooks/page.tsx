@@ -203,8 +203,8 @@ export default async function QuickBooksSettingsPage({
             <Input id="redirectUri" readOnly value={setup.redirectUri} className="font-mono text-xs" />
             <p className="text-xs text-[var(--muted-foreground)]">
               {setup.appUrlSet
-                ? "This comes from APP_URL on the server. It must match Intuit exactly, including https."
-                : "APP_URL is not set. Set it to your public site URL in Railway so this URI matches production."}
+                ? "This comes from APP_URL on the server. It must match Intuit exactly, including https. Production never uses localhost."
+                : "APP_URL should be the public ContractorYou URL. Production will not fall back to localhost."}
             </p>
           </div>
           <ActionForm action={saveQuickBooksAppAction} successMessage="Intuit app keys saved. You can connect QuickBooks now." className="space-y-4">

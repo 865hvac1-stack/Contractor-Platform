@@ -1,3 +1,7 @@
+import { isLoopbackUrl, quickbooksRedirectUri } from "@/lib/quickbooks/public-url";
+
+export { quickbooksRedirectUri } from "@/lib/quickbooks/public-url";
+
 export const QUICKBOOKS_PROVIDER_KEY = "quickbooks_online";
 
 export type QuickBooksEnvironment = "sandbox" | "production";
@@ -34,12 +38,6 @@ export function quickbooksClientId() {
 
 export function quickbooksClientSecret() {
   return process.env.QUICKBOOKS_CLIENT_SECRET?.trim() || "";
-}
-
-export function quickbooksRedirectUri() {
-  if (process.env.QUICKBOOKS_REDIRECT_URI?.trim()) return process.env.QUICKBOOKS_REDIRECT_URI.trim();
-  const app = (process.env.APP_URL || "http://127.0.0.1:43123").replace(/\/$/, "");
-  return `${app}/api/integrations/quickbooks/callback`;
 }
 
 export function quickbooksAuthorizeUrl() {
@@ -86,7 +84,7 @@ export function quickbooksSetupSnapshot(company?: { hasClientId?: boolean; hasSe
     hasCompanySecret: Boolean(company?.hasSecret),
     environment: parseQuickBooksEnvironment(company?.environment) || quickbooksEnvironment(),
     redirectUri: quickbooksRedirectUri(),
-    appUrlSet: Boolean(process.env.APP_URL?.trim()),
+    appUrlSet: Boolean(process.env.APP_URL?.trim()) && !isLoopbackUrl(process.env.APP_URL),
   };
 }
 

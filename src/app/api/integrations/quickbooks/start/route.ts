@@ -7,17 +7,26 @@ import { upsertConnection } from "@/lib/integrations/store";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { createQuickBooksState, quickbooksAuthorizeHref } from "@/lib/quickbooks/oauth";
-
-function originOf(request: Request) {
-  return new URL(request.url).origin;
-}
+import {
+  PRODUCTION_QUICKBOOKS_CALLBACK_URI,
+  assertQuickBooksRedirectUriSafe,
+  quickbooksBrowserRedirect,
+  quickbooksRedirectUri,
+} from "@/lib/quickbooks/public-url";
 
 export async function GET(request: Request) {
   try {
     const ctx = await requirePermission("accounting:manage");
     const app = await loadQuickBooksAppCredentials(prisma, ctx.company.id);
     if (!app) {
-      return NextResponse.redirect(new URL("/settings/quickbooks?error=missing_credentials", originOf(request)));
+      return NextResponse.redirect(quickbooksBrowserRedirect("/settings/quickbooks?error=missing_credentials", request));
+    }
+    const redirectUri = quickbooksRedirectUri(request);
+    const safe = assertQuickBooksRedirectUriSafe(redirectUri);
+    if (!safe.ok) {
+      return NextResponse.redirect(
+        quickbooksBrowserRedirect(`/settings/quickbooks?error=${encodeURIComponent(safe.error)}`, request)
+      );
     }
     const state = createQuickBooksState();
     await createOAuthState({
@@ -25,7 +34,7 @@ export async function GET(request: Request) {
       userId: ctx.user.id,
       providerKey: QUICKBOOKS_PROVIDER_KEY,
       state,
-      redirectTo: "/settings/quickbooks",
+      redirectTo: "/settings/quickbooks/setup",
     });
     await upsertConnection({
       companyId: ctx.company.id,
@@ -33,10 +42,18 @@ export async function GET(request: Request) {
       status: "CONNECTING",
       healthMessage: "Waiting for QuickBooks authorization.",
     });
+    console.info(
+      JSON.stringify({
+        event: "QUICKBOOKS_OAUTH_START",
+        companyId: ctx.company.id,
+        redirectMatchesProduction: redirectUri === PRODUCTION_QUICKBOOKS_CALLBACK_URI,
+        redirectHost: new URL(redirectUri).host,
+      })
+    );
     return NextResponse.redirect(quickbooksAuthorizeHref(state, app));
   } catch (error) {
     if (error instanceof AuthError) {
-      return NextResponse.redirect(new URL("/login?next=/settings/quickbooks", originOf(request)));
+      return NextResponse.redirect(quickbooksBrowserRedirect("/login?next=/settings/quickbooks", request));
     }
     throw error;
   }

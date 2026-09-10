@@ -7,6 +7,11 @@ import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { exchangeQuickBooksCode } from "@/lib/quickbooks/oauth";
 import { verifyQuickBooksCompany } from "@/lib/quickbooks/verify";
+import { quickbooksBrowserRedirect, quickbooksPostOAuthPath } from "@/lib/quickbooks/public-url";
+
+function toApp(path: string, request: Request) {
+  return NextResponse.redirect(quickbooksBrowserRedirect(path, request));
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -15,11 +20,11 @@ export async function GET(request: Request) {
   const realmId = url.searchParams.get("realmId") || url.searchParams.get("realmID");
   const state = url.searchParams.get("state") || "";
   if (error) {
-    return NextResponse.redirect(new URL(`/settings/quickbooks?error=${encodeURIComponent(error)}`, url.origin));
+    return toApp(quickbooksPostOAuthPath({ error }), request);
   }
   const row = await consumeOAuthState(state);
   if (!row || !code || row.providerKey !== QUICKBOOKS_PROVIDER_KEY) {
-    return NextResponse.redirect(new URL("/settings/quickbooks?error=Authorization+expired.+Start+again.", url.origin));
+    return toApp(quickbooksPostOAuthPath({ error: "Authorization expired. Start again." }), request);
   }
   if (!realmId) {
     await upsertConnection({
@@ -28,7 +33,7 @@ export async function GET(request: Request) {
       status: "ERROR",
       errorMessage: "QuickBooks did not return a company id.",
     });
-    return NextResponse.redirect(new URL("/settings/quickbooks?error=QuickBooks+did+not+return+a+company+id.", url.origin));
+    return toApp(quickbooksPostOAuthPath({ error: "QuickBooks did not return a company id." }), request);
   }
   try {
     const app = await loadQuickBooksAppCredentials(prisma, row.companyId);
@@ -58,10 +63,10 @@ export async function GET(request: Request) {
       metadata: { realmPresent: true, verified: verified.ok },
     });
     const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId: row.companyId } });
-    if (!settings?.wizardCompletedAt) {
-      return NextResponse.redirect(new URL("/settings/quickbooks/setup", url.origin));
-    }
-    return NextResponse.redirect(new URL("/settings/quickbooks?connected=1", url.origin));
+    return toApp(
+      quickbooksPostOAuthPath({ connected: true, wizardCompleted: Boolean(settings?.wizardCompletedAt) }),
+      request
+    );
   } catch {
     await upsertConnection({
       companyId: row.companyId,
@@ -69,6 +74,6 @@ export async function GET(request: Request) {
       status: "REAUTH_REQUIRED",
       errorMessage: "QuickBooks authorization failed. Connect again.",
     });
-    return NextResponse.redirect(new URL("/settings/quickbooks?error=QuickBooks+authorization+failed.", url.origin));
+    return toApp(quickbooksPostOAuthPath({ error: "QuickBooks authorization failed." }), request);
   }
 }

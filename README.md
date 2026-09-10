@@ -194,7 +194,7 @@ Example production: `https://YOUR-RAILWAY-HOST/api/integrations/google/callback`
 | `INTEGRATION_WEBHOOK_SECRET` | Optional HMAC for `/api/webhooks/[provider]` |
 | `QUICKBOOKS_CLIENT_ID` / `QUICKBOOKS_CLIENT_SECRET` | Intuit app credentials |
 | `QUICKBOOKS_ENVIRONMENT` | `sandbox` until Intuit approves production |
-| `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback` |
+| `QUICKBOOKS_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/quickbooks/callback`. Production never falls back to localhost. |
 | `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` | Marketplace **Client Key** from Auth → Client Keys (`24hex-suffix`), not the App/Version ID. Not required for a location Private Integration Token. |
 | `HIGHLEVEL_REDIRECT_URI` | Optional override; defaults to `{APP_URL}/api/integrations/oauth/callback`. Overrides containing `highlevel` are ignored. |
 
@@ -244,7 +244,7 @@ The inbound call should show in **Communications** (Inbox and Today’s calls) a
 |----------|----------|-------|
 | `DATABASE_URL` | Yes | Provided by Railway Postgres when linked |
 | `SESSION_SECRET` | Yes | 32+ random characters. Account create/login will fail without this. |
-| `APP_URL` | Yes | Public HTTPS URL of the service |
+| `APP_URL` | Yes | Public HTTPS URL of the service. Required for OAuth. Production QuickBooks never falls back to localhost. |
 | `UPLOAD_DIR` | Yes | e.g. `/data/uploads` with a volume |
 | `NODE_ENV` | Yes | `production` |
 | `OPENAI_API_KEY` | No | Server-side Intelligence wording and receipt suggestions. Receipts still work without it. Never expose to the browser. |
