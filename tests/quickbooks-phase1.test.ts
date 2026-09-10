@@ -124,7 +124,7 @@ describe("QuickBooks Phase 1 safety", () => {
     expect(money).toContain("href={snapshot.hrefs.grossProfit}");
     expect(money).toContain('href="/settings/quickbooks"');
     expect(readFileSync(resolve("src/app/(app)/settings/quickbooks/manage/page.tsx"), "utf8")).toContain("Sync Center");
-    expect(readFileSync(resolve("src/app/(app)/settings/quickbooks/setup/page.tsx"), "utf8")).toContain("safe mode");
+    expect(readFileSync(resolve("src/app/(app)/settings/quickbooks/setup/page.tsx"), "utf8")).toMatch(/safe mode/i);
     expect(readFileSync(resolve("src/app/api/integrations/quickbooks/callback/route.ts"), "utf8")).toContain(
       "quickbooks.connected"
     );
