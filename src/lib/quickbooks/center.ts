@@ -1,9 +1,10 @@
 import type { PrismaClient } from "@prisma/client";
 import { previewQuickBooksSync } from "@/lib/quickbooks/preview";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
+import { diagnoseCompanyInvoicePayments } from "@/lib/quickbooks/mappings";
 
 export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: string) {
-  const [preview, review, recent, customers] = await Promise.all([
+  const [preview, review, recent, customers, diagnosis] = await Promise.all([
     previewQuickBooksSync(prisma, companyId),
     prisma.quickBooksMapping.findMany({
       where: { companyId, status: { in: ["NEEDS_REVIEW", "FAILED"] } },
@@ -19,6 +20,7 @@ export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: 
       where: { companyId, entityType: "CUSTOMER", status: "NEEDS_REVIEW" },
       take: 30,
     }),
+    diagnoseCompanyInvoicePayments(prisma, companyId),
   ]);
 
   const customerIds = customers.map((row) => row.internalId);
@@ -46,5 +48,6 @@ export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: 
       mapping: row,
       customer: localCustomers.find((item) => item.id === row.internalId) ?? null,
     })),
+    diagnosis,
   };
 }

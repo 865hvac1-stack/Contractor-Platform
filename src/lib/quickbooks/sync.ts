@@ -17,7 +17,7 @@ import { humanQuickBooksError } from "@/lib/quickbooks/errors";
 import {
   ENTITY_INVOICE,
   ENTITY_PAYMENT,
-  INVOICE_MISSING_IN_QBO,
+  formatInvoicePaymentTrace,
   persistInvoiceMapping,
   persistPaymentMapping,
   resolveInvoiceItemMapping,
@@ -305,13 +305,14 @@ export async function syncInvoiceToQuickBooks(
     });
     const remote = await qboGetInvoice(transport, qbId);
     await persistInvoiceMapping(prisma, {
-      companyId: input.companyId,
+      companyId: invoice.companyId,
       invoiceId: invoice.id,
       quickbooksId: qbId,
       realmId: connection?.externalAccountId,
       syncToken: remote?.syncToken,
       qboBalance: remote?.balance != null ? `$${Number(remote.balance).toFixed(2)}` : null,
       qboTotal: remote?.total ?? null,
+      qboDocNumber: remote?.docNumber ?? invoice.invoiceNumber,
     });
     await recordEvent(prisma, {
       companyId: input.companyId,
@@ -368,28 +369,34 @@ export async function syncPaymentToQuickBooks(
     where: { companyId: input.companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
     select: { externalAccountId: true },
   });
-  const invoiceId = payment.invoice?.id || payment.invoiceId;
+  const invoiceId = payment.invoice.id;
   const invoiceMap = await resolveQuickBooksInvoiceMapping(prisma, {
-    companyId: input.companyId,
+    companyId: payment.invoice.companyId,
     invoiceId,
     realmId: connection?.externalAccountId,
+    paymentId: payment.id,
+    paymentInvoiceId: payment.invoiceId,
+    paymentCompanyId: payment.companyId,
+    invoice: {
+      id: payment.invoice.id,
+      companyId: payment.invoice.companyId,
+      invoiceNumber: payment.invoice.invoiceNumber,
+    },
   });
   if ("error" in invoiceMap) {
+    const traced = formatInvoicePaymentTrace(invoiceMap.trace);
     await recordEvent(prisma, {
       companyId: input.companyId,
       entityType: ENTITY_PAYMENT,
       internalId: payment.id,
       status: "NEEDS_REVIEW",
       action: "payment.sync",
-      errorMessage: invoiceMap.error,
+      errorMessage: traced,
     });
     return {
       ok: false,
       review: true,
-      error:
-        invoiceMap.error === INVOICE_MISSING_IN_QBO
-          ? "Sync the invoice first, then we can record this payment in QuickBooks."
-          : invoiceMap.error,
+      error: traced,
     };
   }
   try {

@@ -292,11 +292,14 @@ export async function persistInvoiceMapping(
     syncToken?: string | null;
     qboBalance?: string | null;
     qboTotal?: number | null;
+    qboDocNumber?: string | null;
   }
 ) {
   const identity = invoiceMappingIdentity({ companyId: input.companyId, invoiceId: input.invoiceId });
   const metadata = {
     realmId: input.realmId ?? null,
+    qboInvoiceId: input.quickbooksId,
+    qboDocNumber: input.qboDocNumber ?? null,
     qboBalance: input.qboBalance ?? null,
     qboTotal: input.qboTotal ?? null,
   };
@@ -373,6 +376,55 @@ async function loadInvoiceMappingRow(
   });
 }
 
+export type InvoicePaymentTrace = {
+  paymentId: string | null;
+  paymentInvoiceId: string | null;
+  paymentCompanyId: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  invoiceCompanyId: string | null;
+  lookupCompanyId: string | null;
+  lookupEntityType: string;
+  lookupInternalId: string | null;
+  realmId: string | null;
+  mappingFound: boolean;
+  mappingId: string | null;
+  mappingInternalId: string | null;
+  mappingCompanyId: string | null;
+  mappingQuickbooksId: string | null;
+  mappingStatus: string | null;
+  mappingRealmId: string | null;
+  eventInternalId: string | null;
+  eventQuickbooksId: string | null;
+  invoiceIdsEqual: boolean | null;
+  companyIdsEqual: boolean | null;
+  reason: string;
+};
+
+export function formatInvoicePaymentTrace(trace: InvoicePaymentTrace) {
+  return [
+    INVOICE_MISSING_IN_QBO,
+    `payment.id=${trace.paymentId ?? "null"}`,
+    `payment.invoiceId=${trace.paymentInvoiceId ?? "null"}`,
+    `invoice.id=${trace.invoiceId ?? "null"}`,
+    `invoice.invoiceNumber=${trace.invoiceNumber ?? "null"}`,
+    `payment.companyId=${trace.paymentCompanyId ?? "null"}`,
+    `invoice.companyId=${trace.invoiceCompanyId ?? "null"}`,
+    `lookup.companyId=${trace.lookupCompanyId ?? "null"}`,
+    `lookup.entityType=${trace.lookupEntityType}`,
+    `lookup.internalId=${trace.lookupInternalId ?? "null"}`,
+    `realmId=${trace.realmId ?? "null"}`,
+    `mapping.found=${trace.mappingFound}`,
+    `mapping.internalId=${trace.mappingInternalId ?? "null"}`,
+    `mapping.quickbooksId=${trace.mappingQuickbooksId ?? "null"}`,
+    `event.internalId=${trace.eventInternalId ?? "null"}`,
+    `event.quickbooksId=${trace.eventQuickbooksId ?? "null"}`,
+    `invoiceIdsEqual=${trace.invoiceIdsEqual}`,
+    `companyIdsEqual=${trace.companyIdsEqual}`,
+    `why=${trace.reason}`,
+  ].join(" | ");
+}
+
 async function healInvoiceMappingFromEvent(
   prisma: PrismaClient,
   input: { companyId: string; invoiceId: string; realmId?: string | null }
@@ -399,33 +451,160 @@ async function healInvoiceMappingFromEvent(
 
 export async function resolveQuickBooksInvoiceMapping(
   prisma: PrismaClient,
-  input: { companyId: string; invoiceId: string; realmId?: string | null }
-): Promise<{ quickbooksId: string; invoiceId: string; identity: ReturnType<typeof invoiceMappingIdentity> } | { error: string; review: true }> {
+  input: {
+    companyId: string;
+    invoiceId: string;
+    realmId?: string | null;
+    paymentId?: string | null;
+    paymentInvoiceId?: string | null;
+    paymentCompanyId?: string | null;
+    invoice?: { id: string; companyId: string; invoiceNumber: string } | null;
+  }
+): Promise<
+  | { quickbooksId: string; invoiceId: string; identity: ReturnType<typeof invoiceMappingIdentity> }
+  | { error: string; review: true; trace: InvoicePaymentTrace }
+> {
   const invoiceId = (input.invoiceId || "").trim();
-  if (!invoiceId) {
-    return { error: INVOICE_MISSING_IN_QBO, review: true };
-  }
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, companyId: input.companyId },
-    select: { id: true },
+  const baseTrace = (): InvoicePaymentTrace => ({
+    paymentId: input.paymentId ?? null,
+    paymentInvoiceId: input.paymentInvoiceId ?? null,
+    paymentCompanyId: input.paymentCompanyId ?? input.companyId,
+    invoiceId: invoiceId || null,
+    invoiceNumber: input.invoice?.invoiceNumber ?? null,
+    invoiceCompanyId: input.invoice?.companyId ?? null,
+    lookupCompanyId: input.companyId,
+    lookupEntityType: ENTITY_INVOICE,
+    lookupInternalId: invoiceId || null,
+    realmId: input.realmId ?? null,
+    mappingFound: false,
+    mappingId: null,
+    mappingInternalId: null,
+    mappingCompanyId: null,
+    mappingQuickbooksId: null,
+    mappingStatus: null,
+    mappingRealmId: null,
+    eventInternalId: null,
+    eventQuickbooksId: null,
+    invoiceIdsEqual:
+      input.paymentInvoiceId && invoiceId ? input.paymentInvoiceId === invoiceId : null,
+    companyIdsEqual: null,
+    reason: "unresolved",
   });
-  if (!invoice) {
-    return { error: INVOICE_MISSING_IN_QBO, review: true };
+
+  if (!invoiceId) {
+    return { error: INVOICE_MISSING_IN_QBO, review: true, trace: { ...baseTrace(), reason: "payment.invoiceId was empty" } };
   }
-  const canonical = invoiceMappingIdentity({ companyId: input.companyId, invoiceId: invoice.id });
-  let row = await loadInvoiceMappingRow(prisma, { companyId: input.companyId, invoiceId: invoice.id });
+
+  const invoice =
+    input.invoice && input.invoice.id === invoiceId
+      ? input.invoice
+      : await prisma.invoice.findFirst({
+          where: { id: invoiceId, companyId: input.companyId },
+          select: { id: true, companyId: true, invoiceNumber: true },
+        });
+  if (!invoice) {
+    return {
+      error: INVOICE_MISSING_IN_QBO,
+      review: true,
+      trace: { ...baseTrace(), reason: "no ContractorYou invoice row for payment.invoiceId" },
+    };
+  }
+
+  const lookupCompanyId = invoice.companyId;
+  const canonical = invoiceMappingIdentity({ companyId: lookupCompanyId, invoiceId: invoice.id });
+  let row = await loadInvoiceMappingRow(prisma, { companyId: lookupCompanyId, invoiceId: invoice.id });
+  let reason = row ? "canonical Invoice.id mapping" : "canonical mapping missing";
+
+  if ((!isPersistedQboId(row?.quickbooksId) || row?.status === "FAILED") && invoice.invoiceNumber) {
+    const byNumber = await loadInvoiceMappingRow(prisma, {
+      companyId: lookupCompanyId,
+      invoiceId: invoice.invoiceNumber,
+    });
+    if (byNumber && isPersistedQboId(byNumber.quickbooksId) && byNumber.status !== "FAILED") {
+      row = await persistInvoiceMapping(prisma, {
+        companyId: lookupCompanyId,
+        invoiceId: invoice.id,
+        quickbooksId: byNumber.quickbooksId,
+        realmId: input.realmId ?? metadataRealm(byNumber.metadata),
+      });
+      reason = "repaired legacy mapping keyed by invoiceNumber onto Invoice.id";
+    }
+  }
+
   if (!isPersistedQboId(row?.quickbooksId) || row?.status === "FAILED") {
-    row = await healInvoiceMappingFromEvent(prisma, {
-      companyId: input.companyId,
+    const healed = await healInvoiceMappingFromEvent(prisma, {
+      companyId: lookupCompanyId,
       invoiceId: invoice.id,
       realmId: input.realmId,
     });
+    if (healed) {
+      row = healed;
+      reason = "healed from invoice.create/update event";
+    } else if (invoice.invoiceNumber) {
+      const numberedEvent = await prisma.quickBooksSyncEvent.findFirst({
+        where: {
+          companyId: lookupCompanyId,
+          entityType: ENTITY_INVOICE,
+          internalId: invoice.invoiceNumber,
+          status: "SYNCED",
+          quickbooksId: { not: null },
+          action: { in: ["invoice.create", "invoice.update"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (isPersistedQboId(numberedEvent?.quickbooksId)) {
+        row = await persistInvoiceMapping(prisma, {
+          companyId: lookupCompanyId,
+          invoiceId: invoice.id,
+          quickbooksId: numberedEvent!.quickbooksId!,
+          realmId: input.realmId,
+        });
+        reason = "healed event keyed by invoiceNumber onto Invoice.id";
+      }
+    }
   }
+
+  const event = await prisma.quickBooksSyncEvent.findFirst({
+    where: {
+      companyId: lookupCompanyId,
+      entityType: ENTITY_INVOICE,
+      internalId: invoice.id,
+      status: "SYNCED",
+      action: { in: ["invoice.create", "invoice.update"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const trace: InvoicePaymentTrace = {
+    ...baseTrace(),
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    invoiceCompanyId: invoice.companyId,
+    lookupCompanyId,
+    lookupInternalId: invoice.id,
+    mappingFound: Boolean(row),
+    mappingId: row?.id ?? null,
+    mappingInternalId: row?.internalId ?? null,
+    mappingCompanyId: row?.companyId ?? null,
+    mappingQuickbooksId: row?.quickbooksId ?? null,
+    mappingStatus: row?.status ?? null,
+    mappingRealmId: metadataRealm(row?.metadata),
+    eventInternalId: event?.internalId ?? null,
+    eventQuickbooksId: event?.quickbooksId ?? null,
+    invoiceIdsEqual: (input.paymentInvoiceId || invoiceId) === invoice.id,
+    companyIdsEqual: (input.paymentCompanyId || input.companyId) === invoice.companyId,
+    reason,
+  };
+
   if (!isPersistedQboId(row?.quickbooksId)) {
-    return { error: INVOICE_MISSING_IN_QBO, review: true };
+    return {
+      error: INVOICE_MISSING_IN_QBO,
+      review: true,
+      trace: { ...trace, reason: `${reason}; no persisted QBO Invoice.Id for this Invoice.id` },
+    };
   }
   if (row!.status === "NEEDS_REVIEW" && row!.lastSyncError) {
-    return { error: row!.lastSyncError, review: true };
+    return { error: row!.lastSyncError, review: true, trace: { ...trace, reason: row!.lastSyncError } };
   }
   const savedRealm = metadataRealm(row!.metadata);
   if (input.realmId && savedRealm && savedRealm !== input.realmId) {
@@ -433,9 +612,92 @@ export async function resolveQuickBooksInvoiceMapping(
       ...canonical,
       error: "This invoice mapping belongs to a different QuickBooks company.",
     });
-    return { error: "This invoice mapping belongs to a different QuickBooks company.", review: true };
+    return {
+      error: "This invoice mapping belongs to a different QuickBooks company.",
+      review: true,
+      trace: { ...trace, reason: "realmId on mapping does not match connected realm" },
+    };
   }
   return { quickbooksId: row!.quickbooksId, invoiceId: invoice.id, identity: canonical };
+}
+
+export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, companyId: string) {
+  const [invoices, payments, mappings, events, connection] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { companyId, status: { notIn: ["DRAFT", "VOID"] } },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        companyId: true,
+        customerId: true,
+        jobId: true,
+        status: true,
+        totalCents: true,
+        amountPaidCents: true,
+        balanceCents: true,
+        sourceSystem: true,
+        externalId: true,
+        importMode: true,
+      },
+      take: 20,
+    }),
+    prisma.payment.findMany({
+      where: { companyId },
+      select: {
+        id: true,
+        companyId: true,
+        invoiceId: true,
+        customerId: true,
+        amountCents: true,
+        status: true,
+        provider: true,
+        sourceSystem: true,
+        externalId: true,
+        externalRef: true,
+        importMode: true,
+      },
+      take: 20,
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.quickBooksMapping.findMany({
+      where: { companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+    }),
+    prisma.quickBooksSyncEvent.findMany({
+      where: { companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.integrationConnection.findFirst({
+      where: { companyId, providerKey: "quickbooks_online" },
+      select: { externalAccountId: true },
+    }),
+  ]);
+  return {
+    realmId: connection?.externalAccountId ?? null,
+    invoices,
+    payments,
+    mappings: mappings.map((row) => ({
+      id: row.id,
+      companyId: row.companyId,
+      entityType: row.entityType,
+      internalId: row.internalId,
+      quickbooksId: row.quickbooksId,
+      status: row.status,
+      lastSyncError: row.lastSyncError,
+      metadata: row.metadata,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    })),
+    events: events.map((event) => ({
+      action: event.action,
+      entityType: event.entityType,
+      internalId: event.internalId,
+      quickbooksId: event.quickbooksId,
+      status: event.status,
+      errorMessage: event.errorMessage,
+      createdAt: event.createdAt,
+    })),
+  };
 }
 
 export async function resolveQuickBooksPaymentMapping(

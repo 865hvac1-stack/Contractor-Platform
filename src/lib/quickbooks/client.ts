@@ -193,11 +193,14 @@ export async function qboListExpenseAccounts(transport: QboTransport) {
 export async function qboGetInvoice(transport: QboTransport, id: string) {
   const result = await transport({ method: "GET", path: `/invoice/${id}` });
   if (!result.ok) return null;
-  const invoice = (result.json as { Invoice?: { Id?: string; Balance?: number; TotalAmt?: number; SyncToken?: string } })
-    ?.Invoice;
-  if (!invoice?.Id) return null;
+  const invoice = (result.json as {
+    Invoice?: { Id?: unknown; DocNumber?: string; Balance?: number; TotalAmt?: number; SyncToken?: string };
+  })?.Invoice;
+  const invoiceId = qboEntityId(invoice?.Id);
+  if (!invoice || !invoiceId) return null;
   return {
-    id: invoice.Id,
+    id: invoiceId,
+    docNumber: invoice.DocNumber || null,
     balance: invoice.Balance ?? null,
     total: invoice.TotalAmt ?? null,
     syncToken: invoice.SyncToken ?? null,

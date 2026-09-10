@@ -77,6 +77,16 @@ export default async function QuickBooksManagePage() {
         </div>
       </section>
 
+      <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+        <h2 className="font-medium">Payment sync diagnosis</h2>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Safe IDs only. Compare payment.invoiceId to the INVOICE mapping internalId and the invoice.create event.
+        </p>
+        <pre className="overflow-x-auto rounded-lg bg-white p-3 text-xs leading-5">
+          {JSON.stringify(center.diagnosis, null, 2)}
+        </pre>
+      </section>
+
       <section className="space-y-2 rounded-2xl border border-[var(--border)] bg-white p-5">
         <h2 className="font-medium">Products / Services</h2>
         <p className="text-sm text-[var(--muted-foreground)]">
