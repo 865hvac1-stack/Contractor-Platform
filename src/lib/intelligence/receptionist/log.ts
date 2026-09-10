@@ -13,19 +13,44 @@ export function logReceptionistTurn(input: {
   outboundSent?: boolean;
   handoffReason?: string | null;
   errorCode?: string | null;
+  receptionistTurnId?: string | null;
+  confidence?: number | null;
+  activeWorkflow?: string | null;
+  requestedAction?: string | null;
+  toolUsed?: string | null;
+  latencyMs?: number | null;
+  provider?: string | null;
+  model?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  shadow?: boolean;
+  mode?: string | null;
 }) {
   const safe = {
+    companyId: input.companyId,
     conversationId: input.threadId,
     inboundProviderMessageId: input.inboundMessageId,
+    receptionistTurnId: input.receptionistTurnId ?? null,
     resolvedCustomerId: input.customerId ?? null,
     resolvedPropertyId: input.propertyId ?? null,
     detectedIntent: input.intent,
-    schedulingState: input.schedulingState ?? null,
+    confidence: input.confidence ?? null,
+    activeWorkflow: input.activeWorkflow ?? null,
+    activeSchedulingState: input.schedulingState ?? null,
+    requestedAction: input.requestedAction ?? null,
+    toolUsed: input.toolUsed ?? null,
     availabilityResultCount: input.availabilityCount ?? 0,
     bookingResult: input.bookingResult ?? null,
     outboundSent: Boolean(input.outboundSent),
     handoffReason: input.handoffReason ?? null,
     errorCode: input.errorCode ?? null,
+    latencyMs: input.latencyMs ?? null,
+    provider: input.provider ?? null,
+    model: input.model ?? null,
+    inputTokens: input.inputTokens ?? null,
+    outputTokens: input.outputTokens ?? null,
+    shadow: Boolean(input.shadow),
+    mode: input.mode ?? null,
   };
   console.info("[receptionist]", JSON.stringify(safe));
 }

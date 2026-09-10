@@ -2040,6 +2040,26 @@ model CompanyAiReceptionistSetting {
   allowSameDayBooking     Boolean  @default(true)
   humanHandoffFallback    Boolean  @default(true)
   businessHoursBehavior   String   @default("ALWAYS")
+  mode                    String   @default("HIGHLEVEL_REGINA")
+  tone                    String   @default("warm")
+  responseLength          String   @default("short")
+  companyDescription      String?
+  businessHoursText       String?
+  afterHoursBehavior      String   @default("OFFER_CALLBACK")
+  serviceAreaNote         String?
+  servicesOffered         String?
+  emergencyGuidance       String?
+  handoffRules            String?
+  useCustomerFirstName    Boolean  @default(true)
+  allowScheduling         Boolean  @default(true)
+  allowRescheduling       Boolean  @default(true)
+  allowCancellations      Boolean  @default(true)
+  allowJobStatus          Boolean  @default(true)
+  allowInvoiceQuestions   Boolean  @default(true)
+  allowEstimateQuestions  Boolean  @default(true)
+  allowMembershipQuestions Boolean @default(true)
+  allowWaitingQuestions   Boolean  @default(true)
+  knowledgeJson           Json?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -2061,6 +2081,21 @@ model ReceptionistTurn {
   handoffReason      String?
   errorCode          String?
   durationMs         Int      @default(0)
+  mode               String?
+  proposedResponse   String?
+  actualResponse     String?
+  confidence         Float?
+  requestedAction    String?
+  extractedFields    Json?
+  verifiedFacts      Json?
+  provider           String?
+  model              String?
+  inputTokens        Int      @default(0)
+  outputTokens       Int      @default(0)
+  costMicrousd       Int      @default(0)
+  shadow             Boolean  @default(false)
+  toolUsed           String?
+  activeWorkflow     String?
   createdAt          DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -2068,6 +2103,7 @@ model ReceptionistTurn {
   @@unique([companyId, inboundMessageId])
   @@index([companyId, threadId, createdAt])
   @@index([companyId, createdAt])
+  @@index([companyId, shadow, createdAt])
 }
 
 model AIConversation {

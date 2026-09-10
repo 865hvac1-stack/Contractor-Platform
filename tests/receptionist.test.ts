@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { canonicalizeUsPhone } from "@/lib/phone";
-import { receptionistShouldHandleInbound } from "@/lib/intelligence/receptionist/settings";
+import { DEFAULT_RECEPTIONIST_SETTINGS, receptionistShouldHandleInbound } from "@/lib/intelligence/receptionist/settings";
 import { sanitizeCustomerSms } from "@/lib/intelligence/receptionist/sanitize";
 import { fallbackReceptionistPlan } from "@/lib/intelligence/receptionist/understand";
 import { logReceptionistTurn } from "@/lib/intelligence/receptionist/log";
@@ -136,13 +136,5 @@ describe("ContractorYou AI receptionist", () => {
 });
 
 function baseSettings() {
-  return {
-    enabled: true,
-    assistantName: "Regina",
-    autoReplyInboundSms: true,
-    autoBookServiceCalls: true,
-    allowSameDayBooking: true,
-    humanHandoffFallback: true,
-    businessHoursBehavior: "ALWAYS",
-  };
+  return { ...DEFAULT_RECEPTIONIST_SETTINGS, enabled: true };
 }

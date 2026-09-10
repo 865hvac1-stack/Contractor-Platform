@@ -54,6 +54,26 @@ export type ReceptionistSettings = {
   allowSameDayBooking: boolean;
   humanHandoffFallback: boolean;
   businessHoursBehavior: string;
+  mode: string;
+  tone: string;
+  responseLength: string;
+  companyDescription: string | null;
+  businessHoursText: string | null;
+  afterHoursBehavior: string;
+  serviceAreaNote: string | null;
+  servicesOffered: string | null;
+  emergencyGuidance: string | null;
+  handoffRules: string | null;
+  useCustomerFirstName: boolean;
+  allowScheduling: boolean;
+  allowRescheduling: boolean;
+  allowCancellations: boolean;
+  allowJobStatus: boolean;
+  allowInvoiceQuestions: boolean;
+  allowEstimateQuestions: boolean;
+  allowMembershipQuestions: boolean;
+  allowWaitingQuestions: boolean;
+  knowledgeJson: unknown;
 };
 
 export const SCHEDULING_INTENTS: ReceptionistIntent[] = [

@@ -400,8 +400,12 @@ export async function processHighLevelWebhook(
           const { loadReceptionistSettings, receptionistShouldHandleInbound } = await import(
             "@/lib/intelligence/receptionist/settings"
           );
+          const { parseReceptionistV2Mode } = await import("@/lib/intelligence/receptionist/v2/types");
           const receptionist = await loadReceptionistSettings(input.companyId);
-          if (receptionistShouldHandleInbound(receptionist)) {
+          const v2Mode = parseReceptionistV2Mode(receptionist.mode);
+          if (v2Mode === "CONTRACTORYOU_AI" || v2Mode === "OFFICE_ONLY") {
+            // V2 live or office-only: do not also run V1 / deterministic auto-reply.
+          } else if (receptionistShouldHandleInbound(receptionist)) {
             const { processInboundReceptionist } = await import("@/lib/intelligence/receptionist/inbound");
             await processInboundReceptionist(inbound);
           } else {
@@ -409,8 +413,34 @@ export async function processHighLevelWebhook(
             await processInboundScheduling(inbound);
           }
         }
+        try {
+          const { maybeRunReceptionistV2 } = await import("@/lib/intelligence/receptionist/v2/inbound");
+          await maybeRunReceptionistV2({
+            companyId: inbound.companyId,
+            threadId: inbound.threadId,
+            customerId: inbound.customerId,
+            messageId: inbound.messageId,
+            body: inbound.body,
+            phone: inbound.phone,
+            contactId: fields.contactId,
+            skipLiveSend: session.handled,
+          });
+        } catch (error) {
+          console.error("[receptionist-v2] observe failed", error);
+        }
       } catch (error) {
         console.error("[scheduling] inbound conversation handler failed", error);
+      }
+    } else if (comms?.thread.id && comms.message && (fields.direction || comms.message.direction || "").toLowerCase() === "outbound") {
+      try {
+        const { attachOutboundToLatestShadowTurn } = await import("@/lib/intelligence/receptionist/v2/inbound");
+        await attachOutboundToLatestShadowTurn({
+          companyId: input.companyId,
+          threadId: comms.thread.id,
+          body: fields.body,
+        });
+      } catch (error) {
+        console.error("[receptionist-v2] attach outbound failed", error);
       }
     }
   }

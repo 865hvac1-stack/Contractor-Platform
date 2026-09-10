@@ -19,7 +19,10 @@ import { AgentToolSettings } from "@/components/highlevel/agent-tool-settings";
 import { loadSchedulingIntegrationStatus } from "@/lib/agent-tools/scheduling-session";
 import { ConversationOwnerForm } from "@/components/highlevel/conversation-owner-form";
 import { ReceptionistSettingsForm } from "@/components/highlevel/receptionist-settings-form";
+import { ReceptionistV2Review } from "@/components/highlevel/receptionist-v2-review";
 import { loadReceptionistSettings } from "@/lib/intelligence/receptionist/settings";
+import { loadReceptionistV2Review } from "@/lib/intelligence/receptionist/v2/inbound";
+import { loadReceptionistV2Usage } from "@/lib/intelligence/receptionist/v2/usage";
 import { HighLevelSettingsForm } from "@/components/highlevel/settings-form";
 import { parseCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,7 +84,7 @@ export default async function HighLevelSettingsPage({
 }) {
   const ctx = await requirePermission("marketing:manage");
   const { error, connected, test_connected: testConnected } = await searchParams;
-  const [testGrantRow, sandboxEnabled, agentToolKeys, agentToolCalls, schedulingStatus] = await Promise.all([
+  const [testGrantRow, sandboxEnabled, agentToolKeys, agentToolCalls, schedulingStatus, receptionistSettings, receptionistReview, receptionistUsage] = await Promise.all([
     getHighLevelTestGrant(prisma, ctx.company.id),
     companyAllowsExternalIntegrationTesting(ctx.company.id, prisma),
     prisma.agentToolCredential.findMany({
@@ -96,6 +99,9 @@ export default async function HighLevelSettingsPage({
       select: { id: true, tool: true, success: true, errorCode: true, customerId: true, jobId: true, createdAt: true },
     }),
     loadSchedulingIntegrationStatus(ctx.company.id),
+    loadReceptionistSettings(ctx.company.id),
+    loadReceptionistV2Review(ctx.company.id),
+    loadReceptionistV2Usage(ctx.company.id),
   ]);
   const testGrant = toHighLevelTestGrantView(testGrantRow);
   const resolved = await resolveHighLevelConnection(prisma, ctx.company.id);
@@ -368,7 +374,8 @@ export default async function HighLevelSettingsPage({
       </Card>
 
       <ConversationOwnerForm value={parseCustomerConversationOwner(ctx.company.customerConversationOwner)} />
-      <ReceptionistSettingsForm settings={await loadReceptionistSettings(ctx.company.id)} />
+      <ReceptionistSettingsForm settings={receptionistSettings} />
+      <ReceptionistV2Review rows={receptionistReview} usage={receptionistUsage} timezone={ctx.company.timezone} />
       <AgentToolSettings
         keys={agentToolKeys.map((row) => ({
           id: row.id,
