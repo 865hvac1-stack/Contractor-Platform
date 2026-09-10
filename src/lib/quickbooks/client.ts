@@ -131,30 +131,63 @@ export async function qboCompanyInfo(
   return info?.CompanyName ? { name: info.CompanyName } : null;
 }
 
+function asRows<T>(value: T | T[] | undefined | null): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function qboEntityId(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object" && value && "value" in value) return String((value as { value?: unknown }).value ?? "");
+  return "";
+}
+
 export async function qboListItems(transport: QboTransport) {
   const result = await transport({
     method: "GET",
     path: "/query",
-    query: "select Id, Name, Type from Item where Active = true maxresults 100",
+    query: "select * from Item where Active = true MAXRESULTS 200",
   });
   if (!result.ok) return [];
-  const rows = (result.json as { QueryResponse?: { Item?: Array<{ Id?: string; Name?: string; Type?: string }> } })
-    ?.QueryResponse?.Item;
-  if (!Array.isArray(rows)) return [];
-  return rows.flatMap((row) => (row.Id && row.Name ? [{ id: row.Id, name: row.Name, type: row.Type || "Service" }] : []));
+  const rows = asRows(
+    (result.json as { QueryResponse?: { Item?: Array<{ Id?: unknown; Name?: string; Type?: string; Active?: boolean }> } })
+      ?.QueryResponse?.Item
+  );
+  return rows.flatMap((row) => {
+    const id = qboEntityId(row.Id);
+    const name = row.Name?.trim();
+    if (!id || !name) return [];
+    return [{ id, name, type: row.Type || "Service", active: row.Active !== false }];
+  });
+}
+
+export async function qboGetItem(transport: QboTransport, id: string) {
+  const result = await transport({ method: "GET", path: `/item/${id}` });
+  if (!result.ok) return null;
+  const item = (result.json as { Item?: { Id?: unknown; Name?: string; Active?: boolean; Type?: string } })?.Item;
+  const itemId = qboEntityId(item?.Id);
+  if (!itemId) return null;
+  return { id: itemId, name: item?.Name || "", type: item?.Type || "Service", active: item?.Active !== false };
 }
 
 export async function qboListExpenseAccounts(transport: QboTransport) {
   const result = await transport({
     method: "GET",
     path: "/query",
-    query: "select Id, Name, AccountType from Account where Active = true and AccountType = 'Expense' maxresults 100",
+    query: "select * from Account where Active = true and AccountType = 'Expense' MAXRESULTS 200",
   });
   if (!result.ok) return [];
-  const rows = (result.json as { QueryResponse?: { Account?: Array<{ Id?: string; Name?: string; AccountType?: string }> } })
-    ?.QueryResponse?.Account;
-  if (!Array.isArray(rows)) return [];
-  return rows.flatMap((row) => (row.Id && row.Name ? [{ id: row.Id, name: row.Name, type: row.AccountType || "Expense" }] : []));
+  const rows = asRows(
+    (result.json as { QueryResponse?: { Account?: Array<{ Id?: unknown; Name?: string; AccountType?: string; Active?: boolean }> } })
+      ?.QueryResponse?.Account
+  );
+  return rows.flatMap((row) => {
+    const id = qboEntityId(row.Id);
+    const name = row.Name?.trim();
+    if (!id || !name) return [];
+    return [{ id, name, type: row.AccountType || "Expense", active: row.Active !== false }];
+  });
 }
 
 export async function qboGetInvoice(transport: QboTransport, id: string) {
@@ -232,7 +265,7 @@ export async function qboCreateOrUpdateInvoice(
     txnDate: string;
     dueDate?: string | null;
     memo?: string | null;
-    lines: { description: string; quantity: number; unitPrice: number; amount: number; itemId?: string | null }[];
+    lines: { description: string; quantity: number; unitPrice: number; amount: number; itemId?: string | null; itemName?: string | null }[];
   }
 ): Promise<string> {
   const line = input.lines.length
@@ -243,7 +276,7 @@ export async function qboCreateOrUpdateInvoice(
         SalesItemLineDetail: {
           Qty: item.quantity,
           UnitPrice: item.unitPrice,
-          ...(item.itemId ? { ItemRef: { value: item.itemId } } : {}),
+          ...(item.itemId ? { ItemRef: { value: item.itemId, name: item.itemName || undefined } } : {}),
         },
       }))
     : [{ Amount: 0, DetailType: "SalesItemLineDetail", Description: "ContractorYou invoice", SalesItemLineDetail: { Qty: 1, UnitPrice: 0 } }];

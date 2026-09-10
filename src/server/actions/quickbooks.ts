@@ -16,8 +16,9 @@ import { canAutoSyncInvoice, syncExpenseToQuickBooks, syncInvoiceToQuickBooks, s
 import { runQuickBooksSync } from "@/lib/quickbooks/engine";
 import { verifyQuickBooksCompany } from "@/lib/quickbooks/verify";
 import { resolveSyncStartDate, type SyncStartOption } from "@/lib/quickbooks/dates";
-import { qboCreateCustomer, qboSearchCustomers } from "@/lib/quickbooks/client";
+import { qboCreateCustomer, qboListExpenseAccounts, qboListItems, qboSearchCustomers } from "@/lib/quickbooks/client";
 import { upsertMapping } from "@/lib/quickbooks/sync";
+import { saveCompanyItemMappings } from "@/lib/quickbooks/mappings";
 import type { QuickBooksInvoiceTrigger } from "@prisma/client";
 
 export async function saveQuickBooksSettingsAction(
@@ -267,32 +268,25 @@ export async function saveQuickBooksItemMappingsAction(
   try {
     const ctx = await requirePermission("accounting:manage");
     const defaultItemId = String(formData.get("defaultItemId") || "").trim();
-    if (defaultItemId) {
-      await upsertMapping(prisma, {
-        companyId: ctx.company.id,
-        entityType: "DEFAULT_ITEM",
-        internalId: "default",
-        quickbooksId: defaultItemId,
-      });
-    }
-    for (const [key, value] of formData.entries()) {
-      if (!key.startsWith("serviceItem:") || typeof value !== "string" || !value.trim()) continue;
-      await upsertMapping(prisma, {
-        companyId: ctx.company.id,
-        entityType: "SERVICE_ITEM",
-        internalId: key.slice("serviceItem:".length),
-        quickbooksId: value.trim(),
-      });
-    }
     const expenseAccountId = String(formData.get("expenseAccountId") || "").trim();
-    if (expenseAccountId) {
-      await upsertMapping(prisma, {
-        companyId: ctx.company.id,
-        entityType: "EXPENSE_ACCOUNT",
-        internalId: "default",
-        quickbooksId: expenseAccountId,
-      });
-    }
+    const serviceItems = [...formData.entries()].flatMap(([key, value]) => {
+      if (!key.startsWith("serviceItem:") || typeof value !== "string" || !value.trim()) return [];
+      return [{ serviceTypeId: key.slice("serviceItem:".length), quickbooksId: value.trim() }];
+    });
+    const loaded = await loadQuickBooksTransport(ctx.company.id);
+    const connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
+    const activeItems = loaded.ok ? await qboListItems(loaded.transport) : [];
+    const activeAccounts = loaded.ok ? await qboListExpenseAccounts(loaded.transport) : [];
+    const saved = await saveCompanyItemMappings(prisma, {
+      companyId: ctx.company.id,
+      realmId: connection?.externalAccountId,
+      defaultItemId,
+      serviceItems,
+      expenseAccountId,
+      activeItems: activeItems.length ? activeItems : undefined,
+      activeAccounts: activeAccounts.length ? activeAccounts : undefined,
+    });
+    if (!saved.ok) return { ok: false, error: saved.error };
     const trigger = String(formData.get("invoiceSyncTrigger") || "") as QuickBooksInvoiceTrigger;
     if (
       trigger &&

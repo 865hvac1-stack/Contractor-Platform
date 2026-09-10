@@ -6,6 +6,7 @@ import { getCompanyConnection } from "@/lib/integrations/store";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { getQuickBooksSettings } from "@/lib/quickbooks/connection";
 import { loadQuickBooksSyncCenter } from "@/lib/quickbooks/center";
+import { listCompanyItemMappings } from "@/lib/quickbooks/mappings";
 import { formatDateTime } from "@/lib/datetime";
 import {
   createQuickBooksCustomerAction,
@@ -22,10 +23,11 @@ import { cn } from "@/lib/utils";
 export default async function QuickBooksManagePage() {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
-  const [connection, settings, center] = await Promise.all([
+  const [connection, settings, center, mappings] = await Promise.all([
     getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
     getQuickBooksSettings(ctx.company.id),
     loadQuickBooksSyncCenter(prisma, ctx.company.id),
+    listCompanyItemMappings(prisma, ctx.company.id),
   ]);
   const preview = center.preview;
 
@@ -73,6 +75,18 @@ export default async function QuickBooksManagePage() {
             </Link>
           </div>
         </div>
+      </section>
+
+      <section className="space-y-2 rounded-2xl border border-[var(--border)] bg-white p-5">
+        <h2 className="font-medium">Products / Services</h2>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          {mappings.defaultItem
+            ? `Default: ${mappings.defaultItem.name || "QuickBooks item"} · ID ${mappings.defaultItem.quickbooksId}`
+            : "No default Product/Service is saved. Invoice sync will wait until you map one."}
+        </p>
+        <Link href="/settings/quickbooks/setup?step=4" className="text-sm text-[var(--cy-orange)]">
+          Edit mappings →
+        </Link>
       </section>
 
       <section id="review" className="space-y-3 rounded-2xl border border-[var(--border)] bg-white p-5">

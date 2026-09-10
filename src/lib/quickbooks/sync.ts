@@ -8,11 +8,13 @@ import {
   qboCreatePayment,
   qboCreatePurchase,
   qboGetInvoice,
+  qboListItems,
   qboSearchCustomers,
   type QboTransport,
 } from "@/lib/quickbooks/client";
 import { decideCustomerMatch } from "@/lib/quickbooks/match";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
+import { resolveInvoiceItemMapping } from "@/lib/quickbooks/mappings";
 
 export function canAutoSyncInvoice(input: {
   trigger: QuickBooksInvoiceTrigger;
@@ -204,17 +206,20 @@ export async function resolveQuickBooksCustomer(
   return { error: humanQuickBooksError({ missing: "customer" }), review: true };
 }
 
-async function resolveInvoiceItemId(prisma: PrismaClient, companyId: string, serviceTypeId?: string | null) {
-  if (serviceTypeId) {
-    const mapped = await prisma.quickBooksMapping.findFirst({
-      where: { companyId, entityType: "SERVICE_ITEM", internalId: serviceTypeId, status: "SYNCED" },
-    });
-    if (mapped) return mapped.quickbooksId;
-  }
-  const fallback = await prisma.quickBooksMapping.findFirst({
-    where: { companyId, entityType: "DEFAULT_ITEM", status: "SYNCED" },
+async function resolveInvoiceItem(
+  prisma: PrismaClient,
+  transport: QboTransport,
+  input: { companyId: string; serviceTypeId?: string | null; realmId?: string | null }
+) {
+  const items = await qboListItems(transport);
+  const resolved = await resolveInvoiceItemMapping(prisma, {
+    companyId: input.companyId,
+    serviceTypeId: input.serviceTypeId,
+    realmId: input.realmId,
+    activeItems: items.length ? items : undefined,
   });
-  return fallback?.quickbooksId ?? null;
+  if ("error" in resolved) return resolved;
+  return resolved;
 }
 
 export async function syncInvoiceToQuickBooks(
@@ -231,17 +236,25 @@ export async function syncInvoiceToQuickBooks(
   });
   if (!invoice) return { ok: false, error: "Invoice not found." };
   try {
-    const itemId = await resolveInvoiceItemId(prisma, input.companyId, invoice.serviceTypeId);
-    if (!itemId) {
+    const connection = await prisma.integrationConnection.findFirst({
+      where: { companyId: input.companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
+      select: { externalAccountId: true },
+    });
+    const item = await resolveInvoiceItem(prisma, transport, {
+      companyId: input.companyId,
+      serviceTypeId: invoice.serviceTypeId,
+      realmId: connection?.externalAccountId,
+    });
+    if ("error" in item) {
       await recordEvent(prisma, {
         companyId: input.companyId,
         entityType: "INVOICE",
         internalId: invoice.id,
         status: "NEEDS_REVIEW",
         action: "invoice.sync",
-        errorMessage: humanQuickBooksError({ missing: "item" }),
+        errorMessage: item.error,
       });
-      return { ok: false, error: humanQuickBooksError({ missing: "item" }) };
+      return { ok: false, error: item.error };
     }
     const customer = await resolveQuickBooksCustomer(prisma, transport, {
       companyId: input.companyId,
@@ -274,7 +287,8 @@ export async function syncInvoiceToQuickBooks(
         quantity: Number(line.quantity),
         unitPrice: line.unitPriceCents / 100,
         amount: lineTotalCents(Number(line.quantity), line.unitPriceCents) / 100,
-        itemId,
+        itemId: item.itemId,
+        itemName: item.name,
       })),
     });
     const remote = await qboGetInvoice(transport, qbId);

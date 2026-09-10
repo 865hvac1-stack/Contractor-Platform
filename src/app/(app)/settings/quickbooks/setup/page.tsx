@@ -8,17 +8,16 @@ import { getQuickBooksSettings, loadQuickBooksTransport } from "@/lib/quickbooks
 import { previewQuickBooksSync } from "@/lib/quickbooks/preview";
 import { qboListExpenseAccounts, qboListItems } from "@/lib/quickbooks/client";
 import { syncStartOptionFromDate } from "@/lib/quickbooks/dates";
-import { INVOICE_TRIGGER_COPY } from "@/lib/quickbooks/status";
 import {
   refreshQuickBooksCompanyAction,
-  saveQuickBooksItemMappingsAction,
   saveQuickBooksWizardAction,
 } from "@/server/actions/quickbooks";
 import { ActionForm } from "@/components/action-form";
+import { QuickBooksItemMappingForm } from "@/components/quickbooks-item-mapping-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { listCompanyItemMappings } from "@/lib/quickbooks/mappings";
 
 const STEPS = [
   { key: "1", title: "Verify company" },
@@ -47,15 +46,14 @@ export default async function QuickBooksSetupPage({
       where: { companyId: ctx.company.id, active: true },
       orderBy: { sortOrder: "asc" },
     }),
-    prisma.quickBooksMapping.findMany({
-      where: { companyId: ctx.company.id, entityType: { in: ["SERVICE_ITEM", "DEFAULT_ITEM", "EXPENSE_ACCOUNT"] } },
-    }),
+    listCompanyItemMappings(prisma, ctx.company.id),
   ]);
   const loaded = await loadQuickBooksTransport(ctx.company.id);
   const items = loaded.ok ? await qboListItems(loaded.transport) : [];
   const accounts = loaded.ok ? await qboListExpenseAccounts(loaded.transport) : [];
-  const defaultItem = mappings.find((row) => row.entityType === "DEFAULT_ITEM")?.quickbooksId ?? "";
-  const expenseAccount = mappings.find((row) => row.entityType === "EXPENSE_ACCOUNT")?.quickbooksId ?? "";
+  const defaultItem = mappings.defaultItem?.quickbooksId ?? "";
+  const expenseAccount = mappings.expenseAccount?.quickbooksId ?? "";
+  const serviceMappings = Object.fromEntries(mappings.serviceItems.map((row) => [row.internalId, row.quickbooksId]));
   const startOption = syncStartOptionFromDate(settings.syncStartDate);
   const next = String(Math.min(Number(step) + 1, 7));
   const prev = String(Math.max(Number(step) - 1, 1));
@@ -151,96 +149,22 @@ export default async function QuickBooksSetupPage({
       ) : null}
 
       {step === "4" || step === "5" ? (
-        <ActionForm action={saveQuickBooksItemMappingsAction} className="space-y-4 rounded-2xl border border-[var(--border)] bg-white p-6">
-          <h2 className="font-medium">{step === "4" ? "Products / Services mapping" : "Accounting preferences"}</h2>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            ContractorYou service types are not QuickBooks items. Map them, or invoices stay in Needs mapping.
-          </p>
-          {items.length === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              We could not load QuickBooks items yet. You can still paste a Product/Service ID.
-            </p>
-          ) : null}
-          <div className="space-y-2">
-            <Label htmlFor="defaultItemId">Default QuickBooks Product/Service</Label>
-            {items.length ? (
-              <select id="defaultItemId" name="defaultItemId" defaultValue={defaultItem} className="h-10 w-full rounded-lg border border-input px-3 text-sm">
-                <option value="">Choose one</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <Input id="defaultItemId" name="defaultItemId" defaultValue={defaultItem} placeholder="QuickBooks item ID" />
-            )}
-          </div>
-          {serviceTypes.map((service) => {
-            const mapped = mappings.find((row) => row.entityType === "SERVICE_ITEM" && row.internalId === service.id)?.quickbooksId ?? "";
-            return (
-              <div key={service.id} className="space-y-2">
-                <Label htmlFor={`serviceItem:${service.id}`}>{service.name}</Label>
-                {items.length ? (
-                  <select
-                    id={`serviceItem:${service.id}`}
-                    name={`serviceItem:${service.id}`}
-                    defaultValue={mapped}
-                    className="h-10 w-full rounded-lg border border-input px-3 text-sm"
-                  >
-                    <option value="">Use default</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input name={`serviceItem:${service.id}`} defaultValue={mapped} placeholder="QuickBooks item ID" />
-                )}
-              </div>
-            );
-          })}
-          {step === "5" ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="expenseAccountId">Default expense account</Label>
-                {accounts.length ? (
-                  <select
-                    id="expenseAccountId"
-                    name="expenseAccountId"
-                    defaultValue={expenseAccount}
-                    className="h-10 w-full rounded-lg border border-input px-3 text-sm"
-                  >
-                    <option value="">Choose one</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input id="expenseAccountId" name="expenseAccountId" defaultValue={expenseAccount} placeholder="QuickBooks expense account ID" />
-                )}
-              </div>
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Invoice push after activation</legend>
-                {INVOICE_TRIGGER_COPY.map((option) => (
-                  <label key={option.value} className="flex gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="invoiceSyncTrigger"
-                      value={option.value}
-                      defaultChecked={settings.invoiceSyncTrigger === option.value}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </fieldset>
-            </>
-          ) : null}
-          <Button type="submit">Save mappings</Button>
-        </ActionForm>
+        <QuickBooksItemMappingForm
+          key={`qb-items-${step}-${defaultItem}-${expenseAccount}`}
+          title={step === "4" ? "Products / Services mapping" : "Accounting preferences"}
+          help="ContractorYou service types are not QuickBooks items. Map them, or invoices stay in Needs mapping."
+          items={items}
+          accounts={accounts}
+          defaultItemId={defaultItem}
+          defaultItemName={mappings.defaultItem?.name}
+          defaultItemStatus={mappings.defaultItem?.status}
+          defaultItemError={mappings.defaultItem?.lastSyncError}
+          serviceTypes={serviceTypes.map((service) => ({ id: service.id, name: service.name }))}
+          serviceMappings={serviceMappings}
+          expenseAccountId={expenseAccount}
+          showAccounting={step === "5"}
+          invoiceSyncTrigger={settings.invoiceSyncTrigger}
+        />
       ) : null}
 
       {step === "5" ? (
