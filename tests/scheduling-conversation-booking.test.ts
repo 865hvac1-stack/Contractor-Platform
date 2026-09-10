@@ -11,6 +11,8 @@ import {
 } from "@/lib/scheduling/conversation-turn";
 import {
   extractCustomerConcern,
+  formatPropertyDisplay,
+  hasReliableCustomerName,
   jobDescriptionFromConcern,
   matchPropertyFromText,
   parsePersonName,
@@ -275,6 +277,26 @@ describe("customer and property resolution", () => {
     expect(parsePersonName("TJ Hurst")).toEqual({ firstName: "TJ", lastName: "Hurst" });
     expect(parsePersonName("John Smith")).toEqual({ firstName: "John", lastName: "Smith" });
     expect(parsePersonName("My name is John Smith")).toEqual({ firstName: "John", lastName: "Smith" });
+    expect(parsePersonName("Yes")).toBeNull();
+    expect(parsePersonName("Yes next steps please")).toBeNull();
+    expect(parsePersonName("yep")).toBeNull();
+    expect(parsePersonName("okay")).toBeNull();
+    expect(parsePersonName("sure")).toBeNull();
+    expect(parsePersonName("sounds good")).toBeNull();
+    expect(hasReliableCustomerName("Yes")).toBe(false);
+    expect(hasReliableCustomerName("TJ")).toBe(true);
+    expect(parseServiceAddress("7409 Openview lane Corryton tn 37721")).toEqual({
+      street: "7409 Openview Lane",
+      city: "Corryton",
+      state: "TN",
+      zip: "37721",
+    });
+    expect(formatPropertyDisplay({
+      address: "7409 Openview Lane",
+      city: "Corryton",
+      state: "TN",
+      zip: "37721",
+    })).toBe("7409 Openview Lane, Corryton, TN 37721");
     expect(parseServiceAddress("123 Main Street, Knoxville TN 37918")).toEqual({
       street: "123 Main Street",
       city: "Knoxville",

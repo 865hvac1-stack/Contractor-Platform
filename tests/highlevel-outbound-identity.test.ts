@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HIGHLEVEL_PROVIDER_KEY } from "@/lib/highlevel/config";
 
-const { prisma, getHighLevelContact, upsertHighLevelContact, sendHighLevelSms } = vi.hoisted(() => ({
+const { prisma, getHighLevelContact, upsertHighLevelContact, sendHighLevelSms, resolveApprovedSenderNumber } = vi.hoisted(() => ({
   prisma: {
     customer: { findFirst: vi.fn() },
     providerIdentityMap: {
@@ -17,6 +17,7 @@ const { prisma, getHighLevelContact, upsertHighLevelContact, sendHighLevelSms } 
   getHighLevelContact: vi.fn(),
   upsertHighLevelContact: vi.fn(),
   sendHighLevelSms: vi.fn(),
+  resolveApprovedSenderNumber: vi.fn(async () => ({ phoneNumber: "+18655550100" })),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -33,7 +34,7 @@ vi.mock("@/lib/highlevel/location-token", () => ({
   assertHighLevelLocationToken: () => undefined,
 }));
 vi.mock("@/lib/highlevel/phone-numbers", () => ({
-  resolveApprovedSenderNumber: async () => ({ phoneNumber: "+18655550100" }),
+  resolveApprovedSenderNumber,
 }));
 
 vi.mock("@/lib/highlevel/client", () => ({
@@ -65,6 +66,7 @@ describe("outbound SMS after HighLevel communications sync", () => {
       secondaryPhone: null,
     } as never);
     sendHighLevelSms.mockResolvedValue({ messageId: "msg_1" });
+    resolveApprovedSenderNumber.mockResolvedValue({ phoneNumber: "+18655550100" });
   });
 
   it("reuses the synced HighLevel contact and does not create a second identity row", async () => {
@@ -152,5 +154,25 @@ describe("outbound SMS after HighLevel communications sync", () => {
       }),
     );
     expect(sendHighLevelSms).toHaveBeenCalledWith(expect.objectContaining({ contactId: "hl_correct" }));
+  });
+
+  it("does not send when the approved sender is the customer number", async () => {
+    vi.mocked(prisma.providerIdentityMap.findFirst).mockResolvedValue(syncedMap as never);
+    getHighLevelContact.mockResolvedValue({
+      id: "hl_contact_synced",
+      phone: "+18658514300",
+      email: "casey@865hvac.test",
+    });
+    resolveApprovedSenderNumber.mockResolvedValue({ phoneNumber: "+18658514300" });
+    sendHighLevelSms.mockClear();
+    const result = await sendViaHighLevel({
+      companyId: "co_865",
+      to: "+18658514300",
+      body: "I have openings.",
+      customerId: "cust_synced",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/same number|customer phone/i);
+    expect(sendHighLevelSms).not.toHaveBeenCalled();
   });
 });

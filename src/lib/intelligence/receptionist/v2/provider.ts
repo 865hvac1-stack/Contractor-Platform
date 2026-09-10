@@ -194,7 +194,12 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
       if (fallback.data.intent === "SERVICE_CONCERN" && (intent === "GENERAL_QUESTION" || intent === "UNKNOWN")) {
         intent = "SERVICE_CONCERN";
       }
-      if (fallback.data.intent === "SCHEDULING" && fallback.data.extractedContext.acceptedSchedulingOffer) {
+      if (
+        fallback.data.intent === "SCHEDULING" &&
+        (fallback.data.extractedContext.acceptedSchedulingOffer ||
+          fallback.data.extractedContext.nextAction === "START_SCHEDULING" ||
+          fallback.data.extractedContext.nextAction === "CONTINUE_SCHEDULING")
+      ) {
         intent = "SCHEDULING";
       }
       const inputTokens = response.usage?.prompt_tokens ?? 0;
@@ -286,6 +291,7 @@ export class OpenAiReceptionistProvider implements AiReceptionistProvider {
               "If facts.offerScheduling is true and there is no active appointment or scheduling session, naturally offer to check openings.",
               "Do not offer scheduling for informational questions such as brands, filter size, or SEER.",
               "If an appointment already exists, do not offer another one.",
+              "If facts.canScheduleService is true, you can schedule service calls through ContractorYou. Never say you cannot schedule, cannot book, or cannot schedule directly.",
               "If the customer accepted a scheduling offer and the service concern is already known, do not ask what is going on with the system again.",
               "If a workflow question is outstanding, acknowledge any casual reply and still ask that question.",
               "If asked something not in verified facts, say you do not want to guess and offer the office.",

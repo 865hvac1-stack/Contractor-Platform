@@ -43,6 +43,7 @@ import {
   type OfferedSlot,
 } from "@/lib/scheduling/conversation-turn";
 import {
+  askAddressAfterAckMessage,
   askNameBeforeFinishingSchedule,
   askNameMessage,
   askServiceConcernMessage,
@@ -837,7 +838,9 @@ async function askFromDecision(input: {
     message = input.decision.afterSlot ? askNameBeforeFinishingSchedule() : askNameMessage();
     kind = input.decision.afterSlot ? "name_after_slot" : "name";
   } else if (input.decision.action === "ask_address") {
-    message = input.intake.firstName ? thanksNameAskAddressMessage(input.intake.firstName) : "What's the address where you need service?";
+    message = hasReliableCustomerName(input.intake.firstName)
+      ? thanksNameAskAddressMessage(input.intake.firstName as string)
+      : askAddressAfterAckMessage();
     kind = "address";
   } else if (input.decision.action === "ask_property") {
     message = propertyQuestion(input.properties);

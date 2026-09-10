@@ -769,6 +769,69 @@ describe("Conversation understanding and service-to-scheduling", () => {
     }).action).toBe("offer_slots");
   });
 
+  it("starts scheduling for an explicit service-call request and never claims it cannot schedule", () => {
+    const classified = classify("Can I get a service call scheduled");
+    expect(classified.intent).toBe("SCHEDULING");
+    expect(classified.extractedContext.nextAction).toBe("START_SCHEDULING");
+    const reply = composeVerifiedReceptionistSms({
+      text: "Can I get a service call scheduled",
+      classification: classified,
+      facts: { assistantName: "Regina", canScheduleService: true },
+      personality,
+    });
+    expect(reply.toLowerCase()).not.toMatch(/can'?t schedule|cannot schedule|directly/);
+    expect(reply.toLowerCase()).toMatch(/absolutely|system|address|name|started/);
+    expect(
+      assertResponseUsesOnlyVerifiedFacts({
+        responseText: "I can't schedule a service call directly, but I can help you with the next steps.",
+        facts: { assistantName: "Regina", canScheduleService: true },
+      }).ok
+    ).toBe(false);
+    expect(classify("I need an appointment").intent).toBe("SCHEDULING");
+    expect(classify("Can someone come out?").intent).toBe("SCHEDULING");
+    expect(classify("I need to schedule service").intent).toBe("SCHEDULING");
+  });
+
+  it("starts the deterministic workflow for an explicit schedule request", async () => {
+    vi.mocked(loadCustomerConversationOwner).mockResolvedValueOnce("CONTRACTORYOU");
+    mockPrisma.companyAiReceptionistSetting.findUnique.mockResolvedValue({
+      ...DEFAULT_RECEPTIONIST_SETTINGS,
+      mode: "CONTRACTORYOU_AI",
+      allowScheduling: true,
+    });
+    mockPrisma.company.findFirst.mockResolvedValue({ businessName: "865 HVAC", timezone: "America/New_York" });
+    mockPrisma.receptionistTurn.findUnique.mockResolvedValue(null);
+    mockPrisma.receptionistTurn.findFirst.mockResolvedValue(null);
+    mockPrisma.communicationMessage.findMany.mockResolvedValue([]);
+    mockPrisma.conversationSchedulingState.findFirst.mockResolvedValue(null);
+    mockPrisma.job.findFirst.mockResolvedValue(null);
+    mockPrisma.receptionistTurn.create.mockResolvedValue({ id: "turn_sched" });
+    mockPrisma.aIUsageEvent.create.mockResolvedValue({ id: "u4" });
+    const send = vi.fn();
+    const startScheduling = vi.fn();
+    startScheduling.mockResolvedValue({
+      body: { customer_message: "Absolutely. What's going on with the system?" },
+    });
+    const result = await processReceptionistV2(
+      {
+        companyId: "co_865",
+        threadId: "th_sched",
+        messageId: "msg_sched",
+        body: "Can I get a service call scheduled",
+        phone: "+18658514300",
+      },
+      {
+        send,
+        startScheduling,
+        runTool: async () => ({ action: "findCustomer", facts: { customerId: null, properties: [] } }),
+      }
+    );
+    expect(startScheduling).toHaveBeenCalled();
+    expect(result.proposedResponse?.toLowerCase()).not.toMatch(/can'?t schedule|cannot schedule|directly/);
+    expect(result.proposedResponse).toMatch(/Absolutely|system|address|name/i);
+    expect(classify("Yes next steps please").extractedContext.customerName).toBeFalsy();
+  });
+
   it("infers subject only from conversation history", () => {
     const bare = inferConversationState({ text: "Yes it's running!", history: [] });
     expect(bare.currentSubject).toBeNull();

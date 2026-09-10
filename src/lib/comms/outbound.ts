@@ -6,6 +6,7 @@ export async function recordCanonicalOutboundSms(input: {
   companyId: string;
   provider: "highlevel" | "twilio" | "none" | "demo";
   to: string;
+  from?: string | null;
   body: string;
   providerId?: string | null;
   customerId?: string | null;
@@ -47,6 +48,7 @@ export async function recordCanonicalOutboundSms(input: {
     status: "SENT",
     unread: false,
     toNumber: input.to,
+    fromNumber: input.from ?? null,
   });
   if (input.leadId) {
     const lead = await prisma.lead.findFirst({

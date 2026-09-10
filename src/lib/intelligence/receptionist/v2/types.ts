@@ -118,6 +118,11 @@ export type VerifiedFacts = {
   conversationText?: string | null;
   safeGuidance?: string | null;
   isTroubleshootingAsk?: boolean;
+  canScheduleService?: boolean;
+  canReadAvailability?: boolean;
+  canBookAppointment?: boolean;
+  canReschedule?: boolean;
+  canCancel?: boolean;
 };
 
 export function parseReceptionistV2Mode(value: unknown): ReceptionistV2Mode {

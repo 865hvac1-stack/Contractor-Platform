@@ -36,6 +36,7 @@ import { bookAppointment, findNextAvailableOptions, getAvailability } from "@/li
 import {
   createCustomerForConversation,
   createPropertyForConversation,
+  formatPropertyDisplay,
   jobDescriptionFromConcern,
   loadSchedulingCustomerContext,
   matchPropertyFromText,
@@ -703,12 +704,12 @@ export async function bookAppointmentTool(input: {
 
   const refreshed = await loadSchedulingCustomerContext(prisma, { companyId: input.companyId, customerId });
   const propertyAddress = job.property
-    ? [job.property.address, job.property.city, job.property.state, job.property.zip].filter(Boolean).join(", ")
-    : intake.street || null;
+    ? formatPropertyDisplay(job.property)
+    : formatPropertyDisplay(intake) || null;
   const appointmentDisplay = shortSlotDisplay(booked.date, stillOpen.startMinutes, stillOpen.endMinutes, timeZone);
   const customerMessage = contractorYouBookingConfirmation({
     appointmentDisplay,
-    propertyAddress: job.property?.address || intake.street,
+    propertyAddress,
   });
 
   if (thread) {

@@ -27,6 +27,11 @@ export async function sendCompanySms(input: { to: string; body: string }): Promi
   }
   const to = input.to.trim();
   if (!to) return { ok: false, configured: true, error: "No customer phone number to text." };
+  const { blockSelfAddressedSms } = await import("@/lib/comms/sender-guard");
+  const routing = blockSelfAddressedSms({ from, to, approvedSender: from });
+  if (!routing.ok) {
+    return { ok: false, configured: true, error: routing.error };
+  }
 
   const body = new URLSearchParams({ To: to, From: from, Body: input.body });
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {

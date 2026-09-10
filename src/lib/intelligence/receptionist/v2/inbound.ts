@@ -15,7 +15,8 @@ import { answerFromCompanyKnowledge, loadCompanyKnowledgeFromSettings } from "@/
 import { actionForIntent, loadVerifiedActiveAppointment, runReceptionistTool } from "@/lib/intelligence/receptionist/v2/tools";
 import { buildTrainingContext, customerDeclinedOpportunity, qualifiesMaintenanceAsk } from "@/lib/intelligence/receptionist/v2/training";
 import { loadCompanyTraining, recordOpportunityEvent, threadOpportunityTypes } from "@/lib/intelligence/receptionist/v2/training-store";
-import { assertResponseUsesOnlyVerifiedFacts } from "@/lib/intelligence/receptionist/v2/compose";
+import { assertResponseUsesOnlyVerifiedFacts, composeVerifiedReceptionistSms } from "@/lib/intelligence/receptionist/v2/compose";
+import { formatPropertyDisplay, hasReliableCustomerName, parseIntake } from "@/lib/scheduling/conversation-identity";
 import { boundConversationHistory } from "@/lib/intelligence/receptionist/v2/context";
 import {
   actionFromConversationState,
@@ -240,7 +241,7 @@ export async function processReceptionistV2(
   const facts: VerifiedFacts = {
     companyName: company?.businessName ?? null,
     assistantName: settings.assistantName,
-    customerFirstName: tool.facts.customerFirstName ?? null,
+    customerFirstName: hasReliableCustomerName(tool.facts.customerFirstName) ? tool.facts.customerFirstName : null,
     customerId: tool.facts.customerId ?? input.customerId ?? null,
     properties: tool.facts.properties,
     schedulingPhase: scheduling?.lastAiAction ?? null,
@@ -252,7 +253,11 @@ export async function processReceptionistV2(
     appointmentDisplay: selected
       ? `${formatLocalDateShort(selected.date, timeZone)} from ${formatWindowChip(selected.startMinutes, selected.endMinutes)}`
       : null,
-    serviceAddress: tool.facts.properties?.length === 1 ? tool.facts.properties[0]!.address : scheduling ? parseStreet(scheduling.intake) : null,
+    serviceAddress: tool.facts.properties?.length === 1
+      ? tool.facts.properties[0]!.address
+      : scheduling
+        ? formatPropertyDisplay(parseIntake(scheduling.intake))
+        : null,
     nextWorkflowAsk: nextAskFromPhase(
       scheduling?.lastAiAction,
       tool.facts.properties?.length ?? 0,
@@ -280,6 +285,11 @@ export async function processReceptionistV2(
       !conversationState.mentionsExistingAppointment,
     acceptedSchedulingOffer: conversationState.acceptedSchedulingOffer,
     conversationText: conversationCorpus(boundedHistory, text),
+    canScheduleService: settings.allowScheduling,
+    canReadAvailability: settings.allowScheduling,
+    canBookAppointment: settings.allowScheduling,
+    canReschedule: settings.allowRescheduling,
+    canCancel: settings.allowCancellations,
     isTroubleshootingAsk: conversationState.isTroubleshootingAsk,
     safeGuidance: conversationState.isTroubleshootingAsk && !knowledgeAnswer
       ? "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
@@ -342,22 +352,42 @@ export async function processReceptionistV2(
     conversationText: facts.conversationText || "",
   });
   const invented = !guard.ok && (guard.reason === "invented_subject" || guard.reason === "invented_repair" || guard.reason === "restarted_greeting");
+  const deniedCapability = !guard.ok && guard.reason === "denied_enabled_capability";
+  const composedFallback = composeVerifiedReceptionistSms({
+    text,
+    classification: classified.data,
+    facts,
+    personality: {
+      assistantName: settings.assistantName,
+      tone: settings.tone,
+      responseLength: settings.responseLength,
+      useCustomerFirstName: settings.useCustomerFirstName,
+    },
+  });
   const safeText = sanitizeCustomerSms(
     guard.ok
       ? generated.data.responseText
-      : invented && conversationState.serviceConcernActive
-        ? facts.offerScheduling
-          ? "I don't want to walk you through anything that could be unsafe. That's something we can take a look at. Want me to check our openings?"
-          : "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
+      : deniedCapability
+        ? composedFallback
+        : invented && conversationState.serviceConcernActive
+          ? facts.offerScheduling
+            ? "I don't want to walk you through anything that could be unsafe. That's something we can take a look at. Want me to check our openings?"
+            : "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
         : "I don't want to give you the wrong information on that. Let me get the office to take a look."
   );
   const shouldHandoff =
-    generated.data.shouldHandoff || classified.data.shouldHandoff || (!guard.ok && !invented);
-  const handoffReason = generated.data.handoffReason || classified.data.handoffReason || (!guard.ok && !invented ? guard.reason : null);
+    generated.data.shouldHandoff ||
+    classified.data.shouldHandoff ||
+    (!guard.ok && !invented && !deniedCapability);
+  const handoffReason =
+    generated.data.handoffReason ||
+    classified.data.handoffReason ||
+    (!guard.ok && !invented && !deniedCapability ? guard.reason : null);
   const lowConfidence = generated.data.confidence < 0.45 && classified.data.intent === "UNKNOWN";
   const finalHandoff = shouldHandoff || (lowConfidence && settings.humanHandoffFallback);
 
   let outboundSent = false;
+  let outboundBody = safeText;
   const maySend = !shadow && !input.skipLiveSend && contractorYouMayAutoreply(owner) && Boolean(input.phone);
   if (maySend && input.phone) {
     if (finalHandoff) {
@@ -377,7 +407,7 @@ export async function processReceptionistV2(
       !activeScheduling &&
       !facts.hasActiveAppointment
     ) {
-      await startScheduling({
+      const started = await startScheduling({
         companyId: input.companyId,
         body: {
           customer_phone: input.phone,
@@ -388,11 +418,13 @@ export async function processReceptionistV2(
         },
         source: "receptionist_v2",
       });
+      const sessionAsk = sessionCustomerMessage(started);
+      outboundBody = sessionAsk || safeText;
       await send({
         companyId: input.companyId,
         channel: "SMS",
         to: input.phone,
-        body: safeText,
+        body: outboundBody,
         customerId: facts.customerId,
         origin: "CONTRACTORYOU_AUTOMATION",
       });
@@ -420,7 +452,7 @@ export async function processReceptionistV2(
     errorCode: generated.errorCode ?? classified.errorCode ?? null,
     durationMs: Date.now() - started,
     mode,
-    proposedResponse: safeText,
+    proposedResponse: outboundBody,
     actualResponse: input.actualProductionResponse ?? null,
     confidence: generated.data.confidence,
     requestedAction,
@@ -524,7 +556,7 @@ export async function processReceptionistV2(
     shadow,
     sent: outboundSent,
     intent: classified.data.intent,
-    proposedResponse: safeText,
+    proposedResponse: outboundBody,
     requestedAction,
     confidence: generated.data.confidence,
     usedAi: generated.usedAi || classified.usedAi,
@@ -645,10 +677,12 @@ function asConversationSubject(value: unknown): ConversationSubject | null {
   return null;
 }
 
-function parseStreet(intake: unknown) {
-  if (!intake || typeof intake !== "object") return null;
-  const street = (intake as { street?: unknown }).street;
-  return typeof street === "string" && street.trim() ? street.trim() : null;
+function sessionCustomerMessage(started: unknown) {
+  if (!started || typeof started !== "object") return null;
+  const body = (started as { body?: unknown }).body;
+  if (!body || typeof body !== "object") return null;
+  const message = (body as { customer_message?: unknown }).customer_message;
+  return typeof message === "string" && message.trim() ? sanitizeCustomerSms(message) : null;
 }
 
 export function receptionistV2RequestedAction(value: unknown): ReceptionistV2Action {

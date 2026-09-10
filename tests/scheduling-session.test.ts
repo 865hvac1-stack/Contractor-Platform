@@ -18,9 +18,11 @@ import {
 } from "@/lib/agent-tools/booking-contract";
 import { isActiveSchedulingSession } from "@/lib/agent-tools/persist-offers";
 import { isPublicPath } from "@/lib/auth-session";
+import { hasReliableCustomerName } from "@/lib/scheduling/conversation-identity";
 import { canonicalizeUsPhone, phonesMatch } from "@/lib/phone";
 import { resolveOfferedSlotSelection } from "@/lib/scheduling/conversation-turn";
 import {
+  askAddressAfterAckMessage,
   askNameBeforeFinishingSchedule,
   askNameMessage,
   askServiceConcernMessage,
@@ -263,6 +265,9 @@ describe("ContractorYou scheduling session architecture", () => {
     ).toEqual({ action: "ask_name", phase: "NEED_CUSTOMER_NAME", afterSlot: false });
     expect(askNameMessage().toLowerCase()).toMatch(/what.?s your name/);
     expect(thanksNameAskAddressMessage("TJ")).toBe("Thanks, TJ. What's the address where you need service?");
+    expect(askAddressAfterAckMessage()).toBe("Great. What's the address where you need service?");
+    expect(classifySchedulingInbound({ text: "Yes next steps please", offered: [], selected: false })).not.toBe("name");
+    expect(hasReliableCustomerName("Yes")).toBe(false);
   });
 
   it("asks for the service concern when it was not already supplied", () => {

@@ -348,15 +348,26 @@ export async function processHighLevelWebhook(
       contactId: fields.contactId,
     });
   } else if (isHighLevelConversationEvent(fields)) {
+    const direction = fields.direction || "inbound";
+    let fromNumber = fields.from;
+    let toNumber = fields.to;
+    if (direction.toLowerCase() === "outbound") {
+      const { phonesMatch } = await import("@/lib/phone");
+      const { resolveApprovedSenderNumber } = await import("@/lib/highlevel/phone-numbers");
+      const approved = await resolveApprovedSenderNumber(prisma, input.companyId);
+      if (fromNumber && toNumber && phonesMatch(fromNumber, toNumber) && approved) {
+        fromNumber = approved.phoneNumber;
+      }
+    }
     comms = await upsertConversationMessage(prisma, {
       companyId: input.companyId,
       conversationId: fields.conversationId || externalId,
       messageId: fields.messageId || externalId,
       contactId: fields.contactId,
       contactName: fields.contactName,
-      phone: fields.from || emptyToNull(text(data.phone)),
-      fromNumber: fields.from,
-      toNumber: fields.to,
+      phone: (direction.toLowerCase() === "outbound" ? toNumber : fromNumber) || emptyToNull(text(data.phone)),
+      fromNumber,
+      toNumber,
       body: fields.body,
       channel: fields.channel,
       direction: fields.direction || "inbound",

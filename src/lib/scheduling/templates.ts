@@ -80,6 +80,10 @@ export function thanksNameAskAddressMessage(firstName: string) {
   return `Thanks, ${firstName}. What's the address where you need service?`;
 }
 
+export function askAddressAfterAckMessage() {
+  return "Great. What's the address where you need service?";
+}
+
 export function askServiceConcernMessage() {
   return "What's going on with the system?";
 }

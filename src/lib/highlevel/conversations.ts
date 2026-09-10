@@ -139,7 +139,8 @@ export async function upsertConversationMessage(
     callStatus: input.callStatus ?? null,
     hasRecording,
     toNumber: input.toNumber ?? null,
-    fromNumber: input.fromNumber ?? input.phone ?? null,
+    fromNumber:
+      input.direction?.toLowerCase() === "outbound" ? input.fromNumber ?? null : input.fromNumber ?? input.phone ?? null,
     trackingSource: tracking?.source ?? null,
     trackingNumber: tracking?.phoneNumber ?? input.toNumber ?? null,
   };

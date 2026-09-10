@@ -64,6 +64,26 @@ export async function sendCompanyCommunication(input: {
     return { ok: false, configured: true, provider: "demo", error: blocked.message };
   }
   if (provider === "highlevel") {
+    const { resolveApprovedSenderNumber } = await import("@/lib/highlevel/phone-numbers");
+    const { blockSelfAddressedSms } = await import("@/lib/comms/sender-guard");
+    const sender = await resolveApprovedSenderNumber(prisma, input.companyId);
+    const routing = blockSelfAddressedSms({
+      from: sender?.phoneNumber,
+      to: input.to,
+      customerPhone: input.to,
+      approvedSender: sender?.phoneNumber,
+    });
+    if (!sender) {
+      return {
+        ok: false,
+        configured: true,
+        provider,
+        error: "Set an approved HighLevel sender number in Marketing → Channels → Tracking Numbers before sending SMS.",
+      };
+    }
+    if (!routing.ok) {
+      return { ok: false, configured: true, provider, error: routing.error };
+    }
     const result = await sendViaHighLevel({
       companyId: input.companyId,
       to: input.to,
@@ -78,6 +98,7 @@ export async function sendCompanyCommunication(input: {
         companyId: input.companyId,
         provider,
         to: input.to,
+        from: sender.phoneNumber,
         body: input.body,
         providerId: result.providerId,
         customerId: input.customerId,
@@ -87,6 +108,13 @@ export async function sendCompanyCommunication(input: {
     return { ...result, provider };
   }
   if (provider === "twilio") {
+    const { twilioFromNumber } = await import("@/lib/communications/sms");
+    const { blockSelfAddressedSms } = await import("@/lib/comms/sender-guard");
+    const from = twilioFromNumber();
+    const routing = blockSelfAddressedSms({ from, to: input.to, customerPhone: input.to, approvedSender: from });
+    if (!routing.ok) {
+      return { ok: false, configured: true, provider, error: routing.error };
+    }
     const result = await sendCompanySms({ to: input.to, body: input.body });
     if (result.ok) {
       const { recordCanonicalOutboundSms } = await import("@/lib/comms/outbound");
@@ -94,6 +122,7 @@ export async function sendCompanyCommunication(input: {
         companyId: input.companyId,
         provider,
         to: input.to,
+        from,
         body: input.body,
         providerId: result.providerId,
         customerId: input.customerId,

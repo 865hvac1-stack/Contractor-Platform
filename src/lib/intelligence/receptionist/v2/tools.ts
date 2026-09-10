@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { loadSchedulingCustomerContext, resolveSchedulingCustomer } from "@/lib/scheduling/conversation-identity";
+import {
+  formatPropertyDisplay,
+  hasReliableCustomerName,
+  loadSchedulingCustomerContext,
+  resolveSchedulingCustomer,
+} from "@/lib/scheduling/conversation-identity";
 import type { ReceptionistV2Action, VerifiedFacts } from "@/lib/intelligence/receptionist/v2/types";
 
 const MUTATING_ACTIONS = new Set<ReceptionistV2Action>([
@@ -41,10 +46,10 @@ export async function runReceptionistTool(input: {
 
   const facts: Partial<VerifiedFacts> = {
     customerId: context?.customerId ?? null,
-    customerFirstName: context?.firstName || null,
+    customerFirstName: hasReliableCustomerName(context?.firstName) ? context?.firstName || null : null,
     properties: context?.properties.map((row) => ({
       id: row.id,
-      address: [row.address, row.city, row.state, row.zip].filter(Boolean).join(", "),
+      address: formatPropertyDisplay(row),
       isPrimary: row.isPrimary,
     })),
   };

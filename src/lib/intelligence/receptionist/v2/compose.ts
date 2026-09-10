@@ -123,7 +123,7 @@ export function composeVerifiedReceptionistSms(input: {
   }
   if (input.classification.intent === "SCHEDULING") {
     if (concern) return sanitizeCustomerSms("Got it. I'll get that service visit started.");
-    return sanitizeCustomerSms("Got it. What's going on with the system?");
+    return sanitizeCustomerSms("Absolutely. What's going on with the system?");
   }
   if (input.classification.intent === "SERVICE_CONCERN") {
     return sanitizeCustomerSms(offerScheduling ? SERVICE_OFFER : "Got it. I can help with that.");
@@ -192,6 +192,14 @@ export function assertResponseUsesOnlyVerifiedFacts(input: {
   }
   if (/^hi\s+\w+!/i.test(input.responseText.trim()) && conversationText.length > 0) {
     return { ok: false as const, reason: "restarted_greeting" };
+  }
+  if (
+    input.facts.canScheduleService &&
+    /\b(can'?t|cannot|unable to|not able to) (schedule|book)\b|\bdon'?t schedule\b|\bschedule (a service call )?directly\b/i.test(
+      input.responseText
+    )
+  ) {
+    return { ok: false as const, reason: "denied_enabled_capability" };
   }
   return { ok: true as const };
 }

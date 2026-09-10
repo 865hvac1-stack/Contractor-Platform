@@ -52,6 +52,16 @@ export function parseIntake(value: unknown): SchedulingIntake {
   };
 }
 
+const NOT_A_PERSON_NAME =
+  /^(yes|yeah|yep|yup|sure|ok|okay|please|thanks|thank|hi|hey|hello|next|steps|sounds|good|cool|got|no|nope|nah|great|fine|perfect|ready|go|ahead|that|this|works|let'?s)$/i;
+
+const STREET_SUFFIX =
+  /^(lane|ln|street|st|drive|dr|road|rd|court|ct|circle|cir|avenue|ave|blvd|boulevard|way|place|pl|terrace|ter|trail|trl|parkway|pkwy|highway|hwy|pike|loop|run|pass|ridge|crossing)\.?$/i;
+
+export function isReservedPersonNameToken(value: string) {
+  return NOT_A_PERSON_NAME.test(value.trim());
+}
+
 export function parsePersonName(text: string): { firstName: string; lastName: string } | null {
   const cleaned = text
     .trim()
@@ -64,6 +74,7 @@ export function parsePersonName(text: string): { firstName: string; lastName: st
   const parts = cleaned.split(" ").filter(Boolean);
   if (!parts.length || parts.length > 4) return null;
   if (parts.some((part) => !/^[a-zA-Z][a-zA-Z'-]*$/.test(part))) return null;
+  if (parts.some((part) => isReservedPersonNameToken(part))) return null;
   return { firstName: titleCase(parts[0]!), lastName: parts.slice(1).map(titleCase).join(" ") };
 }
 
@@ -73,21 +84,21 @@ export function parseServiceAddress(text: string): { street: string; city: strin
     /^(\d{1,6}\s+.+?),\s*([A-Za-z .'-]+?)\s*,?\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/
   );
   if (withComma) {
-    return {
+    return repairMisparsedStreetSuffix({
       street: withComma[1]!.trim(),
       city: titleCase(withComma[2]!.trim()),
       state: withComma[3]!.toUpperCase(),
       zip: withComma[4]!,
-    };
+    });
   }
   const loose = cleaned.match(/^(\d{1,6}\s+.+?)\s+([A-Za-z .'-]+?)\s+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
   if (loose) {
-    return {
+    return repairMisparsedStreetSuffix({
       street: loose[1]!.trim(),
       city: titleCase(loose[2]!.trim()),
       state: loose[3]!.toUpperCase(),
       zip: loose[4]!,
-    };
+    });
   }
   const streetOnly = cleaned.match(/^(\d{1,6}\s+[A-Za-z][A-Za-z0-9.#'' -]{1,80})$/);
   if (streetOnly) {
@@ -119,7 +130,36 @@ export function addressesLikelyMatch(left?: string | null, right?: string | null
 export function hasReliableCustomerName(firstName?: string | null, lastName?: string | null) {
   const first = (firstName || "").trim();
   if (first.length < 2) return false;
+  if (isReservedPersonNameToken(first)) return false;
   return !/^(unknown|customer|n\/a|na|test|user|homeowner|new)$/i.test(first);
+}
+
+export function formatPropertyDisplay(input: {
+  address?: string | null;
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}) {
+  const street = (input.address || input.street || "").trim();
+  const city = (input.city || "").trim();
+  const state = (input.state || "").trim();
+  const zip = (input.zip || "").trim();
+  const region = [state, zip].filter(Boolean).join(" ");
+  const locality = [city, region].filter(Boolean).join(", ");
+  return [street, locality].filter(Boolean).join(", ");
+}
+
+function repairMisparsedStreetSuffix(parsed: { street: string; city: string; state: string; zip: string }) {
+  const cityParts = parsed.city.split(/\s+/).filter(Boolean);
+  if (cityParts.length >= 2 && STREET_SUFFIX.test(cityParts[0]!)) {
+    return {
+      ...parsed,
+      street: `${parsed.street} ${titleCase(cityParts[0]!.replace(/\.$/, ""))}`.replace(/\s+/g, " ").trim(),
+      city: cityParts.slice(1).map(titleCase).join(" "),
+    };
+  }
+  return parsed;
 }
 
 export function streetLabel(address: string) {

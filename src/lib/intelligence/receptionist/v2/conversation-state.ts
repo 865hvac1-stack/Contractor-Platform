@@ -91,7 +91,7 @@ const EXISTING_APPOINTMENT =
   /\b(already have (?:someone|a tech|an? appointment)|someone(?:'s| is) (?:already )?coming|i (?:already )?have (?:a |an )?(?:appointment|tech)|already scheduled|coming tuesday|have someone coming)\b/i;
 
 const EXPLICIT_SCHEDULE =
-  /\b(i need (?:someone|a tech|service)|come out|send someone|schedule|book (?:a |an )?(?:appointment|visit)|set up (?:a |an )?(?:appointment|visit)|can you (?:come|send|schedule))\b/i;
+  /\b(i need (?:someone|a tech|service|an appointment|a service call)|come out|send someone|schedule|book (?:a |an )?(?:appointment|visit)|set up (?:a |an )?(?:appointment|visit)|can (?:i|you|we) (?:get|schedule|book)|someone come out|service call scheduled)\b/i;
 
 const INVENTED_APPLIANCES = /\b(refrigerator|fridge|freezer|dishwasher|washer|dryer|oven|stove|microwave)\b/i;
 

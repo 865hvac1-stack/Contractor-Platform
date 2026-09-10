@@ -6,6 +6,7 @@ import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { getAvailability, findNextAvailableOptions, loadSchedulingPolicy } from "@/lib/scheduling/capacity";
 import { interpretSchedulingIntent, mergeSchedulingIntent } from "@/lib/scheduling/intent";
 import {
+  askAddressAfterAckMessage,
   askAddressMessage,
   askNameMessage,
   askWhichPropertyMessage,
@@ -34,6 +35,7 @@ import {
   createCustomerForConversation,
   createPropertyForConversation,
   extractCustomerConcern,
+  hasReliableCustomerName,
   jobDescriptionFromConcern,
   loadSchedulingCustomerContext,
   matchPropertyFromText,
@@ -694,7 +696,10 @@ async function collectRequiredInfo(input: {
         customerId,
         customerContext,
         propertyId,
-        ask: input.missing === "name" && intake.firstName ? thanksNameAskAddressMessage(intake.firstName) : askAddressMessage(),
+        ask:
+          input.missing === "name" && hasReliableCustomerName(intake.firstName)
+            ? thanksNameAskAddressMessage(intake.firstName!)
+            : askAddressAfterAckMessage(),
       };
     }
     const thread = await prisma.communicationThread.findFirst({

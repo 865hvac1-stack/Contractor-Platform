@@ -7,6 +7,7 @@ import { destinationPhoneForCustomer, linkHighLevelCustomerContact } from "@/lib
 import { getHighLevelContact, sendHighLevelSms, upsertHighLevelContact } from "@/lib/highlevel/client";
 import { resolveApprovedSenderNumber } from "@/lib/highlevel/phone-numbers";
 import { canonicalizeUsPhone, phonesMatch } from "@/lib/phone";
+import { blockSelfAddressedSms } from "@/lib/comms/sender-guard";
 
 function contactPhone(contact: { phone?: string | null } | null | undefined) {
   return canonicalizeUsPhone(contact?.phone);
@@ -140,6 +141,15 @@ export async function sendViaHighLevel(input: {
         configured: true,
         error: "Set an approved HighLevel sender number in Marketing → Channels → Tracking Numbers before sending SMS.",
       };
+    }
+    const routing = blockSelfAddressedSms({
+      from: sender.phoneNumber,
+      to: destination,
+      customerPhone: customer?.phone ?? destination,
+      approvedSender: sender.phoneNumber,
+    });
+    if (!routing.ok) {
+      return { ok: false, configured: true, error: routing.error };
     }
     const sent = await sendHighLevelSms({
       accessToken: access.accessToken,
