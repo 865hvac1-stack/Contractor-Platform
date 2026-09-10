@@ -46,8 +46,24 @@ export default async function QuickBooksManagePage() {
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CountCard title="Customers" lines={[`${preview.customersLinked} linked`, `${preview.customersNeedReview} need review`]} />
-        <CountCard title="Invoices" lines={[`${preview.invoicesSynced} synced`, `${preview.invoicesPending} pending`, `${preview.invoicesErrors} errors`]} />
-        <CountCard title="Payments" lines={[`${preview.paymentsSynced} synced`, `${preview.paymentsPending} pending`, `${preview.paymentsErrors} errors`]} />
+        <CountCard
+          title="Invoices"
+          lines={[
+            `${preview.invoicesSynced} synced`,
+            `${preview.invoicesPending} pending`,
+            `${preview.invoicesNeedsReview} needs review`,
+            `${preview.invoicesErrors} errors`,
+          ]}
+        />
+        <CountCard
+          title="Payments"
+          lines={[
+            `${preview.paymentsSynced} synced`,
+            `${preview.paymentsPending} pending`,
+            `${preview.paymentsNeedsReview} needs review`,
+            `${preview.paymentsErrors} errors`,
+          ]}
+        />
         <CountCard title="Expenses" lines={[`${preview.expensesSynced} synced`, `${preview.expensesPending} pending`, `${preview.expensesErrors} errors`]} />
       </section>
 
@@ -108,9 +124,14 @@ export default async function QuickBooksManagePage() {
             {center.review.map((row) => (
               <li key={row.id} className="py-3">
                 <p className="font-medium">
-                  {row.entityType} · {row.status.replaceAll("_", " ")}
+                  {row.entityType} · {row.label || row.status.replaceAll("_", " ")}
                 </p>
                 <p className="text-[var(--muted-foreground)]">{row.error}</p>
+                {row.href ? (
+                  <Link href={row.href} className="mt-1 inline-block text-sm text-[var(--cy-orange)]">
+                    {row.hrefLabel || "Open record"} →
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>

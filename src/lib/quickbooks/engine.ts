@@ -9,6 +9,15 @@ import {
 } from "@/lib/quickbooks/sync";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { ENTITY_INVOICE, ENTITY_PAYMENT } from "@/lib/quickbooks/mappings";
+import {
+  evaluateInvoiceEligibility,
+  evaluatePaymentEligibility,
+  hasValidQuickBooksMapping,
+  mappingKey,
+  QBO_PAYMENT_SUCCESS_STATUSES,
+  type QboMappingSnapshot,
+} from "@/lib/quickbooks/eligibility";
+import type { QboTransport } from "@/lib/quickbooks/client";
 
 export type QuickBooksSyncRun = {
   preview: QuickBooksPreview;
@@ -17,6 +26,48 @@ export type QuickBooksSyncRun = {
   errors: string[];
   activated: boolean;
 };
+
+export async function syncPaymentWithInvoiceDependency(
+  prisma: PrismaClient,
+  transport: QboTransport,
+  input: {
+    companyId: string;
+    actorId: string;
+    paymentId: string;
+    invoiceId: string;
+    invoiceCanSyncAsDependency: boolean;
+    invoiceHasValidMapping: boolean;
+  }
+): Promise<{ ok: boolean; pushedInvoice: boolean; pushedPayment: boolean; error?: string; skipped?: boolean }> {
+  let invoiceHasValidMapping = input.invoiceHasValidMapping;
+  let pushedInvoice = false;
+
+  if (!invoiceHasValidMapping && !input.invoiceCanSyncAsDependency) {
+    return { ok: false, pushedInvoice: false, pushedPayment: false, skipped: true };
+  }
+
+  if (!invoiceHasValidMapping && input.invoiceCanSyncAsDependency) {
+    const invoiceResult = await syncInvoiceToQuickBooks(prisma, transport, {
+      companyId: input.companyId,
+      invoiceId: input.invoiceId,
+      actorId: input.actorId,
+    });
+    if (!invoiceResult.ok) {
+      return { ok: false, pushedInvoice: false, pushedPayment: false, error: invoiceResult.error };
+    }
+    pushedInvoice = true;
+    invoiceHasValidMapping = true;
+  }
+
+  const paymentResult = await syncPaymentToQuickBooks(prisma, transport, {
+    companyId: input.companyId,
+    paymentId: input.paymentId,
+  });
+  if (!paymentResult.ok) {
+    return { ok: false, pushedInvoice, pushedPayment: false, error: paymentResult.error };
+  }
+  return { ok: true, pushedInvoice, pushedPayment: true };
+}
 
 export async function runQuickBooksSync(
   prisma: PrismaClient,
@@ -28,7 +79,13 @@ export async function runQuickBooksSync(
   let skipped = 0;
 
   if (!input.push || !preview.syncActivated) {
-    return { preview, pushed, skipped: preview.invoicesEligible + preview.paymentsEligible + preview.expensesEligible, errors, activated: preview.syncActivated };
+    return {
+      preview,
+      pushed,
+      skipped: preview.invoicesEligible + preview.paymentsEligible + preview.expensesEligible,
+      errors,
+      activated: preview.syncActivated,
+    };
   }
 
   const loaded = await loadQuickBooksTransport(input.companyId);
@@ -37,64 +94,108 @@ export async function runQuickBooksSync(
   }
 
   const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId: input.companyId } });
+  const mappings = await prisma.quickBooksMapping.findMany({
+    where: { companyId: input.companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+    select: { entityType: true, internalId: true, status: true, quickbooksId: true },
+  });
+  const map = new Map<string, QboMappingSnapshot>(
+    mappings.map((row) => [mappingKey(row.entityType, row.internalId), row])
+  );
+
   const invoices = await prisma.invoice.findMany({
     where: { companyId: input.companyId, status: { notIn: ["DRAFT", "VOID"] } },
-    select: { id: true, issueDate: true, importMode: true },
-    take: 50,
+    select: { id: true, invoiceNumber: true, status: true, issueDate: true, importMode: true, totalCents: true },
   });
   for (const invoice of invoices) {
-    const gate = isEligibleForBulkSync({
-      importMode: invoice.importMode,
-      recordDate: invoice.issueDate,
-      syncActivated: Boolean(settings?.syncActivated),
+    const eligibility = evaluateInvoiceEligibility(invoice, {
       syncStartDate: settings?.syncStartDate,
+      mapping: map.get(mappingKey(ENTITY_INVOICE, invoice.id)),
     });
-    if (!gate.allowed) {
+    if (eligibility.hasValidMapping) continue;
+    if (!eligibility.canSyncAsDependency) {
       skipped += 1;
       continue;
     }
-    const existing = await prisma.quickBooksMapping.findFirst({
-      where: { companyId: input.companyId, entityType: ENTITY_INVOICE, internalId: invoice.id, status: "SYNCED" },
-    });
-    if (existing) continue;
     const result = await syncInvoiceToQuickBooks(prisma, loaded.transport, {
       companyId: input.companyId,
       invoiceId: invoice.id,
       actorId: input.actorId,
     });
-    if (result.ok) pushed.invoices += 1;
-    else {
+    if (result.ok) {
+      pushed.invoices += 1;
+      if (result.quickbooksId) {
+        map.set(mappingKey(ENTITY_INVOICE, invoice.id), {
+          entityType: ENTITY_INVOICE,
+          internalId: invoice.id,
+          quickbooksId: result.quickbooksId,
+          status: "SYNCED",
+        });
+      }
+    } else {
       skipped += 1;
       if (result.error) errors.push(result.error);
     }
   }
 
   const payments = await prisma.payment.findMany({
-    where: { companyId: input.companyId, status: { in: ["CONFIRMED", "SUCCEEDED", "RECORDED", "PARTIALLY_REFUNDED"] } },
-    select: { id: true, paidAt: true, importMode: true },
-    take: 50,
+    where: { companyId: input.companyId, status: { in: [...QBO_PAYMENT_SUCCESS_STATUSES] } },
+    select: {
+      id: true,
+      invoiceId: true,
+      paidAt: true,
+      importMode: true,
+      status: true,
+      amountCents: true,
+      refundedCents: true,
+      provider: true,
+      providerPaymentId: true,
+    },
   });
+  const invoicesById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+  const paymentsByInvoice = new Map<string, typeof payments>();
   for (const payment of payments) {
-    const gate = isEligibleForBulkSync({
-      importMode: payment.importMode,
-      recordDate: payment.paidAt,
-      syncActivated: Boolean(settings?.syncActivated),
+    const list = paymentsByInvoice.get(payment.invoiceId) ?? [];
+    list.push(payment);
+    paymentsByInvoice.set(payment.invoiceId, list);
+  }
+  const syncedPaymentIds = [...map.values()]
+    .filter((row) => row.entityType === ENTITY_PAYMENT && hasValidQuickBooksMapping(row))
+    .map((row) => row.internalId);
+
+  for (const payment of payments) {
+    const invoice = invoicesById.get(payment.invoiceId) ?? null;
+    const invoiceEligibility = invoice
+      ? evaluateInvoiceEligibility(invoice, {
+          syncStartDate: settings?.syncStartDate,
+          mapping: map.get(mappingKey(ENTITY_INVOICE, invoice.id)),
+        })
+      : null;
+    const eligibility = evaluatePaymentEligibility({
+      payment,
+      invoice,
+      siblingPayments: paymentsByInvoice.get(payment.invoiceId) ?? [payment],
+      paymentMapping: map.get(mappingKey(ENTITY_PAYMENT, payment.id)),
+      invoiceMapping: invoice ? map.get(mappingKey(ENTITY_INVOICE, invoice.id)) : null,
+      syncedPaymentIds,
       syncStartDate: settings?.syncStartDate,
     });
-    if (!gate.allowed) {
+    if (!eligibility.canAutoSync || !invoice || !invoiceEligibility) {
       skipped += 1;
       continue;
     }
-    const existing = await prisma.quickBooksMapping.findFirst({
-      where: { companyId: input.companyId, entityType: ENTITY_PAYMENT, internalId: payment.id, status: "SYNCED" },
-    });
-    if (existing) continue;
-    const result = await syncPaymentToQuickBooks(prisma, loaded.transport, {
+    const result = await syncPaymentWithInvoiceDependency(prisma, loaded.transport, {
       companyId: input.companyId,
+      actorId: input.actorId,
       paymentId: payment.id,
+      invoiceId: invoice.id,
+      invoiceCanSyncAsDependency: invoiceEligibility.canSyncAsDependency,
+      invoiceHasValidMapping: invoiceEligibility.hasValidMapping,
     });
-    if (result.ok) pushed.payments += 1;
-    else {
+    if (result.pushedInvoice) pushed.invoices += 1;
+    if (result.pushedPayment) {
+      pushed.payments += 1;
+      syncedPaymentIds.push(payment.id);
+    } else {
       skipped += 1;
       if (result.error) errors.push(result.error);
     }

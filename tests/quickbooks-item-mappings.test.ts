@@ -356,6 +356,11 @@ function syncMemory() {
       async findFirst({ where }: { where: { id: string; companyId: string } }) {
         return where.id === payment.id && where.companyId === payment.companyId ? payment : null;
       },
+      async findMany({ where }: { where: { companyId?: string; invoiceId?: string } }) {
+        if (where.invoiceId && where.invoiceId !== payment.invoiceId) return [];
+        if (where.companyId && where.companyId !== payment.companyId) return [];
+        return [payment];
+      },
     },
     integrationConnection: {
       async findFirst() {
@@ -394,6 +399,21 @@ function syncMemory() {
       },
     },
     quickBooksMapping: {
+      async findMany({
+        where,
+      }: {
+        where: { companyId: string; entityType?: string | { in: string[] }; status?: string };
+      }) {
+        return mappings.filter((row) => {
+          if (row.companyId !== where.companyId) return false;
+          if (typeof where.entityType === "string" && row.entityType !== where.entityType) return false;
+          if (where.entityType && typeof where.entityType === "object" && !where.entityType.in.includes(row.entityType)) {
+            return false;
+          }
+          if (where.status && row.status !== where.status) return false;
+          return true;
+        });
+      },
       async findUnique({
         where,
       }: {

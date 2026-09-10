@@ -24,6 +24,7 @@ import {
   resolveQuickBooksInvoiceMapping,
   resolveQuickBooksPaymentMapping,
 } from "@/lib/quickbooks/mappings";
+import { assessInvoicePaymentSafety, hasValidQuickBooksMapping } from "@/lib/quickbooks/eligibility";
 
 export function canAutoSyncInvoice(input: {
   trigger: QuickBooksInvoiceTrigger;
@@ -364,6 +365,40 @@ export async function syncPaymentToQuickBooks(
   });
   if (alreadySynced) {
     return { ok: true, quickbooksId: alreadySynced.quickbooksId };
+  }
+  const siblings = await prisma.payment.findMany({
+    where: { companyId: input.companyId, invoiceId: payment.invoiceId },
+    select: {
+      id: true,
+      status: true,
+      amountCents: true,
+      refundedCents: true,
+      provider: true,
+      providerPaymentId: true,
+    },
+  });
+  const syncedRows = await prisma.quickBooksMapping.findMany({
+    where: { companyId: input.companyId, entityType: ENTITY_PAYMENT, status: "SYNCED" },
+    select: { internalId: true, quickbooksId: true, status: true, entityType: true },
+  });
+  const safety = assessInvoicePaymentSafety({
+    invoiceNumber: payment.invoice.invoiceNumber,
+    invoiceTotalCents: payment.invoice.totalCents,
+    payments: siblings.some((row) => row.id === payment.id) ? siblings : [...siblings, payment],
+    candidatePaymentId: payment.id,
+    syncedPaymentIds: syncedRows.filter((row) => hasValidQuickBooksMapping(row)).map((row) => row.internalId),
+  });
+  if (!safety.ok) {
+    const message = safety.messages.join(" ");
+    await recordEvent(prisma, {
+      companyId: input.companyId,
+      entityType: ENTITY_PAYMENT,
+      internalId: payment.id,
+      status: "NEEDS_REVIEW",
+      action: "payment.sync",
+      errorMessage: message,
+    });
+    return { ok: false, review: true, error: message };
   }
   const connection = await prisma.integrationConnection.findFirst({
     where: { companyId: input.companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },

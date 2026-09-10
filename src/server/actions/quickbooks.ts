@@ -560,14 +560,71 @@ export async function maybeAutoSyncPayment(input: {
   if (!loaded.ok) return;
   const payment = await prisma.payment.findFirst({
     where: { id: input.paymentId, companyId: input.companyId },
-    select: { invoiceId: true, invoice: { select: { id: true } } },
+    include: {
+      invoice: {
+        select: {
+          id: true,
+          invoiceNumber: true,
+          status: true,
+          issueDate: true,
+          importMode: true,
+          totalCents: true,
+        },
+      },
+    },
   });
   if (!payment) return;
-  const { resolveQuickBooksInvoiceMapping } = await import("@/lib/quickbooks/mappings");
-  const invoiceMap = await resolveQuickBooksInvoiceMapping(prisma, {
-    companyId: input.companyId,
-    invoiceId: payment.invoice?.id || payment.invoiceId,
+  const siblings = await prisma.payment.findMany({
+    where: { companyId: input.companyId, invoiceId: payment.invoiceId },
+    select: {
+      id: true,
+      invoiceId: true,
+      paidAt: true,
+      importMode: true,
+      status: true,
+      amountCents: true,
+      refundedCents: true,
+      provider: true,
+      providerPaymentId: true,
+    },
   });
-  if ("error" in invoiceMap) return;
-  await syncPaymentToQuickBooks(prisma, loaded.transport, input);
+  const { ENTITY_INVOICE, ENTITY_PAYMENT } = await import("@/lib/quickbooks/mappings");
+  const {
+    evaluateInvoiceEligibility,
+    evaluatePaymentEligibility,
+    mappingKey,
+  } = await import("@/lib/quickbooks/eligibility");
+  const { syncPaymentWithInvoiceDependency } = await import("@/lib/quickbooks/engine");
+  const mappings = await prisma.quickBooksMapping.findMany({
+    where: {
+      companyId: input.companyId,
+      entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] },
+    },
+    select: { entityType: true, internalId: true, status: true, quickbooksId: true },
+  });
+  const map = new Map(mappings.map((row) => [mappingKey(row.entityType, row.internalId), row]));
+  const invoiceEligibility = payment.invoice
+    ? evaluateInvoiceEligibility(payment.invoice, {
+        syncStartDate: settings.syncStartDate,
+        mapping: map.get(mappingKey(ENTITY_INVOICE, payment.invoice.id)),
+      })
+    : null;
+  const eligibility = evaluatePaymentEligibility({
+    payment,
+    invoice: payment.invoice,
+    siblingPayments: siblings,
+    paymentMapping: map.get(mappingKey(ENTITY_PAYMENT, payment.id)),
+    invoiceMapping: payment.invoice ? map.get(mappingKey(ENTITY_INVOICE, payment.invoice.id)) : null,
+    syncedPaymentIds: mappings.filter((row) => row.entityType === ENTITY_PAYMENT && row.status === "SYNCED").map((row) => row.internalId),
+    syncStartDate: settings.syncStartDate,
+  });
+  if (!eligibility.canAutoSync || !payment.invoice || !invoiceEligibility) return;
+  await syncPaymentWithInvoiceDependency(prisma, loaded.transport, {
+    companyId: input.companyId,
+    actorId: "payment-provider",
+    paymentId: payment.id,
+    invoiceId: payment.invoice.id,
+    invoiceCanSyncAsDependency: invoiceEligibility.canSyncAsDependency,
+    invoiceHasValidMapping: invoiceEligibility.hasValidMapping,
+  });
 }

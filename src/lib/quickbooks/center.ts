@@ -1,7 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { previewQuickBooksSync } from "@/lib/quickbooks/preview";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
-import { diagnoseCompanyInvoicePayments } from "@/lib/quickbooks/mappings";
+import { diagnoseCompanyInvoicePayments, ENTITY_PAYMENT } from "@/lib/quickbooks/mappings";
+import { paymentReviewLabel } from "@/lib/quickbooks/eligibility";
 
 export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: string) {
   const [preview, review, recent, customers, diagnosis] = await Promise.all([
@@ -31,15 +32,33 @@ export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: 
       })
     : [];
 
-  return {
-    preview,
-    review: review.map((row) => ({
+  const computedPaymentReviews = preview.paymentReviews.map((row) => ({
+    id: row.id,
+    entityType: row.entityType,
+    internalId: row.internalId,
+    status: row.status,
+    label: paymentReviewLabel(row.state),
+    error: row.error,
+    href: row.href,
+    hrefLabel: row.hrefLabel,
+  }));
+  const computedPaymentIds = new Set(computedPaymentReviews.map((row) => row.internalId));
+  const mappingReviews = review
+    .filter((row) => !(row.entityType === ENTITY_PAYMENT && computedPaymentIds.has(row.internalId)))
+    .map((row) => ({
       id: row.id,
       entityType: row.entityType,
       internalId: row.internalId,
       status: row.status,
+      label: row.status.replaceAll("_", " "),
       error: humanQuickBooksError({ message: row.lastSyncError }),
-    })),
+      href: null as string | null,
+      hrefLabel: null as string | null,
+    }));
+
+  return {
+    preview,
+    review: [...computedPaymentReviews, ...mappingReviews],
     recent: recent.map((event) => ({
       ...event,
       errorMessage: event.errorMessage ? humanQuickBooksError({ message: event.errorMessage }) : null,

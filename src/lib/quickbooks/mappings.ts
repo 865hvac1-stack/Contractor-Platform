@@ -1,5 +1,12 @@
 import type { PrismaClient, QuickBooksMapping, QuickBooksSyncStatus } from "@prisma/client";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
+import {
+  describeInvoicePaidSource,
+  evaluateInvoiceEligibility,
+  evaluatePaymentEligibility,
+  hasValidQuickBooksMapping,
+  mappingKey,
+} from "@/lib/quickbooks/eligibility";
 
 export const DEFAULT_ITEM_INTERNAL_ID = "default";
 export const ENTITY_DEFAULT_ITEM = "DEFAULT_ITEM";
@@ -622,7 +629,7 @@ export async function resolveQuickBooksInvoiceMapping(
 }
 
 export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, companyId: string) {
-  const [invoices, payments, mappings, events, connection] = await Promise.all([
+  const [invoices, payments, mappings, events, connection, settings] = await Promise.all([
     prisma.invoice.findMany({
       where: { companyId, status: { notIn: ["DRAFT", "VOID"] } },
       select: {
@@ -638,6 +645,7 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
         sourceSystem: true,
         externalId: true,
         importMode: true,
+        issueDate: true,
       },
       take: 20,
     }),
@@ -649,12 +657,15 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
         invoiceId: true,
         customerId: true,
         amountCents: true,
+        refundedCents: true,
         status: true,
         provider: true,
+        providerPaymentId: true,
         sourceSystem: true,
         externalId: true,
         externalRef: true,
         importMode: true,
+        paidAt: true,
       },
       take: 20,
       orderBy: { createdAt: "desc" },
@@ -671,7 +682,22 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
       where: { companyId, providerKey: "quickbooks_online" },
       select: { externalAccountId: true },
     }),
+    prisma.quickBooksSettings.findUnique({
+      where: { companyId },
+      select: { syncStartDate: true },
+    }),
   ]);
+  const map = new Map(mappings.map((row) => [mappingKey(row.entityType, row.internalId), row]));
+  const paymentsByInvoice = new Map<string, typeof payments>();
+  for (const payment of payments) {
+    const list = paymentsByInvoice.get(payment.invoiceId) ?? [];
+    list.push(payment);
+    paymentsByInvoice.set(payment.invoiceId, list);
+  }
+  const syncedPaymentIds = mappings
+    .filter((row) => row.entityType === ENTITY_PAYMENT && hasValidQuickBooksMapping(row))
+    .map((row) => row.internalId);
+
   return {
     realmId: connection?.externalAccountId ?? null,
     invoices,
@@ -697,6 +723,67 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
       errorMessage: event.errorMessage,
       createdAt: event.createdAt,
     })),
+    invoicePaidSources: invoices.map((invoice) => {
+      const invoicePayments = paymentsByInvoice.get(invoice.id) ?? [];
+      const mapping = map.get(mappingKey(ENTITY_INVOICE, invoice.id));
+      const paid = describeInvoicePaidSource({
+        amountPaidCents: invoice.amountPaidCents,
+        payments: invoicePayments,
+      });
+      return {
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+        totalCents: invoice.totalCents,
+        amountPaidCents: invoice.amountPaidCents,
+        balanceCents: invoice.balanceCents,
+        qboInvoiceId: mapping?.quickbooksId ?? null,
+        qboMapped: hasValidQuickBooksMapping(mapping),
+        paymentRecordCount: invoicePayments.length,
+        eligiblePaymentsForQbo: invoicePayments.filter((payment) =>
+          evaluatePaymentEligibility({
+            payment,
+            invoice,
+            siblingPayments: invoicePayments,
+            paymentMapping: map.get(mappingKey(ENTITY_PAYMENT, payment.id)),
+            invoiceMapping: mapping,
+            syncedPaymentIds,
+            syncStartDate: settings?.syncStartDate,
+          }).canAutoSync
+        ).length,
+        paidSource: paid.source,
+        verifiedPaymentCents: paid.verifiedPaymentCents,
+        note: paid.note,
+      };
+    }),
+    paymentEligibility: payments.map((payment) => {
+      const invoice = invoices.find((row) => row.id === payment.invoiceId) ?? null;
+      const eligibility = evaluatePaymentEligibility({
+        payment,
+        invoice,
+        siblingPayments: paymentsByInvoice.get(payment.invoiceId) ?? [payment],
+        paymentMapping: map.get(mappingKey(ENTITY_PAYMENT, payment.id)),
+        invoiceMapping: invoice ? map.get(mappingKey(ENTITY_INVOICE, invoice.id)) : null,
+        syncedPaymentIds,
+        syncStartDate: settings?.syncStartDate,
+      });
+      return {
+        paymentId: payment.id,
+        invoiceId: payment.invoiceId,
+        invoiceNumber: invoice?.invoiceNumber ?? null,
+        state: eligibility.state,
+        pending: eligibility.pending,
+        needsReview: eligibility.needsReview,
+        canAutoSync: eligibility.canAutoSync,
+        messages: eligibility.messages,
+        invoiceState: invoice
+          ? evaluateInvoiceEligibility(invoice, {
+              syncStartDate: settings?.syncStartDate,
+              mapping: map.get(mappingKey(ENTITY_INVOICE, invoice.id)),
+            }).state
+          : "MISSING",
+      };
+    }),
   };
 }
 

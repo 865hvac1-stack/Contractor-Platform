@@ -188,7 +188,8 @@ export default async function QuickBooksSetupPage({
           <ul className="mt-3 space-y-1 text-sm">
             <li>{preview.customersAvailable} customers available to link</li>
             <li>{preview.invoicesEligible} invoices eligible after the start date</li>
-            <li>{preview.paymentsEligible} payments eligible</li>
+            <li>{preview.paymentsEligible} payments eligible to sync</li>
+            <li>{preview.paymentsNeedsReview} payments need review before accounting sync</li>
             <li>{preview.expensesEligible} approved expenses eligible</li>
             <li>{preview.conflicts} conflicts / need review</li>
             <li>{preview.historicalProtected} historical records protected from automatic push</li>
