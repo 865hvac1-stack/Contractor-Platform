@@ -70,6 +70,17 @@ export default async function LoginPage({
         <Button type="submit" className="h-10 w-full">
           Sign in
         </Button>
+        <p className="text-center text-xs text-[var(--muted-foreground)]">
+          By signing in you agree to the{" "}
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </ActionForm>
 
       <div className="mt-6 space-y-3">

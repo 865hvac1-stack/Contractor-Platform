@@ -52,6 +52,17 @@ export default function RegisterPage() {
         <Button type="submit" className="h-10 w-full">
           Create account
         </Button>
+        <p className="text-center text-xs text-[var(--muted-foreground)]">
+          By creating an account you agree to the{" "}
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </ActionForm>
 
       <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">

@@ -17,6 +17,8 @@ const PUBLIC_EXACT = new Set([
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/terms",
+  "/privacy",
 ]);
 
 export function isPublicPath(pathname: string) {

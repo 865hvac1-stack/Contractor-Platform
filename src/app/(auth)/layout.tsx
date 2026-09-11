@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
 import { landingPath } from "@/lib/workspaces";
 import { BrandMark } from "@/components/brand-mark";
+import { LegalPublicLinks } from "@/components/legal/legal-shell";
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
@@ -24,6 +25,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm md:p-8">
           {children}
         </div>
+        <LegalPublicLinks className="mt-6 text-center text-xs text-[var(--muted-foreground)]" />
       </div>
     </div>
   );

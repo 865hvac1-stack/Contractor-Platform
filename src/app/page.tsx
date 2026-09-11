@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
 import { brand } from "@/lib/brand";
 import { BrandMark } from "@/components/brand-mark";
+import { LegalPublicLinks } from "@/components/legal/legal-shell";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +60,9 @@ export default async function HomePage() {
           </div>
         </div>
       </main>
+      <footer className="relative z-10 px-6 pb-8 text-sm text-white/50 md:px-10">
+        <LegalPublicLinks className="[&_a]:text-white/60 [&_a]:hover:text-white" />
+      </footer>
     </div>
   );
 }
