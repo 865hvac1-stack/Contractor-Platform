@@ -145,6 +145,7 @@ registerAttentionDetector(async (companyId) => {
       companyId,
       status: "COMPLETED",
       invoices: { none: {} },
+      importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
     },
     take: 25,
     include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },

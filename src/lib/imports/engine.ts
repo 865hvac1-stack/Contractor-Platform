@@ -120,6 +120,9 @@ function attachLinksFromIndex(index: CompanyLinkIndex, values: Record<string, st
     lastName: values.lastName,
     businessName: values.businessName,
     name: values.customerName,
+    address: values.address || values.serviceAddress,
+    city: values.city || values.serviceCity,
+    zip: values.zip || values.serviceZip,
   });
   if (customer.verdict === "NEEDS_REVIEW") {
     issues.push({ level: "ERROR", code: "customer_ambiguous", message: customer.reason });

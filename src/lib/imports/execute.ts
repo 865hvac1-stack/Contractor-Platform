@@ -67,6 +67,7 @@ async function createProperties(
     companyId: string;
     customerId: string;
     sessionId: string;
+    sourceSystem?: string | null;
     properties: MappedCustomer["properties"];
     existingAddresses: Set<string>;
   }
@@ -87,6 +88,7 @@ async function createProperties(
         isPrimary: property.isPrimary && input.existingAddresses.size === 0,
         importSessionId: input.sessionId,
         importMode: "HISTORICAL",
+        sourceSystem: input.sourceSystem ?? null,
       },
     });
     input.existingAddresses.add(key);
@@ -205,6 +207,7 @@ export async function executeImportBatch(input: {
             companyId: input.companyId,
             customerId: existing.id,
             sessionId: input.sessionId,
+            sourceSystem: session.sourceType,
             properties: mapped.properties,
             existingAddresses,
           });
@@ -233,6 +236,7 @@ export async function executeImportBatch(input: {
               companyId: input.companyId,
               customerId: existing.id,
               sessionId: input.sessionId,
+              sourceSystem: session.sourceType,
               properties: mapped.properties,
               existingAddresses,
             });
@@ -263,6 +267,7 @@ export async function executeImportBatch(input: {
           companyId: input.companyId,
           customerId: created.id,
           sessionId: input.sessionId,
+          sourceSystem: session.sourceType,
           properties: mapped.properties,
           existingAddresses: new Set(),
         });

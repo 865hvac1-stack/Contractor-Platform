@@ -164,12 +164,13 @@ export default async function SettingsPage() {
           className="block rounded-2xl border border-[var(--border)] bg-white p-5 hover:border-[var(--cy-orange)]/40"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">
-            Bring your data
+            Data & Imports
           </p>
-          <h2 className="mt-2 font-medium">Import data</h2>
+          <h2 className="mt-2 font-medium">Import Center</h2>
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-            Upload customers, jobs, invoices, and the rest of your history from almost any software or
-            spreadsheet. Match the columns, preview, then import safely.
+            Preview QuickBooks financial history, upload Housecall Pro service history, review unmatched
+            identities, and dry-run a Housecall Pro import reset. Nothing destructive runs unless an owner
+            types the confirmation phrase.
           </p>
         </Link>
       ) : null}

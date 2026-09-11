@@ -2,6 +2,7 @@ import { startOfDay, endOfDay } from "date-fns";
 import { prisma } from "@/lib/db";
 import { customerLabel } from "@/lib/tech/today";
 import { fieldStatusLabel, propertyAddress } from "@/lib/tech/access";
+import { operationalRecordWhere } from "@/lib/imports/modes";
 import { classifyDispatchJob } from "@/lib/dispatch/job-type";
 import { isRunningLate, scheduledMinutes, technicianBoardState } from "@/lib/dispatch/validate";
 
@@ -53,6 +54,7 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
       where: {
         companyId,
         status: { notIn: ["CANCELED"] },
+        ...operationalRecordWhere(),
         assignments: { some: { userId: { not: "" } } },
         OR: [
           { scheduledStart: { gte: start, lte: end } },
@@ -71,6 +73,7 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
       where: {
         companyId,
         status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED"] },
+        ...operationalRecordWhere(),
         assignments: { none: {} },
         OR: [{ scheduledStart: { gte: start, lte: end } }, { scheduledStart: null }],
       },

@@ -1,4 +1,4 @@
-import { isHistoricalImport } from "@/lib/imports/safety";
+import { isNonOperationalImport } from "@/lib/imports/safety";
 import type { JobBillingReadiness, JobBillingReadinessState } from "@/lib/billing-watchdog/types";
 
 export type ReadinessJob = {
@@ -73,7 +73,7 @@ export function getJobBillingReadiness(job: ReadinessJob): JobBillingReadiness {
       actions: [{ label: "Open invoice", href: `/invoices/${liveInvoice.id}` }],
     };
   }
-  if (isHistoricalImport(job.importMode)) {
+  if (isNonOperationalImport(job.importMode)) {
     return {
       state: "NOT_REQUIRED",
       label: "Historical import",

@@ -412,6 +412,7 @@ model User {
   jobWorkflowEvents JobWorkflowEvent[]
   oauthStates OAuthState[]
   importSessions ImportSession[]
+  importResetOperations ImportResetOperation[] @relation("ImportResetActor")
   receiptsUploaded Receipt[] @relation("ReceiptUploader")
   jobCostsCreated JobCost[] @relation("JobCostCreator")
   estimatesCreated Estimate[] @relation("EstimateCreator")
@@ -587,6 +588,8 @@ model Company {
   importRows ImportRow[]
   importExternalRefs ImportExternalRef[]
   importProfiles ImportMappingProfile[]
+  importResetOperations ImportResetOperation[]
+  importReviewItems ImportReviewItem[]
   migrationProjects MigrationProject[]
   vehicles Vehicle[]
   jobCosts JobCost[]
@@ -2844,6 +2847,52 @@ model ImportMappingProfile {
   company           Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([sourceType, recordType])
+}
+
+model ImportResetOperation {
+  id                 String   @id @default(cuid())
+  companyId          String
+  initiatedById      String
+  sourceSystem       String
+  mode               String
+  status             String
+  confirmationPhrase String?
+  counts             Json
+  preserved          Json
+  blocked            Json
+  mixed              Json?
+  census             Json?
+  idempotentReplay   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  completedAt        DateTime?
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  initiatedBy User    @relation("ImportResetActor", fields: [initiatedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, sourceSystem, mode])
+}
+
+model ImportReviewItem {
+  id                 String   @id @default(cuid())
+  companyId          String
+  sourceSystem       String
+  recordType         String
+  status             String   @default("OPEN")
+  confidence         String
+  proposedCustomerId String?
+  externalId         String?
+  payload            Json
+  reason             String
+  importSessionId    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([companyId, sourceSystem, recordType])
+  @@index([companyId, proposedCustomerId])
 }
 
 // ============================================================

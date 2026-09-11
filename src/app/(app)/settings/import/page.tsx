@@ -3,21 +3,24 @@ import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { RECORD_TYPE_LABELS, SOURCE_LABELS } from "@/lib/imports/types";
-import {
-  FOUNDATION_ENTITY_TYPES,
-  FOUNDATION_REASON,
-  LIVE_ENTITY_TYPES,
-  RECOMMENDED_ORDER,
-} from "@/lib/imports/catalog";
+import { FOUNDATION_ENTITY_TYPES, FOUNDATION_REASON, LIVE_ENTITY_TYPES, RECOMMENDED_ORDER } from "@/lib/imports/catalog";
 import { StartImportForm } from "@/components/imports/import-forms";
 import { WizardSteps } from "@/components/imports/wizard-steps";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { buildProvenanceCensus } from "@/lib/imports/census";
+import { canManageImportReset } from "@/lib/imports/reset";
+import { OWNERSHIP_COPY } from "@/lib/imports/modes";
+import { HousecallResetDangerZone } from "@/components/imports/danger-zone";
+import { QuickBooksHistoricalImport } from "@/components/imports/quickbooks-historical-import";
+import { previewQuickBooksHistorical } from "@/lib/quickbooks/historical-import";
+import { PROVENANCE_LABELS } from "@/lib/imports/provenance";
 
 export default async function ImportDataPage() {
   const ctx = await requirePermission("imports:manage");
-  const [sessions, projects, customerCount] = await Promise.all([
+  const canReset = canManageImportReset(ctx.role, ctx.user.isPlatformAdmin);
+  const [sessions, projects, customerCount, census, lastReset, reviewCount, qboPreview] = await Promise.all([
     prisma.importSession.findMany({
       where: { companyId: ctx.company.id },
       orderBy: { createdAt: "desc" },
@@ -30,7 +33,27 @@ export default async function ImportDataPage() {
       take: 20,
     }),
     prisma.customer.count({ where: { companyId: ctx.company.id } }),
+    buildProvenanceCensus(prisma, ctx.company.id),
+    prisma.importResetOperation.findFirst({
+      where: { companyId: ctx.company.id, sourceSystem: "HOUSECALL_PRO" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.importReviewItem.count({ where: { companyId: ctx.company.id, status: "OPEN" } }),
+    can(ctx.role, "accounting:view")
+      ? previewQuickBooksHistorical(prisma, ctx.company.id).catch(() => null)
+      : Promise.resolve(null),
   ]);
+
+  const lastDryRun =
+    lastReset && lastReset.mode === "DRY_RUN"
+      ? {
+          createdAt: lastReset.createdAt.toISOString(),
+          jobs: Number((lastReset.counts as { jobs?: number } | null)?.jobs ?? 0),
+          customers: Number((lastReset.counts as { customers?: number } | null)?.customers ?? 0),
+          properties: Number((lastReset.counts as { properties?: number } | null)?.properties ?? 0),
+          operationId: lastReset.id,
+        }
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -38,14 +61,57 @@ export default async function ImportDataPage() {
         <Link href="/settings" className="text-sm text-[var(--muted-foreground)]">
           ← Settings
         </Link>
-        <h1 className="mt-2 font-display text-3xl tracking-tight">Import data</h1>
+        <h1 className="mt-2 font-display text-3xl tracking-tight">Data & Imports</h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--muted-foreground)]">
-          Moving from another system? Upload the export you already have. We match columns, connect people and jobs, and
-          write history only after you confirm.
+          ContractorYou owns live operations. QuickBooks owns accounting history. Housecall Pro is historical service
+          only. Every import scans, matches, and previews before it writes.
         </p>
       </div>
 
-      <WizardSteps current={1} />
+      <section className="grid gap-4 md:grid-cols-3">
+        <SourceCard title="ContractorYou" body={OWNERSHIP_COPY.CONTRACTORYOU} />
+        <SourceCard title="QuickBooks" body={OWNERSHIP_COPY.QUICKBOOKS} />
+        <SourceCard title="Housecall Pro" body={OWNERSHIP_COPY.HOUSECALL_PRO} />
+      </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <h2 className="font-semibold text-[var(--cy-navy)]">Import health</h2>
+        <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Health label="Canonical / live customers" value={census.customers.NATIVE_LIVE} />
+          <Health label="Housecall Pro customers" value={census.customers.HOUSECALL_PRO} />
+          <Health label="QuickBooks customers" value={census.customers.QUICKBOOKS} />
+          <Health label="Unmatched identities" value={reviewCount} />
+          <Health label="Historical jobs" value={census.jobs.HOUSECALL_PRO + census.jobs.QUICKBOOKS + census.jobs.OTHER_IMPORT} />
+          <Health label="Live jobs" value={census.jobs.NATIVE_LIVE} />
+          <Health label={PROVENANCE_LABELS.UNKNOWN} value={census.customers.UNKNOWN + census.jobs.UNKNOWN} />
+        </dl>
+      </section>
+
+      {can(ctx.role, "accounting:view") ? <QuickBooksHistoricalImport preview={qboPreview} /> : null}
+
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Housecall Pro</p>
+        <h2 className="mt-2 font-semibold text-[var(--cy-navy)]">Historical service history</h2>
+        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+          Upload an export, scan columns, match to canonical customers, then preview. Historical jobs will not enter
+          Dispatch, Ready to Invoice, or Billing Watchdog. Name-only matches go to the review queue.
+        </p>
+        <div className="mt-5">
+          <StartImportForm
+            canImport={can(ctx.role, "imports:manage")}
+            projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+          />
+        </div>
+        <WizardSteps current={1} />
+        <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+          Recommended order: existing ContractorYou records → QuickBooks identities → Housecall Pro service history.
+        </p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[var(--muted-foreground)]">
+          {RECOMMENDED_ORDER.map((type) => (
+            <li key={type}>{RECORD_TYPE_LABELS[type]}</li>
+          ))}
+        </ol>
+      </section>
 
       {customerCount === 0 ? (
         <section className="rounded-2xl border border-dashed border-[var(--cy-orange)]/40 bg-white p-6">
@@ -54,37 +120,10 @@ export default async function ImportDataPage() {
           </p>
           <h2 className="mt-2 font-display text-2xl">Bring your list with you</h2>
           <p className="mt-2 max-w-xl text-sm text-[var(--muted-foreground)]">
-            Housecall Pro, ServiceTitan, Jobber, QuickBooks, or a spreadsheet you built yourself. A file import is not a
-            live connection to that software.
+            Housecall Pro, ServiceTitan, Jobber, QuickBooks, or a spreadsheet. A file import is not a live connection.
           </p>
         </section>
       ) : null}
-
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
-        <h2 className="font-semibold text-[var(--cy-navy)]">Start an import</h2>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          File upload is supported now. Direct sync with another software only appears when that connection actually
-          exists.
-        </p>
-        <div className="mt-5">
-          <StartImportForm
-            canImport={can(ctx.role, "imports:manage")}
-            projects={projects.map((project) => ({ id: project.id, name: project.name }))}
-          />
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
-        <h2 className="font-semibold text-[var(--cy-navy)]">Recommended order</h2>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          You can import in any order. We recommend customers first so later files can attach to the right people.
-        </p>
-        <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
-          {RECOMMENDED_ORDER.map((type) => (
-            <li key={type}>{RECORD_TYPE_LABELS[type]}</li>
-          ))}
-        </ol>
-      </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
         <h2 className="font-semibold text-[var(--cy-navy)]">What you can import today</h2>
@@ -92,7 +131,7 @@ export default async function ImportDataPage() {
           {LIVE_ENTITY_TYPES.map((type) => (
             <div key={type} className="rounded-xl border border-[var(--border)] bg-[var(--cy-gray)]/40 px-4 py-3">
               <p className="font-medium">{RECORD_TYPE_LABELS[type]}</p>
-              <p className="text-xs uppercase tracking-[0.14em] text-[var(--cy-orange)]">Live</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--cy-orange)]">Historical unless created in ContractorYou</p>
             </div>
           ))}
         </div>
@@ -165,6 +204,46 @@ export default async function ImportDataPage() {
           </div>
         )}
       </section>
+
+      {canReset ? (
+        <div className="space-y-4">
+          {lastReset ? (
+            <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
+              <h2 className="font-semibold text-[var(--cy-navy)]">
+                Last Housecall Pro reset {lastReset.mode === "DRY_RUN" ? "dry run" : "execution"}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                {lastReset.createdAt.toLocaleString()} · Operation {lastReset.id} ·{" "}
+                {lastReset.idempotentReplay ? "Idempotent — nothing left to remove" : lastReset.status}
+              </p>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries((lastReset.counts as Record<string, number>) || {}).map(([key, value]) => (
+                  <Health key={key} label={key} value={Number(value) || 0} />
+                ))}
+              </dl>
+            </section>
+          ) : null}
+          <HousecallResetDangerZone lastDryRun={lastDryRun} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SourceCard({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="rounded-2xl border border-[var(--border)] bg-white p-4">
+      <h2 className="font-semibold text-[var(--cy-navy)]">{title}</h2>
+      <p className="mt-2 text-sm text-[var(--muted-foreground)]">{body}</p>
+    </article>
+  );
+}
+
+function Health({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-[var(--cy-gray)]/50 px-3 py-2">
+      <dt className="text-xs uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{label}</dt>
+      <dd className="text-lg font-semibold text-[var(--cy-navy)]">{value.toLocaleString()}</dd>
     </div>
   );
 }

@@ -73,7 +73,7 @@ export async function getCustomer360(input: Customer360Options) {
     prisma.job.findMany({
       where: { companyId: input.companyId, customerId: customer.id, ...propertyFilter },
       orderBy: { createdAt: "desc" },
-      take: 12,
+      take: 20,
       include: {
         property: { select: { address: true, city: true } },
         assignments: { include: { user: { select: { firstName: true, lastName: true } } }, take: 1 },
@@ -127,6 +127,8 @@ export async function getCustomer360(input: Customer360Options) {
         dueDate: true,
         createdAt: true,
         propertyId: true,
+        importMode: true,
+        sourceSystem: true,
       },
     }),
     canSeeMoney
@@ -134,7 +136,7 @@ export async function getCustomer360(input: Customer360Options) {
           where: { companyId: input.companyId, customerId: customer.id, status: { in: ["SUCCEEDED", "RECORDED", "CONFIRMED"] } },
           orderBy: { paidAt: "desc" },
           take: 8,
-          select: { id: true, amountCents: true, paidAt: true, method: true, invoiceId: true },
+          select: { id: true, amountCents: true, paidAt: true, method: true, invoiceId: true, sourceSystem: true, importMode: true },
         })
       : Promise.resolve([]),
     prisma.jobPhoto.findMany({
@@ -239,8 +241,8 @@ export async function getCustomer360(input: Customer360Options) {
     .filter((row) => OPEN_ESTIMATE.includes(row.status))
     .reduce((sum, row) => sum + row.totalCents, 0);
 
-  const activeJobs = recentJobs.filter((job) => OPEN_JOB.includes(job.status));
-  const historyJobs = recentJobs.filter((job) => !OPEN_JOB.includes(job.status));
+  const activeJobs = recentJobs.filter((job) => OPEN_JOB.includes(job.status) && job.importMode !== "HISTORICAL" && job.importMode !== "REFERENCE");
+  const historyJobs = recentJobs.filter((job) => !OPEN_JOB.includes(job.status) || job.importMode === "HISTORICAL" || job.importMode === "REFERENCE");
   const activeMembership = customer.customerMemberships.find((row) => row.status === "ACTIVE") ?? null;
 
   const eighteenMonthsAgo = subMonths(new Date(), 18);
@@ -503,20 +505,28 @@ export async function getCustomer360(input: Customer360Options) {
           daysOld: differenceInCalendarDays(new Date(), row.issueDate),
         })),
       invoices: canSeeMoney
-        ? invoices.filter((row) => OPEN_INVOICE.includes(row.status) && row.balanceCents > 0)
+        ? invoices.filter(
+            (row) =>
+              OPEN_INVOICE.includes(row.status) &&
+              row.balanceCents > 0 &&
+              row.importMode !== "HISTORICAL" &&
+              row.importMode !== "REFERENCE"
+          )
         : [],
     },
     jobHistory: historyJobs.map((job) => ({
       id: job.id,
       jobNumber: job.jobNumber,
       jobType: job.jobType,
-      status: job.status,
-      when: job.completedAt || job.scheduledStart || job.createdAt,
-      technician: job.assignments[0]
-        ? `${job.assignments[0].user.firstName} ${job.assignments[0].user.lastName}`
-        : null,
-      amountCents: canSeeMoney ? job.invoices[0]?.totalCents ?? null : null,
+      status: job.importMode === "HISTORICAL" || job.importMode === "REFERENCE" ? "HISTORICAL" : job.status,
+      when: job.importedOccurredAt || job.completedAt || job.scheduledStart || job.createdAt,
+      technician:
+        job.importedTechnicianName ||
+        (job.assignments[0] ? `${job.assignments[0].user.firstName} ${job.assignments[0].user.lastName}` : null),
+      amountCents: canSeeMoney ? job.importedTotalCents ?? job.invoices[0]?.totalCents ?? null : null,
       property: job.property?.address ?? "Unknown property",
+      historical: job.importMode === "HISTORICAL" || job.importMode === "REFERENCE",
+      sourceSystem: job.sourceSystem,
     })),
     jobCount,
     estimates: openEstimates,

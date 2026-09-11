@@ -1,4 +1,4 @@
-import { isHistoricalImport } from "@/lib/imports/safety";
+import { isNonOperationalImport } from "@/lib/imports/safety";
 import {
   getJobBillingReadiness,
   looksLikeNoChargeJob,
@@ -147,7 +147,7 @@ export function analyzeBillingHealth(input: DetectInput): DetectedFinding[] {
   };
 
   for (const job of input.jobs) {
-    if (isHistoricalImport(job.importMode)) continue;
+    if (isNonOperationalImport(job.importMode)) continue;
     const jobInvoices = invoicesByJob.get(job.id) ?? [];
     const readiness = getJobBillingReadiness({
       ...job,
@@ -236,7 +236,7 @@ export function analyzeBillingHealth(input: DetectInput): DetectedFinding[] {
   }
 
   for (const invoice of input.invoices) {
-    if (isHistoricalImport(invoice.importMode) || invoice.status === "VOID") continue;
+    if (isNonOperationalImport(invoice.importMode) || invoice.status === "VOID") continue;
     if (!afterStart(invoice.createdAt, input.settings.startDate) && !afterStart(invoice.issueDate, input.settings.startDate)) {
       continue;
     }

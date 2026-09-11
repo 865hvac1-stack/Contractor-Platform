@@ -18,7 +18,7 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
     prisma.job.findMany({
       where: {
         companyId,
-        importMode: { not: "HISTORICAL" },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         status: { in: ["DISPATCHED", "IN_PROGRESS", "ON_HOLD", "COMPLETED"] },
         OR: [
           { completedAt: { gte: lookback } },
@@ -53,7 +53,7 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
     prisma.invoice.findMany({
       where: {
         companyId,
-        importMode: { not: "HISTORICAL" },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         status: { not: "VOID" },
         OR: [{ createdAt: { gte: lookback } }, { issueDate: { gte: lookback } }, { dueDate: { gte: lookback } }],
       },
@@ -81,7 +81,7 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
     prisma.payment.findMany({
       where: {
         companyId,
-        importMode: { not: "HISTORICAL" },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         status: { in: ["CONFIRMED", "SUCCEEDED", "RECORDED", "PARTIALLY_REFUNDED"] },
         paidAt: { gte: lookback },
       },

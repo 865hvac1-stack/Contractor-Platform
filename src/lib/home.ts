@@ -15,17 +15,28 @@ export async function getHomeSummary(companyId: string, range: FinanceRange | st
   const [jobsToday, inProgressToday, completedToday, waitingCount, readyToSchedule, snapshot, attentionRaw, watchdog] =
     await Promise.all([
       prisma.job.count({
-        where: { companyId, scheduledStart: { gte: dayStart, lte: dayEnd }, status: { not: "CANCELED" } },
+        where: {
+          companyId,
+          scheduledStart: { gte: dayStart, lte: dayEnd },
+          status: { not: "CANCELED" },
+          importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
+        },
       }),
       prisma.job.count({
         where: {
           companyId,
           status: { in: ["DISPATCHED", "IN_PROGRESS"] },
           scheduledStart: { gte: dayStart, lte: dayEnd },
+          importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         },
       }),
       prisma.job.count({
-        where: { companyId, status: "COMPLETED", completedAt: { gte: dayStart, lte: dayEnd } },
+        where: {
+          companyId,
+          status: "COMPLETED",
+          completedAt: { gte: dayStart, lte: dayEnd },
+          importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
+        },
       }),
       prisma.waitingRecord.count({
         where: { companyId, state: "ACTIVE", column: { kind: { not: "READY" } } },

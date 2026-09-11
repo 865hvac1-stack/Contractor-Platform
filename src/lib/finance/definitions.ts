@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { operationalRecordWhere } from "@/lib/imports/modes";
 
 export const REVENUE_DEFINITION =
   "Paid invoices whose paid/updated timestamp falls in the selected period. Draft and void invoices are excluded.";
@@ -18,7 +19,8 @@ export const OVERDUE_AR_DEFINITION = "Outstanding invoices whose due date has al
 
 export const AVERAGE_TICKET_DEFINITION = "Paid invoice totals in the period divided by the number of those invoices.";
 
-export const READY_TO_INVOICE_DEFINITION = "Completed jobs that still have no invoice.";
+export const READY_TO_INVOICE_DEFINITION =
+  "Live ContractorYou jobs that are completed, billable, and still have no invoice. Historical and reference imports are excluded.";
 
 export const COLLECTED_PAYMENT_STATUSES = [
   "CONFIRMED",
@@ -33,7 +35,7 @@ export function revenueInvoiceWhere(
   start: Date,
   end: Date
 ): Prisma.InvoiceWhereInput {
-  return { companyId, status: "PAID", updatedAt: { gte: start, lte: end } };
+  return { companyId, status: "PAID", updatedAt: { gte: start, lte: end }, ...operationalRecordWhere() };
 }
 
 export function outstandingInvoiceWhere(companyId: string): Prisma.InvoiceWhereInput {
@@ -41,6 +43,7 @@ export function outstandingInvoiceWhere(companyId: string): Prisma.InvoiceWhereI
     companyId,
     status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
     balanceCents: { gt: 0 },
+    ...operationalRecordWhere(),
   };
 }
 
@@ -60,15 +63,21 @@ export function collectedPaymentWhere(
     companyId,
     paidAt: { gte: start, lte: end },
     status: { in: [...COLLECTED_PAYMENT_STATUSES] },
+    ...operationalRecordWhere(),
   };
 }
 
 export function openEstimateWhere(companyId: string): Prisma.EstimateWhereInput {
-  return { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] } };
+  return { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] }, ...operationalRecordWhere() };
 }
 
 export function readyToInvoiceWhere(companyId: string): Prisma.JobWhereInput {
-  return { companyId, status: "COMPLETED", invoices: { none: {} } };
+  return {
+    companyId,
+    status: "COMPLETED",
+    invoices: { none: {} },
+    ...operationalRecordWhere(),
+  };
 }
 
 export function revenueCategoryLabel(invoice: {

@@ -43,6 +43,8 @@ export function CustomerHistoryTabs({
     when: Date | string;
     technician: string | null;
     amountCents: number | null;
+    historical?: boolean;
+    sourceSystem?: string | null;
   }>;
   estimates: Array<{
     id: string;
@@ -58,6 +60,8 @@ export function CustomerHistoryTabs({
     totalCents: number;
     balanceCents: number;
     dueDate: Date | string | null;
+    importMode?: string | null;
+    sourceSystem?: string | null;
   }>;
   payments: Array<{
     id: string;
@@ -65,6 +69,8 @@ export function CustomerHistoryTabs({
     paidAt: Date | string | null;
     method: string | null;
     invoiceId: string | null;
+    sourceSystem?: string | null;
+    importMode?: string | null;
   }>;
   equipment: Array<{
     id: string;
@@ -125,13 +131,18 @@ export function CustomerHistoryTabs({
         {current === "jobs" ? (
           <HistoryList
             empty="No completed jobs yet."
-            items={jobs.slice(0, 5).map((job) => ({
+            items={jobs.slice(0, 8).map((job) => ({
               href: `${jobBase}/${job.id}`,
-              title: `${job.jobNumber} · ${job.jobType || "Job"}`,
-              detail: [formatDate(job.when, timeZone), job.technician, job.amountCents != null ? formatMoney(job.amountCents) : null]
+              title: `${job.jobNumber} · ${job.jobType || (job.historical ? "Historical service" : "Job")}`,
+              detail: [
+                formatDate(job.when, timeZone),
+                job.technician,
+                job.amountCents != null ? formatMoney(job.amountCents) : null,
+                job.historical ? `Source: ${job.sourceSystem === "HOUSECALL_PRO" ? "Housecall Pro" : job.sourceSystem || "Import"}` : null,
+              ]
                 .filter(Boolean)
                 .join(" · "),
-              status: job.status,
+              status: job.historical ? "HISTORICAL" : job.status,
             }))}
           />
         ) : null}
@@ -149,11 +160,16 @@ export function CustomerHistoryTabs({
         {current === "invoices" ? (
           <HistoryList
             empty="No invoices yet."
-            items={invoices.slice(0, 5).map((row) => ({
+            items={invoices.slice(0, 8).map((row) => ({
               href: `/invoices/${row.id}`,
-              title: `${row.invoiceNumber} · ${formatMoney(row.balanceCents || row.totalCents)}`,
-              detail: row.dueDate ? `Due ${formatDate(row.dueDate, timeZone)}` : row.status,
-              status: row.status,
+              title: `${row.invoiceNumber} · ${formatMoney(row.totalCents)}`,
+              detail: [
+                row.importMode === "HISTORICAL" ? "Historical" : row.dueDate ? `Due ${formatDate(row.dueDate, timeZone)}` : row.status,
+                row.sourceSystem === "QUICKBOOKS" ? "Source: QuickBooks" : row.sourceSystem ? `Source: ${row.sourceSystem}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              status: row.importMode === "HISTORICAL" ? "HISTORICAL" : row.status,
             }))}
           />
         ) : null}

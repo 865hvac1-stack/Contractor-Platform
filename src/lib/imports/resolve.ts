@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import { addressKey, digitsOnly, nameKey, normalizeEmail, normalizeText } from "@/lib/imports/normalize";
+import { addressKey, normalizeEmail, normalizeText } from "@/lib/imports/normalize";
+import { buildIdentityIndex, resolveCanonicalCustomer } from "@/lib/imports/identity";
 
 export type ResolvedLink = {
   id: string | null;
@@ -43,10 +44,6 @@ export type CompanyLinkIndex = {
 
 function refKey(recordType: string, externalId: string) {
   return `${recordType}:${externalId}`;
-}
-
-function last10(phone: string) {
-  return digitsOnly(phone).slice(-10);
 }
 
 function indexNeeds(recordType?: string) {
@@ -184,12 +181,16 @@ export function matchCustomerFromIndex(
   index: CompanyLinkIndex,
   input: {
     externalId?: string | null;
+    sourceSystem?: string | null;
     email?: string | null;
     phone?: string | null;
     firstName?: string | null;
     lastName?: string | null;
     businessName?: string | null;
     name?: string | null;
+    address?: string | null;
+    city?: string | null;
+    zip?: string | null;
   }
 ): ResolvedLink {
   if (input.externalId) {
@@ -198,31 +199,25 @@ export function matchCustomerFromIndex(
     const byExt = index.customersByExternalId.get(input.externalId);
     if (byExt) return { id: byExt, reason: "Matched customer source ID", verdict: "MATCHED" };
   }
-  const email = normalizeEmail(input.email);
-  if (email) {
-    const hit = index.customersByEmail.get(email);
-    if (hit) return { id: hit, reason: "Matched customer email", verdict: "MATCHED" };
+
+  const identity = buildIdentityIndex(
+    index.customers.map((customer) => ({
+      ...customer,
+      properties: (index.propertiesByCustomerId.get(customer.id) ?? []).map((property) => ({
+        address: property.address,
+        city: property.city,
+        zip: property.zip,
+      })),
+    }))
+  );
+  const decision = resolveCanonicalCustomer(identity, input);
+  if (decision.confidence === "AUTO_MATCH") {
+    return { id: decision.customerId, reason: decision.reason, verdict: "MATCHED" };
   }
-  const phone = digitsOnly(input.phone);
-  if (phone.length >= 10) {
-    const needle = phone.slice(-10);
-    const hit = index.customers.find((customer) => customer.phone && last10(customer.phone) === needle);
-    if (hit) return { id: hit.id, reason: "Matched customer phone", verdict: "MATCHED" };
+  if (decision.confidence === "REVIEW") {
+    return { id: decision.customerId, reason: decision.reason, verdict: "NEEDS_REVIEW" };
   }
-  const display = normalizeText(input.name || `${input.firstName ?? ""} ${input.lastName ?? ""}`);
-  if (display.length > 3 || input.businessName) {
-    const key = nameKey(
-      input.firstName || display.split(" ")[0] || "",
-      input.lastName || display.split(" ").slice(1).join(" "),
-      input.businessName
-    );
-    const matches = index.customers.filter(
-      (customer) => nameKey(customer.firstName, customer.lastName, customer.businessName) === key
-    );
-    if (matches.length === 1) return { id: matches[0]!.id, reason: "Matched customer name", verdict: "MATCHED" };
-    if (matches.length > 1) return { id: null, reason: "More than one customer has that name", verdict: "NEEDS_REVIEW" };
-  }
-  return { id: null, reason: "We could not match this row to a customer", verdict: "MISSING" };
+  return { id: null, reason: decision.reason, verdict: "MISSING" };
 }
 
 export function matchPropertyFromIndex(

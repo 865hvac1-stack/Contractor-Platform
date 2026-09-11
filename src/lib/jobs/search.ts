@@ -1,5 +1,6 @@
 import { addDays, endOfDay, startOfDay } from "date-fns";
 import type { JobStatus, Prisma } from "@prisma/client";
+import { operationalRecordWhere } from "@/lib/imports/modes";
 
 const JOB_STATUSES = new Set<string>([
   "NEW",
@@ -120,6 +121,8 @@ export function jobsWhere(input: {
       ],
     });
   }
+  const operationalOnly =
+    readyToInvoice || input.when === "today" || input.when === "upcoming" || input.view === "active";
   return {
     companyId: input.companyId,
     ...input.access,
@@ -132,6 +135,7 @@ export function jobsWhere(input: {
       ? { status: { notIn: ["COMPLETED", "CANCELED"] as JobStatus[] } }
       : {}),
     ...(input.customerId ? { customerId: input.customerId } : {}),
+    ...(operationalOnly ? operationalRecordWhere() : {}),
     ...whenFilter,
     ...(extraFilters.length === 1 ? extraFilters[0] : extraFilters.length > 1 ? { AND: extraFilters } : {}),
   };

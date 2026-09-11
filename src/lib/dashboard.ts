@@ -62,6 +62,7 @@ export async function getCommandCenterData(companyId: string) {
         companyId,
         scheduledStart: { gte: dayStart, lte: dayEnd },
         status: { not: "CANCELED" },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
       },
     }),
     prisma.job.count({
@@ -69,16 +70,18 @@ export async function getCommandCenterData(companyId: string) {
         companyId,
         status: "COMPLETED",
         completedAt: { gte: dayStart, lte: dayEnd },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
       },
     }),
     prisma.job.count({
       where: {
         companyId,
         status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"] },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
       },
     }),
     prisma.estimate.findMany({
-      where: { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] } },
+      where: { companyId, status: { in: ["DRAFT", "SENT", "VIEWED"] }, importMode: { notIn: ["HISTORICAL", "REFERENCE"] } },
       select: { totalCents: true, status: true },
     }),
     prisma.estimate.findMany({
@@ -102,6 +105,7 @@ export async function getCommandCenterData(companyId: string) {
         companyId,
         status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         balanceCents: { gt: 0 },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
       },
       select: { balanceCents: true, dueDate: true },
     }),
@@ -110,6 +114,7 @@ export async function getCommandCenterData(companyId: string) {
         companyId,
         status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         balanceCents: { gt: 0 },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         dueDate: { lt: now },
       },
     }),
@@ -118,6 +123,7 @@ export async function getCommandCenterData(companyId: string) {
         companyId,
         status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         balanceCents: { gt: 0 },
+        importMode: { notIn: ["HISTORICAL", "REFERENCE"] },
         dueDate: { lt: now },
       },
       include: { customer: { select: { firstName: true, lastName: true, businessName: true } } },
