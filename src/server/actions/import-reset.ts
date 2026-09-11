@@ -13,6 +13,12 @@ import {
   HCP_RESET_CONFIRMATION,
 } from "@/lib/imports/reset";
 import { previewQuickBooksHistorical, importQuickBooksHistorical, type QboHistoricalCategory } from "@/lib/quickbooks/historical-import";
+import {
+  dryRunQuickBooksHistoricalReset,
+  executeQuickBooksHistoricalReset,
+  formatQboHistoricalResetMessage,
+  QBO_RESET_CONFIRMATION,
+} from "@/lib/quickbooks/historical-reset";
 
 export type ImportResetActionResult = ActionResult & {
   operationId?: string;
@@ -81,6 +87,68 @@ export async function executeHousecallResetAction(
       message: result.executed
         ? `Housecall Pro import reset completed. Operation ${result.operationId}.`
         : `Nothing left to remove. Operation ${result.operationId} was idempotent.`,
+    };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error) };
+  }
+}
+
+export async function dryRunQuickBooksHistoricalResetAction(
+  _prev: ImportResetActionResult | null,
+  _formData: FormData
+): Promise<ImportResetActionResult> {
+  try {
+    const ctx = await requirePermission("imports:manage");
+    requireResetAccess(ctx.role, ctx.user.isPlatformAdmin);
+    const result = await dryRunQuickBooksHistoricalReset({
+      prisma,
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+    });
+    revalidatePath("/settings/import");
+    return {
+      ok: true,
+      operationId: result.operationId,
+      dryRun: true,
+      message: formatQboHistoricalResetMessage(result, "DRY_RUN"),
+    };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error) };
+  }
+}
+
+export async function executeQuickBooksHistoricalResetAction(
+  _prev: ImportResetActionResult | null,
+  formData: FormData
+): Promise<ImportResetActionResult> {
+  try {
+    const ctx = await requirePermission("imports:manage");
+    requireResetAccess(ctx.role, ctx.user.isPlatformAdmin);
+    const confirmation = String(formData.get("confirmation") || "");
+    const acknowledged = String(formData.get("finalConfirm") || "") === "yes";
+    if (!acknowledged) {
+      return { ok: false, error: "Check the final confirmation box. Nothing was deleted." };
+    }
+    if (confirmation.trim() !== QBO_RESET_CONFIRMATION) {
+      return { ok: false, error: `Type ${QBO_RESET_CONFIRMATION} exactly. Nothing was deleted.` };
+    }
+    const result = await executeQuickBooksHistoricalReset({
+      prisma,
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      confirmation,
+    });
+    revalidatePath("/settings/import");
+    revalidatePath("/customers");
+    revalidatePath("/invoices");
+    revalidatePath("/payments");
+    revalidatePath("/money");
+    revalidatePath("/dashboard");
+    return {
+      ok: true,
+      operationId: result.operationId,
+      dryRun: false,
+      message: formatQboHistoricalResetMessage(result, "EXECUTE", result.executed),
     };
   } catch (error) {
     return { ok: false, error: publicActionError(error) };

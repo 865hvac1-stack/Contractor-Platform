@@ -15,12 +15,13 @@ import { OWNERSHIP_COPY } from "@/lib/imports/modes";
 import { HousecallResetDangerZone } from "@/components/imports/danger-zone";
 import { QuickBooksHistoricalImport } from "@/components/imports/quickbooks-historical-import";
 import { previewQuickBooksHistorical } from "@/lib/quickbooks/historical-import";
-import { PROVENANCE_LABELS } from "@/lib/imports/provenance";
+import { formatQboRealmEnvironment, loadQboRealmContext } from "@/lib/quickbooks/historical-reset";
+import { PROVENANCE_LABELS, QUICKBOOKS_SOURCE } from "@/lib/imports/provenance";
 
 export default async function ImportDataPage() {
   const ctx = await requirePermission("imports:manage");
   const canReset = canManageImportReset(ctx.role, ctx.user.isPlatformAdmin);
-  const [sessions, projects, customerCount, census, lastReset, reviewCount, qboPreview] = await Promise.all([
+  const [sessions, projects, customerCount, census, lastReset, lastQboReset, reviewCount, qboPreview, qboRealm] = await Promise.all([
     prisma.importSession.findMany({
       where: { companyId: ctx.company.id },
       orderBy: { createdAt: "desc" },
@@ -38,10 +39,15 @@ export default async function ImportDataPage() {
       where: { companyId: ctx.company.id, sourceSystem: "HOUSECALL_PRO" },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.importResetOperation.findFirst({
+      where: { companyId: ctx.company.id, sourceSystem: QUICKBOOKS_SOURCE },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.importReviewItem.count({ where: { companyId: ctx.company.id, status: "OPEN" } }),
     can(ctx.role, "accounting:view")
       ? previewQuickBooksHistorical(prisma, ctx.company.id).catch(() => null)
       : Promise.resolve(null),
+    loadQboRealmContext(prisma, ctx.company.id),
   ]);
 
   const lastDryRun =
@@ -52,6 +58,29 @@ export default async function ImportDataPage() {
           customers: Number((lastReset.counts as { customers?: number } | null)?.customers ?? 0),
           properties: Number((lastReset.counts as { properties?: number } | null)?.properties ?? 0),
           operationId: lastReset.id,
+        }
+      : null;
+
+  const qboCounts = (lastQboReset?.counts as { invoices?: number; payments?: number; customers?: number } | null) ?? {};
+  const lastQboDryRun =
+    lastQboReset && lastQboReset.mode === "DRY_RUN"
+      ? {
+          createdAt: lastQboReset.createdAt.toISOString(),
+          invoices: Number(qboCounts.invoices ?? 0),
+          payments: Number(qboCounts.payments ?? 0),
+          customers: Number(qboCounts.customers ?? 0),
+          operationId: lastQboReset.id,
+        }
+      : null;
+  const lastQboExecute =
+    lastQboReset && lastQboReset.mode === "EXECUTE"
+      ? {
+          createdAt: lastQboReset.createdAt.toISOString(),
+          invoices: Number(qboCounts.invoices ?? 0),
+          payments: Number(qboCounts.payments ?? 0),
+          customers: Number(qboCounts.customers ?? 0),
+          operationId: lastQboReset.id,
+          executed: !lastQboReset.idempotentReplay,
         }
       : null;
 
@@ -87,7 +116,20 @@ export default async function ImportDataPage() {
         </dl>
       </section>
 
-      {can(ctx.role, "accounting:view") ? <QuickBooksHistoricalImport preview={qboPreview} /> : null}
+      {can(ctx.role, "accounting:view") ? (
+        <QuickBooksHistoricalImport
+          preview={qboPreview}
+          canReset={canReset}
+          realm={{
+            companyName: qboRealm.companyName,
+            realmId: qboRealm.realmId,
+            environmentLabel: formatQboRealmEnvironment(qboRealm.environment),
+            connectionStatus: qboRealm.connectionStatus,
+          }}
+          lastDryRun={lastQboDryRun}
+          lastExecute={lastQboExecute}
+        />
+      ) : null}
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Housecall Pro</p>
@@ -207,6 +249,22 @@ export default async function ImportDataPage() {
 
       {canReset ? (
         <div className="space-y-4">
+          {lastQboReset ? (
+            <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
+              <h2 className="font-semibold text-[var(--cy-navy)]">
+                Last QuickBooks historical reset {lastQboReset.mode === "DRY_RUN" ? "dry run" : "execution"}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                {lastQboReset.createdAt.toLocaleString()} · Operation {lastQboReset.id} ·{" "}
+                {lastQboReset.idempotentReplay ? "Idempotent — nothing left to remove" : lastQboReset.status}
+              </p>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries((lastQboReset.counts as Record<string, number>) || {}).map(([key, value]) => (
+                  <Health key={key} label={key} value={Number(value) || 0} />
+                ))}
+              </dl>
+            </section>
+          ) : null}
           {lastReset ? (
             <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
               <h2 className="font-semibold text-[var(--cy-navy)]">

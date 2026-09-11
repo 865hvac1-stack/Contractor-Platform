@@ -4,10 +4,15 @@ import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QuickBooksHistoricalResetZone } from "@/components/imports/quickbooks-historical-reset";
 import { importQuickBooksHistoricalAction, previewQuickBooksHistoricalAction } from "@/server/actions/import-reset";
 
 export function QuickBooksHistoricalImport({
   preview,
+  canReset = false,
+  realm,
+  lastDryRun,
+  lastExecute,
 }: {
   preview?: {
     connected: boolean;
@@ -17,6 +22,28 @@ export function QuickBooksHistoricalImport({
     items: number;
     expenses: number;
     error?: string;
+  } | null;
+  canReset?: boolean;
+  realm: {
+    companyName: string | null;
+    realmId: string | null;
+    environmentLabel: string;
+    connectionStatus: string | null;
+  };
+  lastDryRun?: {
+    createdAt: string;
+    invoices: number;
+    payments: number;
+    customers: number;
+    operationId: string;
+  } | null;
+  lastExecute?: {
+    createdAt: string;
+    invoices: number;
+    payments: number;
+    customers: number;
+    operationId: string;
+    executed: boolean;
   } | null;
 }) {
   return (
@@ -73,6 +100,13 @@ export function QuickBooksHistoricalImport({
           <Button type="submit">Import selected history</Button>
         </ActionForm>
       ) : null}
+
+      <QuickBooksHistoricalResetZone
+        canReset={canReset}
+        realm={realm}
+        lastDryRun={lastDryRun}
+        lastExecute={lastExecute}
+      />
     </section>
   );
 }

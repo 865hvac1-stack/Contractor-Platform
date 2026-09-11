@@ -4,9 +4,11 @@ import { buildIdentityIndex, resolveCanonicalCustomer } from "@/lib/imports/iden
 import { IMPORT_MODE_HISTORICAL } from "@/lib/imports/modes";
 import { QUICKBOOKS_SOURCE } from "@/lib/imports/provenance";
 import { splitFullName } from "@/lib/imports/normalize";
+import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { loadQuickBooksTransport } from "@/lib/quickbooks/connection";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import type { QboTransport } from "@/lib/quickbooks/client";
+import { historicalImportMappingMetadata } from "@/lib/quickbooks/historical-reset";
 
 export const QBO_HISTORICAL_CATEGORIES = ["customers", "invoices", "payments", "items", "expenses"] as const;
 export type QboHistoricalCategory = (typeof QBO_HISTORICAL_CATEGORIES)[number];
@@ -157,6 +159,11 @@ export async function importQuickBooksHistorical(input: {
   if (!transport.ok) {
     return { preview, created: { customers: 0, invoices: 0, payments: 0, review: 0 }, matched: 0, skipped: 0 };
   }
+  const app = await loadQuickBooksAppCredentials(input.prisma, input.companyId);
+  const mappingMeta = historicalImportMappingMetadata({
+    realmId: transport.realmId,
+    environment: app?.environment ?? null,
+  });
 
   const created = { customers: 0, invoices: 0, payments: 0, review: 0 };
   let matched = 0;
@@ -264,7 +271,7 @@ export async function importQuickBooksHistorical(input: {
         }
         if (!customerId) continue;
         qboToCustomer.set(row.Id, customerId);
-        await input.prisma.quickBooksMapping.upsert({
+        const existingCustomerMap = await input.prisma.quickBooksMapping.findUnique({
           where: {
             companyId_entityType_internalId: {
               companyId: input.companyId,
@@ -272,15 +279,26 @@ export async function importQuickBooksHistorical(input: {
               internalId: customerId,
             },
           },
-          create: {
-            companyId: input.companyId,
-            entityType: "CUSTOMER",
-            internalId: customerId,
-            quickbooksId: row.Id,
-            status: "SYNCED",
-          },
-          update: { quickbooksId: row.Id, status: "SYNCED" },
         });
+        if (existingCustomerMap) {
+          if (existingCustomerMap.quickbooksId !== row.Id) {
+            await input.prisma.quickBooksMapping.update({
+              where: { id: existingCustomerMap.id },
+              data: { quickbooksId: row.Id, status: "SYNCED" },
+            });
+          }
+        } else {
+          await input.prisma.quickBooksMapping.create({
+            data: {
+              companyId: input.companyId,
+              entityType: "CUSTOMER",
+              internalId: customerId,
+              quickbooksId: row.Id,
+              status: "SYNCED",
+              metadata: decision.confidence === "NEW" ? mappingMeta : { realmId: transport.realmId },
+            },
+          });
+        }
       }
       if (rows.length < 100) break;
       start += 100;
@@ -360,8 +378,9 @@ export async function importQuickBooksHistorical(input: {
             internalId: createdInvoice.id,
             quickbooksId: row.Id,
             status: "SYNCED",
+            metadata: mappingMeta,
           },
-          update: { quickbooksId: row.Id, status: "SYNCED" },
+          update: { quickbooksId: row.Id, status: "SYNCED", metadata: mappingMeta },
         });
         created.invoices += 1;
       }
@@ -438,8 +457,9 @@ export async function importQuickBooksHistorical(input: {
             internalId: createdPayment.id,
             quickbooksId: row.Id,
             status: "SYNCED",
+            metadata: mappingMeta,
           },
-          update: { quickbooksId: row.Id, status: "SYNCED" },
+          update: { quickbooksId: row.Id, status: "SYNCED", metadata: mappingMeta },
         });
         created.payments += 1;
       }
