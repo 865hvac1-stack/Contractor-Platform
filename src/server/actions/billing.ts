@@ -355,18 +355,15 @@ export async function updateInvoiceStatusAction(
     });
     if (!invoice) return { ok: false, error: "Invoice not found." };
 
-    const data: {
-      status: InvoiceStatus;
-      amountPaidCents?: number;
-      balanceCents?: number;
-    } = { status };
-
-    if (status === "PAID") {
-      data.amountPaidCents = invoice.totalCents;
-      data.balanceCents = 0;
-    }
-
-    await prisma.invoice.update({ where: { id: invoice.id }, data });
+    const { invoiceDeliveryWrite } = await import("@/lib/billing-watchdog/invoice-delivery");
+    const delivery = invoiceDeliveryWrite(status);
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        ...delivery,
+        ...(status === "PAID" ? { amountPaidCents: invoice.totalCents, balanceCents: 0 } : {}),
+      },
+    });
 
     await writeAudit({
       companyId: ctx.company.id,

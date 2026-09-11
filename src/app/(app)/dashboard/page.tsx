@@ -10,6 +10,7 @@ import { getHomeSummary } from "@/lib/home";
 import { CommandHero } from "@/components/home/command-hero";
 import { NeedsYou } from "@/components/home/needs-you";
 import { BusinessSnapshot } from "@/components/home/business-snapshot";
+import { BillingWatchdogHomeCard } from "@/components/billing-watchdog/home-card";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -23,6 +24,8 @@ const HOME_PROMPTS = [
   "Which estimates need follow-up?",
   "Who is ready to schedule?",
   "How are we doing this month?",
+  "Why does Billing Watchdog show money at risk?",
+  "Which jobs were not billed?",
 ];
 
 export default async function DashboardPage({
@@ -82,6 +85,8 @@ export default async function DashboardPage({
             : null
         }
       />
+
+      {canSeeMoney ? <BillingWatchdogHomeCard summary={data.watchdog} /> : null}
 
       <NeedsYou items={data.needsYou} total={data.needsYouTotal} />
 

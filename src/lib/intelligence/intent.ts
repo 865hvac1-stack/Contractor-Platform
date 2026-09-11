@@ -30,6 +30,9 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
     tools.add("getOutstandingInvoices");
     tools.add("getPaymentCollection");
   }
+  if (/watchdog|not billed|unbilled|never sent|didn't check out|did not check out|revenue at risk|what money|missing money|billing issue/.test(q)) {
+    tools.add("getBillingWatchdog");
+  }
   if (/failed payment|declined|payment failed/.test(q)) tools.add("getFailedPayments");
   if (/processing|ach|bank payment/.test(q)) tools.add("getProcessingPayments");
   if (/collected today|collected this|paid today|how much did we collect/.test(q)) {

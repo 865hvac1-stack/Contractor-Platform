@@ -235,6 +235,25 @@ export function Job360View({
         )}
       </Section>
 
+      {canViewMoney && view.billing ? (
+        <Section title="Billing">
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--cy-orange)]">{view.billing.state.replaceAll("_", " ")}</p>
+              <p className="text-lg font-medium text-[var(--cy-navy)]">{view.billing.label}</p>
+              <p className="text-sm text-[var(--muted-foreground)]">{view.billing.reason}</p>
+              <div className="flex flex-wrap gap-2">
+                {view.billing.actions.map((action) => (
+                  <Link key={action.href + action.label} href={action.href} className={cn(buttonVariants({ size: "sm" }))}>
+                    {action.label}
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </Section>
+      ) : null}
+
       {canViewMoney ? (
         <Section title="Job financials">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

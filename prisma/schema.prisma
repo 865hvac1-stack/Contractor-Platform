@@ -593,6 +593,8 @@ model Company {
   quickBooksSettings QuickBooksSettings?
   quickBooksMappings QuickBooksMapping[]
   quickBooksSyncEvents QuickBooksSyncEvent[]
+  billingWatchdogSettings BillingWatchdogSettings?
+  billingWatchdogFindings BillingWatchdogFinding[]
   pricebookCategories PricebookCategory[]
   pricebookItems PricebookItem[]
   membershipPlans MembershipPlan[]
@@ -931,6 +933,8 @@ model Job {
   scheduledEnd        DateTime?
   arrivalWindowStart  DateTime?
   arrivalWindowEnd    DateTime?
+  checkedInAt         DateTime?
+  checkedOutAt        DateTime?
   completedAt         DateTime?
   // Financial readiness (cents) — populated as invoices/expenses link
   // Do not invent values; calculated from related records when available
@@ -984,6 +988,7 @@ model Job {
   schedulingBooking SchedulingBooking?
   maintenanceVisits MaintenanceVisit[]
   conversationSchedulingStates ConversationSchedulingState[]
+  billingWatchdogFindings BillingWatchdogFinding[]
 
   @@unique([companyId, jobNumber])
   @@unique([companyId, schedulingIdempotencyKey])
@@ -1141,10 +1146,15 @@ model Invoice {
   importSessionId String?
   importMode     String        @default("LIVE")
   publicToken    String?       @unique
+  sentAt         DateTime?
+  deliveryStatus String        @default("NONE")
+  lastDeliveryError String?
+  lastDeliveryChannel String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  billingWatchdogFindings BillingWatchdogFinding[]
   serviceType ServiceType?    @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
   customer  Customer          @relation(fields: [customerId], references: [id])
   property  Property?         @relation(fields: [propertyId], references: [id])
@@ -1163,6 +1173,7 @@ model Invoice {
   @@index([companyId, dueDate])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, deliveryStatus])
 }
 
 model InvoiceLineItem {
@@ -3480,4 +3491,70 @@ model AgentToolCall {
 
   @@index([companyId, createdAt])
   @@index([companyId, tool, createdAt])
+}
+
+enum BillingWatchdogSeverity {
+  CRITICAL
+  ACTION_NEEDED
+  WATCH
+}
+
+enum BillingWatchdogFindingStatus {
+  OPEN
+  RESOLVED
+  EXCLUDED
+}
+
+model BillingWatchdogSettings {
+  companyId                    String   @id
+  startDate                    DateTime @db.Date
+  checkoutGraceMinutes         Int      @default(120)
+  completedInvoiceGraceHours   Int      @default(8)
+  invoiceSendGraceHours        Int      @default(4)
+  accountingSyncGraceHours     Int      @default(24)
+  morningSummaryEnabled        Boolean  @default(false)
+  morningSummaryRoles          Json?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model BillingWatchdogFinding {
+  id                  String                       @id @default(cuid())
+  companyId           String
+  type                String
+  severity            BillingWatchdogSeverity
+  status              BillingWatchdogFindingStatus @default(OPEN)
+  fingerprint         String
+  jobId               String?
+  invoiceId           String?
+  paymentId           String?
+  customerId          String?
+  technicianId        String?
+  amountAtRiskCents   Int?
+  amountUnknown       Boolean                      @default(false)
+  reason              String                       @db.Text
+  recommendedAction   String
+  metadata            Json?
+  detectedAt          DateTime
+  firstDetectedAt     DateTime
+  lastDetectedAt      DateTime
+  resolvedAt          DateTime?
+  excludedAt          DateTime?
+  excludedById        String?
+  exclusionCode       String?
+  exclusionReason     String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, fingerprint])
+  @@index([companyId, status, type])
+  @@index([companyId, lastDetectedAt])
+  @@index([companyId, jobId])
+  @@index([companyId, invoiceId])
 }

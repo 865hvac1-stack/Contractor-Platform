@@ -79,6 +79,7 @@ export function MoneySubnav() {
       <HubSubnav
         items={[
           { href: "/money", label: "Overview", match: (pathname) => pathname === "/money" },
+          { href: "/billing-watchdog", label: "Watchdog" },
           { href: "/invoices", label: "Invoices" },
           { href: "/payments", label: "Payments" },
           { href: "/expenses", label: "Expenses" },

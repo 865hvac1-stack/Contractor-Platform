@@ -13,6 +13,8 @@ import { MoneySubnav } from "@/components/hub-subnav";
 import { getCompanyConnection } from "@/lib/integrations/store";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { quickBooksCardState, QUICKBOOKS_STATUS_COPY } from "@/lib/quickbooks/status";
+import { refreshBillingWatchdog } from "@/lib/billing-watchdog/service";
+import { BillingWatchdogHomeCard } from "@/components/billing-watchdog/home-card";
 
 export default async function MoneyPage({
   searchParams,
@@ -28,9 +30,10 @@ export default async function MoneyPage({
   const ctx = await requirePermission("invoices:view");
   const finance = parseFinanceSearch(await searchParams);
   const snapshot = await loadFinancialSnapshot(ctx.company.id, finance.range);
-  const [qboConnection, qboSettings] = await Promise.all([
+  const [qboConnection, qboSettings, watchdog] = await Promise.all([
     getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
     prisma.quickBooksSettings.findUnique({ where: { companyId: ctx.company.id } }),
+    refreshBillingWatchdog(prisma, ctx.company.id),
   ]);
   const qboCard = quickBooksCardState({
     connection: qboConnection,
@@ -70,6 +73,7 @@ export default async function MoneyPage({
         </p>
       </header>
       <MoneySubnav />
+      <BillingWatchdogHomeCard summary={watchdog.summary} />
 
       {copy ? (
         <FinanceFilterContext

@@ -5,13 +5,14 @@ import { homeAttentionItems, prioritizeAttention } from "@/lib/attention-priorit
 import { presentAttentionItem } from "@/lib/attention-present";
 import { loadFinancialSnapshot } from "@/lib/finance/snapshot";
 import { parseFinanceRange, type FinanceRange } from "@/lib/finance/period";
+import { refreshBillingWatchdog } from "@/lib/billing-watchdog/service";
 
 export async function getHomeSummary(companyId: string, range: FinanceRange | string = "month") {
   const now = new Date();
   const dayStart = startOfDay(now);
   const dayEnd = endOfDay(now);
 
-  const [jobsToday, inProgressToday, completedToday, waitingCount, readyToSchedule, snapshot, attentionRaw] =
+  const [jobsToday, inProgressToday, completedToday, waitingCount, readyToSchedule, snapshot, attentionRaw, watchdog] =
     await Promise.all([
       prisma.job.count({
         where: { companyId, scheduledStart: { gte: dayStart, lte: dayEnd }, status: { not: "CANCELED" } },
@@ -34,6 +35,7 @@ export async function getHomeSummary(companyId: string, range: FinanceRange | st
       }),
       loadFinancialSnapshot(companyId, parseFinanceRange(range), now),
       getNeedsAttention(companyId),
+      refreshBillingWatchdog(prisma, companyId, now),
     ]);
 
   const ranked = prioritizeAttention(attentionRaw);
@@ -48,5 +50,6 @@ export async function getHomeSummary(companyId: string, range: FinanceRange | st
     snapshot,
     needsYou: homeAttentionItems(ranked, 5).map(presentAttentionItem),
     needsYouTotal: attentionRaw.length,
+    watchdog: watchdog.summary,
   };
 }

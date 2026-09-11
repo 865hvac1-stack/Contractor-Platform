@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { QuickBooksInvoicePanel } from "@/components/quickbooks-invoice-panel";
 import { ENTITY_INVOICE, ENTITY_PAYMENT, invoiceMappingIdentity } from "@/lib/quickbooks/mappings";
+import { presentInvoiceDelivery } from "@/lib/billing-watchdog/invoice-delivery";
 
 export default async function InvoiceDetailPage({
   params,
@@ -127,6 +128,26 @@ export default async function InvoiceDetailPage({
           <p className="mt-1 text-xl"><StatusBadge status={invoice.status} /></p>
         </div>
       </div>
+
+      {(() => {
+        const delivery = presentInvoiceDelivery({
+          status: invoice.status,
+          sentAt: invoice.sentAt,
+          deliveryStatus: invoice.deliveryStatus,
+          dueDate: invoice.dueDate,
+          balanceCents: invoice.balanceCents,
+        });
+        return (
+          <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+            <p className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">Customer delivery</p>
+            <p className="mt-1 text-lg font-medium text-[var(--cy-navy)]">{delivery.label}</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Delivery is separate from QuickBooks. {invoice.sentAt ? "Marked sent." : "Not sent yet."}
+              {invoice.lastDeliveryError ? ` ${invoice.lastDeliveryError}` : ""}
+            </p>
+          </div>
+        );
+      })()}
 
       <div className="flex flex-wrap gap-2">
         {invoice.publicToken ? (

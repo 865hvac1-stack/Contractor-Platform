@@ -67,7 +67,16 @@ export async function updateFieldJobStatusAction(
         });
       }
     }
-    await prisma.job.update({ where: { id: job.id }, data: { status: next } });
+    const { jobCheckoutWrite } = await import("@/lib/billing-watchdog/checkout");
+    await prisma.job.update({
+      where: { id: job.id },
+      data: jobCheckoutWrite({
+        next,
+        checkedInAt: job.checkedInAt,
+        checkedOutAt: job.checkedOutAt,
+        completedAt: job.completedAt,
+      }),
+    });
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
@@ -310,6 +319,8 @@ export async function createInvoiceFromJobAction(jobId: string): Promise<ActionR
         invoiceNumber,
         publicToken: nanoid(24),
         status: "SENT",
+        sentAt: new Date(),
+        deliveryStatus: "SENT",
         subtotalCents,
         taxCents,
         totalCents: subtotalCents + taxCents,
@@ -365,9 +376,15 @@ export async function overrideCompleteJobAction(jobId: string, reason: string): 
     const ctx = await requirePermission("jobs:manage");
     const job = await prisma.job.findFirst({ where: { id: jobId, companyId: ctx.company.id } });
     if (!job) return { ok: false, error: "Job not found." };
+    const { jobCheckoutWrite } = await import("@/lib/billing-watchdog/checkout");
     await prisma.job.update({
       where: { id: job.id },
-      data: { status: "COMPLETED", completedAt: new Date() },
+      data: jobCheckoutWrite({
+        next: "COMPLETED",
+        checkedInAt: job.checkedInAt,
+        checkedOutAt: job.checkedOutAt,
+        completedAt: job.completedAt,
+      }),
     });
     await writeAudit({
       companyId: ctx.company.id,

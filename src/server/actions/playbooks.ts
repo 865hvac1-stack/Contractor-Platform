@@ -413,9 +413,15 @@ export async function completeJobWithPlaybookAction(jobId: string): Promise<Acti
       }
     }
 
+    const { jobCheckoutWrite } = await import("@/lib/billing-watchdog/checkout");
     await prisma.job.update({
       where: { id: job.id },
-      data: { status: "COMPLETED", completedAt: new Date() },
+      data: jobCheckoutWrite({
+        next: "COMPLETED",
+        checkedInAt: job.checkedInAt,
+        checkedOutAt: job.checkedOutAt,
+        completedAt: job.completedAt,
+      }),
     });
     if (job.playbookSnapshot) {
       await prisma.jobPlaybookSnapshot.update({

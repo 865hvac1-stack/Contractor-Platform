@@ -6,6 +6,7 @@ import { loadJobImportSupplement, type JobImportSupplement } from "@/lib/jobs/im
 import { buildWorkSummary, type WorkSummary } from "@/lib/jobs/work-summary";
 import { buildJobTimeline, type JobTimelineItem } from "@/lib/jobs/timeline";
 import { isHistoricalImport } from "@/lib/imports/safety";
+import { loadJobBillingReadinessForJob } from "@/lib/billing-watchdog/service";
 
 export type Job360Line = {
   id: string;
@@ -87,6 +88,12 @@ export type Job360 = {
   estimates: { id: string; estimateNumber: string; status: string; totalCents: number }[];
   invoices: { id: string; invoiceNumber: string; status: string; totalCents: number; balanceCents: number }[];
   costing: JobFinancials | null;
+  billing: {
+    state: string;
+    label: string;
+    reason: string;
+    actions: { label: string; href: string }[];
+  } | null;
 };
 
 function displayName(customer: { businessName: string | null; firstName: string; lastName: string }) {
@@ -124,7 +131,7 @@ export async function loadJob360(
   });
   if (!job) return null;
 
-  const [supplement, equipment, related, customerStats, costing] = await Promise.all([
+  const [supplement, equipment, related, customerStats, costing, billing] = await Promise.all([
     loadJobImportSupplement(prisma, {
       companyId: input.companyId,
       jobId: job.id,
@@ -168,6 +175,7 @@ export async function loadJob360(
       _max: { completedAt: true, scheduledStart: true, importedOccurredAt: true },
     }),
     can(input.role, "job_costs:view") ? loadJobFinancials(input.companyId, job.id) : Promise.resolve(null),
+    loadJobBillingReadinessForJob(prisma, { companyId: input.companyId, jobId: job.id }),
   ]);
 
   const estimates = [
@@ -352,5 +360,13 @@ export async function loadJob360(
       balanceCents: row.balanceCents,
     })),
     costing,
+    billing: billing
+      ? {
+          state: billing.state,
+          label: billing.label,
+          reason: billing.reason,
+          actions: billing.actions,
+        }
+      : null,
   };
 }

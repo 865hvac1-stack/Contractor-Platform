@@ -187,12 +187,15 @@ export async function updateJobStatusAction(
       }
     }
 
+    const { jobCheckoutWrite } = await import("@/lib/billing-watchdog/checkout");
     const updated = await prisma.job.update({
       where: { id: target.id },
-      data: {
-        status,
-        completedAt: status === "COMPLETED" ? new Date() : target.completedAt,
-      },
+      data: jobCheckoutWrite({
+        next: status,
+        checkedInAt: target.checkedInAt,
+        checkedOutAt: target.checkedOutAt,
+        completedAt: target.completedAt,
+      }),
     });
 
     await writeAudit({

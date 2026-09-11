@@ -41,6 +41,7 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getOpenEstimates: "estimates:view",
   getEstimateFollowUpOpportunities: "estimates:view",
   getOutstandingInvoices: "invoices:view",
+  getBillingWatchdog: "invoices:view",
   getLeadMetrics: "leads:view",
   getMarketingPerformance: "marketing:view",
   getCustomerSummary: "customers:view",
@@ -112,6 +113,12 @@ export const TOOL_DEFINITIONS = [
   {
     name: "getOutstandingInvoices",
     description: "Unpaid and overdue invoices.",
+    parameters: {},
+  },
+  {
+    name: "getBillingWatchdog",
+    description:
+      "Verified Billing Watchdog findings only: unbilled completed jobs, unsent invoices, checkout gaps, missing email, delivery failures, unapplied payments, QuickBooks discrepancies after grace, and overdue invoices. Never invent amounts, job status, or balances. Unknown amounts stay unknown.",
     parameters: {},
   },
   {
@@ -489,6 +496,39 @@ export async function runIntelligenceTool(
         take: 20,
       });
       return { ok: true, data: rows, grounding: { sources: ["invoices"] } };
+    }
+    case "getBillingWatchdog": {
+      if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "invoices:view")) {
+        return deny("Company-wide Billing Watchdog is limited for this role.");
+      }
+      if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "reports:financial")) {
+        return deny("Company-wide Billing Watchdog totals are limited for this role.");
+      }
+      const { refreshBillingWatchdog } = await import("@/lib/billing-watchdog/service");
+      const watchdog = await refreshBillingWatchdog(prisma, ctx.companyId);
+      return {
+        ok: true,
+        data: {
+          summary: watchdog.summary,
+          findings: watchdog.findings
+            .filter((row) => row.status === "OPEN")
+            .slice(0, 25)
+            .map((row) => ({
+              type: row.type,
+              severity: row.severity,
+              title: row.title,
+              subtitle: row.subtitle,
+              reason: row.reason,
+              amountAtRiskCents: row.amountUnknown ? null : row.amountAtRiskCents,
+              amountUnknown: row.amountUnknown,
+              jobId: row.jobId,
+              invoiceId: row.invoiceId,
+              recommendedAction: row.recommendedAction,
+            })),
+          note: "These findings come from ContractorYou records only. Unknown amounts were not invented.",
+        },
+        grounding: { sources: ["billing_watchdog", "jobs", "invoices", "payments"] },
+      };
     }
     case "getLeadMetrics": {
       const pack = await getCompanyMetrics(ctx.companyId, periodOf(args.period));
