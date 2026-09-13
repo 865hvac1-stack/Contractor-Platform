@@ -20,6 +20,7 @@ export async function sendTransactionalEmail(input: {
   html: string;
   text: string;
   companyId?: string | null;
+  replyTo?: string | null;
 }): Promise<EmailSendResult> {
   if (input.companyId) {
     const { demoOutboundBlock } = await import("@/lib/demo/guard");
@@ -42,6 +43,7 @@ export async function sendTransactionalEmail(input: {
       subject: input.subject,
       html: input.html,
       text: input.text,
+      ...(input.replyTo ? { reply_to: input.replyTo } : {}),
     }),
   });
   if (!response.ok) {

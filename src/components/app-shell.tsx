@@ -156,15 +156,14 @@ export function AppShell({
             <Bell className="h-4 w-4" />
             <span className="sr-only">Notifications</span>
           </Link>
-          <button
-            type="button"
-            disabled
-            title="Help coming soon"
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] md:inline-flex"
+          <Link
+            href="/help"
+            title="Help and support"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--cy-text-muted)] hover:bg-[var(--cy-gray)] md:inline-flex"
           >
             <CircleHelp className="h-4 w-4" />
-            <span className="sr-only">Help coming soon</span>
-          </button>
+            <span className="sr-only">Help and support</span>
+          </Link>
 
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-[var(--cy-gray)]">
@@ -186,6 +185,11 @@ export function AppShell({
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem>
+                <Link href="/help" className="w-full">
+                  Help and support
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem>
                 <Link href="/settings" className="w-full">
                   Settings

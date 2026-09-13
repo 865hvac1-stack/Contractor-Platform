@@ -37,15 +37,11 @@ export default async function TechMorePage() {
             </Link>
           </li>
         ))}
-        <li className="rounded-2xl border border-[var(--border)] bg-white p-4">
-          <p className="font-medium">Help</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm text-[var(--muted-foreground)]">
-            <li>Open your next job</li>
-            <li>Follow the Next Step</li>
-            <li>Run the playbook</li>
-            <li>Present options and collect payment</li>
-            <li>Complete the job</li>
-          </ol>
+        <li>
+          <Link href="/tech/help" className="block rounded-2xl border border-[var(--border)] bg-white p-4">
+            <p className="font-medium">Help</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">Contact ContractorYou support from this workspace.</p>
+          </Link>
         </li>
       </ul>
       <LogoutButton />

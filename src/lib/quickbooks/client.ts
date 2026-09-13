@@ -1,11 +1,12 @@
 import { quickbooksApiBase } from "@/lib/quickbooks/config";
+import { logQuickBooksDiagnostic, parseQboFault, qboFailure, readIntuitTid } from "@/lib/quickbooks/diagnostics";
 
 export type QboTransport = (input: {
   method: "GET" | "POST" | "POST_JSON";
   path: string;
   query?: string;
   body?: unknown;
-}) => Promise<{ ok: boolean; status: number; json: unknown }>;
+}) => Promise<{ ok: boolean; status: number; json: unknown; intuitTid?: string | null }>;
 
 export type QboRefs = {
   customerId?: string;
@@ -33,7 +34,17 @@ export function liveQboTransport(input: {
       body: method === "POST_JSON" ? JSON.stringify(body) : undefined,
     });
     const json = await response.json().catch(() => ({}));
-    return { ok: response.ok, status: response.status, json };
+    const intuitTid = readIntuitTid(response.headers);
+    if (!response.ok) {
+      logQuickBooksDiagnostic({
+        method: method === "GET" ? "GET" : "POST",
+        path,
+        status: response.status,
+        intuitTid,
+        fault: parseQboFault(json),
+      });
+    }
+    return { ok: response.ok, status: response.status, json, intuitTid };
   };
 }
 
@@ -235,7 +246,7 @@ export async function qboCreatePurchase(
     },
   });
   const id = firstId(result.json);
-  if (!result.ok || !id) throw new Error("QuickBooks did not accept that expense.");
+  if (!result.ok || !id) throw qboFailure(result, "QuickBooks did not accept that expense.");
   return id;
 }
 
@@ -255,7 +266,7 @@ export async function qboCreateCustomer(
     },
   });
   const id = firstId(result.json);
-  if (!result.ok || !id) throw new Error("QuickBooks did not create the customer.");
+  if (!result.ok || !id) throw qboFailure(result, "QuickBooks did not create the customer.");
   return id;
 }
 
@@ -302,7 +313,7 @@ export async function qboCreateOrUpdateInvoice(
   }
   const result = await transport({ method: "POST_JSON", path: "/invoice", body });
   const id = firstId(result.json);
-  if (!result.ok || !id) throw new Error("QuickBooks did not accept that invoice.");
+  if (!result.ok || !id) throw qboFailure(result, "QuickBooks did not accept that invoice.");
   return id;
 }
 
@@ -335,6 +346,6 @@ export async function qboCreatePayment(
     },
   });
   const id = firstId(result.json);
-  if (!result.ok || !id) throw new Error("QuickBooks did not accept that payment record.");
+  if (!result.ok || !id) throw qboFailure(result, "QuickBooks did not accept that payment record.");
   return id;
 }

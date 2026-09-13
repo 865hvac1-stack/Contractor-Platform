@@ -9,6 +9,7 @@ import {
   type QuickBooksAppCredentials,
 } from "@/lib/quickbooks/config";
 import type { ProviderTokenPayload } from "@/lib/integrations/crypto";
+import { formatQboDiagnostic, logQuickBooksDiagnostic, readIntuitTid } from "@/lib/quickbooks/diagnostics";
 
 function basicAuth(app: QuickBooksAppCredentials) {
   return Buffer.from(`${app.clientId}:${app.clientSecret}`).toString("base64");
@@ -56,7 +57,9 @@ export async function exchangeQuickBooksCode(
     body,
   });
   if (!response.ok) {
-    throw new Error("QuickBooks did not accept that authorization.");
+    const intuitTid = readIntuitTid(response.headers);
+    logQuickBooksDiagnostic({ method: "POST", path: "/oauth/token", status: response.status, intuitTid });
+    throw new Error(formatQboDiagnostic({ fallback: "QuickBooks did not accept that authorization.", status: response.status, intuitTid }));
   }
   const json = (await response.json()) as {
     access_token: string;
@@ -91,7 +94,9 @@ export async function refreshQuickBooksToken(
     body,
   });
   if (!response.ok) {
-    throw new Error("QuickBooks refresh failed.");
+    const intuitTid = readIntuitTid(response.headers);
+    logQuickBooksDiagnostic({ method: "POST", path: "/oauth/token", status: response.status, intuitTid });
+    throw new Error(formatQboDiagnostic({ fallback: "QuickBooks refresh failed.", status: response.status, intuitTid }));
   }
   const json = (await response.json()) as {
     access_token: string;
