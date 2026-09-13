@@ -24,6 +24,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import {
+  isQuickBooksSyncActivated,
+  normalizedQuickBooksEnvironment,
+  type QuickBooksScope,
+} from "@/lib/quickbooks/ownership";
 
 export default async function QuickBooksSettingsPage({
   searchParams,
@@ -32,17 +37,11 @@ export default async function QuickBooksSettingsPage({
 }) {
   const ctx = await requirePermission("accounting:view");
   const { error, connected } = await searchParams;
-  const [connection, settings] = await Promise.all([
-    getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
-    getQuickBooksSettings(ctx.company.id),
-  ]);
-  if (
-    connection?.status === "CONNECTED" &&
-    connection.externalAccountId &&
-    !settings.qboCompanyName &&
-    can(ctx.role, "accounting:manage")
-  ) {
-    await verifyQuickBooksCompany(prisma, ctx.company.id);
+  let connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
+  let verification: Awaited<ReturnType<typeof verifyQuickBooksCompany>> | null = null;
+  if (connection?.status === "CONNECTED" && connection.externalAccountId) {
+    verification = await verifyQuickBooksCompany(prisma, ctx.company.id);
+    connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
   }
   const freshSettings = await getQuickBooksSettings(ctx.company.id);
   const status = publicQuickBooksStatus(connection);
@@ -54,7 +53,19 @@ export default async function QuickBooksSettingsPage({
   const setup = quickbooksSetupSnapshot(savedApp);
   const configured = quickbooksConfigured(savedApp);
   const canManage = can(ctx.role, "accounting:manage");
-  const environment = savedApp.environment === "production" ? "Production" : "Sandbox";
+  const activeEnvironment = normalizedQuickBooksEnvironment(connection?.environment);
+  const environment = activeEnvironment === "production" ? "Production" : activeEnvironment === "sandbox" ? "Sandbox" : "Unknown";
+  const scope: QuickBooksScope | null =
+    activeEnvironment && connection?.externalAccountId
+      ? { companyId: ctx.company.id, environment: activeEnvironment, realmId: connection.externalAccountId }
+      : null;
+  const syncActivated = scope ? isQuickBooksSyncActivated(freshSettings, scope) : false;
+  const credential = connection
+    ? await prisma.integrationCredential.findFirst({
+        where: { companyId: ctx.company.id, connectionId: connection.id },
+        select: { tokenExpiresAt: true },
+      })
+    : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -121,11 +132,33 @@ export default async function QuickBooksSettingsPage({
             </dd>
           </div>
           <div>
+            <dt className="text-[var(--muted-foreground)]">API verification</dt>
+            <dd className="mt-0.5">{verification?.ok ? "Verified" : "Needs attention"}</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Verified</dt>
+            <dd className="mt-0.5">
+              {freshSettings.qboCompanyVerifiedAt
+                ? formatDateTime(freshSettings.qboCompanyVerifiedAt, ctx.company.timezone)
+                : "Never"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Access token status</dt>
+            <dd className="mt-0.5">
+              {credential?.tokenExpiresAt
+                ? `Stored securely · expires ${formatDateTime(credential.tokenExpiresAt, ctx.company.timezone)}`
+                : connection
+                  ? "Stored securely · expiry unavailable"
+                  : "Not connected"}
+            </dd>
+          </div>
+          <div>
             <dt className="text-[var(--muted-foreground)]">Automatic sync</dt>
             <dd className="mt-0.5">
-              {freshSettings.syncActivated
+              {syncActivated
                 ? "On after the chosen start date"
-                : "Safe mode — preview only until you finish setup"}
+                : "Safe mode for this realm — preview only"}
             </dd>
           </div>
           <div>
@@ -156,6 +189,9 @@ export default async function QuickBooksSettingsPage({
               </ActionForm>
               <Link href="/settings/quickbooks/manage" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
                 Manage
+              </Link>
+              <Link href="/settings/quickbooks/preview" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                Production data preview
               </Link>
               {!freshSettings.wizardCompletedAt ? (
                 <Link href="/settings/quickbooks/setup" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>

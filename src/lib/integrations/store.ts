@@ -21,6 +21,7 @@ export async function upsertConnection(input: {
   status?: IntegrationStatus;
   accountLabel?: string | null;
   externalAccountId?: string | null;
+  environment?: string | null;
   scopes?: string[];
   healthMessage?: string | null;
   errorMessage?: string | null;
@@ -33,6 +34,7 @@ export async function upsertConnection(input: {
       status: input.status ?? "CONNECTING",
       accountLabel: input.accountLabel ?? null,
       externalAccountId: input.externalAccountId ?? null,
+      environment: input.environment ?? null,
       scopes: input.scopes ?? [],
       healthMessage: input.healthMessage ?? null,
       errorMessage: input.errorMessage ?? null,
@@ -41,6 +43,7 @@ export async function upsertConnection(input: {
       status: input.status,
       accountLabel: input.accountLabel === undefined ? undefined : input.accountLabel,
       externalAccountId: input.externalAccountId === undefined ? undefined : input.externalAccountId,
+      environment: input.environment === undefined ? undefined : input.environment,
       scopes: input.scopes,
       healthMessage: input.healthMessage === undefined ? undefined : input.healthMessage,
       errorMessage: input.errorMessage === undefined ? undefined : input.errorMessage,

@@ -14,7 +14,7 @@ const prisma = new PrismaClient();
 
 function mockTransport(calls: { path: string; body?: unknown }[]): QboTransport {
   let invoiceId = "QB-INV-1";
-  return async ({ method, path, body }) => {
+  const transport: QboTransport = async ({ method, path, body }) => {
     calls.push({ path, body });
     if (path === "/query") return { ok: true, status: 200, json: { QueryResponse: {} } };
     if (path === "/purchase") return { ok: true, status: 200, json: { Purchase: { Id: "QB-EXP-1" } } };
@@ -30,6 +30,13 @@ function mockTransport(calls: { path: string; body?: unknown }[]): QboTransport 
     if (path === "/payment") return { ok: true, status: 200, json: { Payment: { Id: "QB-PAY-1" } } };
     return { ok: false, status: 404, json: {} };
   };
+  return Object.assign(transport, {
+    context: {
+      realmId: "realm-a",
+      environment: "sandbox" as const,
+      apiHost: "sandbox-quickbooks.api.intuit.com",
+    },
+  });
 }
 
 describe("QuickBooks gates and status", () => {
@@ -169,9 +176,30 @@ describe("QuickBooks sync isolation and idempotency", () => {
       },
     });
     ids.historicalPayment = histPay.id;
+    await prisma.integrationConnection.createMany({
+      data: [
+        {
+          companyId: companyA.id,
+          providerKey: "quickbooks_online",
+          status: "CONNECTED",
+          externalAccountId: "realm-a",
+          environment: "sandbox",
+        },
+        {
+          companyId: companyB.id,
+          providerKey: "quickbooks_online",
+          status: "CONNECTED",
+          externalAccountId: "realm-b",
+          environment: "sandbox",
+        },
+      ],
+    });
     await prisma.quickBooksMapping.create({
       data: {
         companyId: companyB.id,
+        environment: "sandbox",
+        realmId: "realm-b",
+        ownershipStatus: "SCOPED",
         entityType: "INVOICE",
         internalId: "secret-b",
         quickbooksId: "QB-B-SECRET",
@@ -180,6 +208,9 @@ describe("QuickBooks sync isolation and idempotency", () => {
     await prisma.quickBooksMapping.create({
       data: {
         companyId: companyA.id,
+        environment: "sandbox",
+        realmId: "realm-a",
+        ownershipStatus: "SCOPED",
         entityType: "DEFAULT_ITEM",
         internalId: "default",
         quickbooksId: "QB-ITEM-1",
@@ -203,6 +234,7 @@ describe("QuickBooks sync isolation and idempotency", () => {
     await prisma.quickBooksSyncEvent.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.quickBooksMapping.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.quickBooksSettings.deleteMany({ where: { companyId: { in: companyIds } } });
+    await prisma.integrationConnection.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.expense.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.payment.deleteMany({ where: { companyId: { in: companyIds } } });
     await prisma.invoice.deleteMany({ where: { companyId: { in: companyIds } } });
@@ -308,6 +340,9 @@ describe("QuickBooks sync isolation and idempotency", () => {
     await prisma.quickBooksMapping.create({
       data: {
         companyId: ids.companyA,
+        environment: "sandbox",
+        realmId: "realm-a",
+        ownershipStatus: "SCOPED",
         entityType: "DEFAULT_ITEM",
         internalId: "default",
         quickbooksId: "QB-ITEM-1",

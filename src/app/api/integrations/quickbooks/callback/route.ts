@@ -43,6 +43,7 @@ export async function GET(request: Request) {
       providerKey: QUICKBOOKS_PROVIDER_KEY,
       status: "CONNECTED",
       externalAccountId: realmId,
+      environment: app?.environment ?? null,
       accountLabel: null,
       scopes: tokens.scopes ?? [],
       healthMessage: "Connected. Verifying QuickBooks company.",
@@ -52,6 +53,10 @@ export async function GET(request: Request) {
       companyId: row.companyId,
       connectionId: connection.id,
       tokens,
+    });
+    await prisma.quickBooksSettings.updateMany({
+      where: { companyId: row.companyId },
+      data: { qboCompanyName: null, qboCompanyVerifiedAt: null },
     });
     const verified = await verifyQuickBooksCompany(prisma, row.companyId);
     await writeAudit({

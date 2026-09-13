@@ -3,25 +3,27 @@ import { previewQuickBooksSync } from "@/lib/quickbooks/preview";
 import { humanQuickBooksError } from "@/lib/quickbooks/errors";
 import { diagnoseCompanyInvoicePayments, ENTITY_PAYMENT } from "@/lib/quickbooks/mappings";
 import { paymentReviewLabel } from "@/lib/quickbooks/eligibility";
+import { eventScopeWhere, mappingScopeWhere, type QuickBooksScope } from "@/lib/quickbooks/ownership";
 
-export async function loadQuickBooksSyncCenter(prisma: PrismaClient, companyId: string) {
+export async function loadQuickBooksSyncCenter(prisma: PrismaClient, scope: QuickBooksScope) {
+  const companyId = scope.companyId;
   const [preview, review, recent, customers, diagnosis] = await Promise.all([
-    previewQuickBooksSync(prisma, companyId),
+    previewQuickBooksSync(prisma, scope),
     prisma.quickBooksMapping.findMany({
-      where: { companyId, status: { in: ["NEEDS_REVIEW", "FAILED"] } },
+      where: { ...mappingScopeWhere(scope), status: { in: ["NEEDS_REVIEW", "FAILED"] } },
       orderBy: { updatedAt: "desc" },
       take: 40,
     }),
     prisma.quickBooksSyncEvent.findMany({
-      where: { companyId },
+      where: eventScopeWhere(scope),
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
     prisma.quickBooksMapping.findMany({
-      where: { companyId, entityType: "CUSTOMER", status: "NEEDS_REVIEW" },
+      where: { ...mappingScopeWhere(scope), entityType: "CUSTOMER", status: "NEEDS_REVIEW" },
       take: 30,
     }),
-    diagnoseCompanyInvoicePayments(prisma, companyId),
+    diagnoseCompanyInvoicePayments(prisma, scope),
   ]);
 
   const customerIds = customers.map((row) => row.internalId);

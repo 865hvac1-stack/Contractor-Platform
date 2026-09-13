@@ -1,12 +1,23 @@
 import { quickbooksApiBase } from "@/lib/quickbooks/config";
 import { logQuickBooksDiagnostic, parseQboFault, qboFailure, readIntuitTid } from "@/lib/quickbooks/diagnostics";
 
-export type QboTransport = (input: {
+export type QboTransportContext = {
+  companyId?: string;
+  realmId: string;
+  environment: "sandbox" | "production";
+  apiHost: string;
+};
+
+export type QboTransport = ((input: {
   method: "GET" | "POST" | "POST_JSON";
   path: string;
   query?: string;
   body?: unknown;
-}) => Promise<{ ok: boolean; status: number; json: unknown; intuitTid?: string | null }>;
+}) => Promise<{ ok: boolean; status: number; json: unknown; intuitTid?: string | null }>) & {
+  context?: QboTransportContext;
+};
+
+export type ScopedQboTransport = QboTransport & { context: QboTransportContext };
 
 export type QboRefs = {
   customerId?: string;
@@ -19,9 +30,12 @@ export function liveQboTransport(input: {
   accessToken: string;
   realmId: string;
   environment?: "sandbox" | "production";
-}): QboTransport {
-  return async ({ method, path, query, body }) => {
-    const url = new URL(`${quickbooksApiBase(input.environment)}/v3/company/${input.realmId}${path}`);
+  companyId?: string;
+}): ScopedQboTransport {
+  const environment = input.environment ?? "sandbox";
+  const apiBase = quickbooksApiBase(environment);
+  const transport: QboTransport = async ({ method, path, query, body }) => {
+    const url = new URL(`${apiBase}/v3/company/${input.realmId}${path}`);
     url.searchParams.set("minorversion", "65");
     if (query) url.searchParams.set("query", query);
     const response = await fetch(url, {
@@ -46,6 +60,14 @@ export function liveQboTransport(input: {
     }
     return { ok: response.ok, status: response.status, json, intuitTid };
   };
+  return Object.assign(transport, {
+    context: {
+      companyId: input.companyId,
+      realmId: input.realmId,
+      environment,
+      apiHost: new URL(apiBase).host,
+    },
+  });
 }
 
 function firstId(value: unknown): string | undefined {

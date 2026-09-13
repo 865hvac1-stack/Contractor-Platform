@@ -18,6 +18,7 @@ import {
   type QboMappingSnapshot,
 } from "@/lib/quickbooks/eligibility";
 import type { QboTransport } from "@/lib/quickbooks/client";
+import { mappingScopeWhere } from "@/lib/quickbooks/ownership";
 
 export type QuickBooksSyncRun = {
   preview: QuickBooksPreview;
@@ -73,7 +74,9 @@ export async function runQuickBooksSync(
   prisma: PrismaClient,
   input: { companyId: string; actorId: string; push: boolean }
 ): Promise<QuickBooksSyncRun> {
-  const preview = await previewQuickBooksSync(prisma, input.companyId);
+  const loaded = await loadQuickBooksTransport(input.companyId);
+  if (!loaded.ok) throw new Error(loaded.error);
+  const preview = await previewQuickBooksSync(prisma, loaded.scope);
   const errors: string[] = [];
   const pushed = { invoices: 0, payments: 0, expenses: 0 };
   let skipped = 0;
@@ -88,14 +91,9 @@ export async function runQuickBooksSync(
     };
   }
 
-  const loaded = await loadQuickBooksTransport(input.companyId);
-  if (!loaded.ok) {
-    return { preview, pushed, skipped: 0, errors: [loaded.error], activated: preview.syncActivated };
-  }
-
   const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId: input.companyId } });
   const mappings = await prisma.quickBooksMapping.findMany({
-    where: { companyId: input.companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+    where: { ...mappingScopeWhere(loaded.scope), entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
     select: { entityType: true, internalId: true, status: true, quickbooksId: true },
   });
   const map = new Map<string, QboMappingSnapshot>(
@@ -238,7 +236,7 @@ export async function runQuickBooksSync(
   });
 
   return {
-    preview: await previewQuickBooksSync(prisma, input.companyId),
+    preview: await previewQuickBooksSync(prisma, loaded.scope),
     pushed,
     skipped,
     errors: [...new Set(errors)].slice(0, 8),

@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { QuickBooksInvoicePanel } from "@/components/quickbooks-invoice-panel";
 import { ENTITY_INVOICE, ENTITY_PAYMENT, invoiceMappingIdentity } from "@/lib/quickbooks/mappings";
+import { eventScopeWhere, getActiveQuickBooksScope, mappingScopeWhere } from "@/lib/quickbooks/ownership";
 import { presentInvoiceDelivery } from "@/lib/billing-watchdog/invoice-delivery";
 
 export default async function InvoiceDetailPage({
@@ -54,6 +55,7 @@ export default async function InvoiceDetailPage({
     },
   });
   if (!invoice) notFound();
+  const activeQbo = await getActiveQuickBooksScope(prisma, ctx.company.id);
 
   const plans = can(ctx.role, "memberships:manage")
     ? await prisma.membershipPlan.findMany({
@@ -63,16 +65,20 @@ export default async function InvoiceDetailPage({
     : [];
 
   const [invoiceMap, lastEvent, paymentMaps, stripeAccount] = await Promise.all([
-    prisma.quickBooksMapping.findUnique({
-      where: { companyId_entityType_internalId: invoiceMappingIdentity({ companyId: ctx.company.id, invoiceId: invoice.id }) },
+    prisma.quickBooksMapping.findFirst({
+      where: activeQbo.ok
+        ? invoiceMappingIdentity({ ...activeQbo.scope, invoiceId: invoice.id })
+        : { companyId: "__no_active_qbo_scope__" },
     }),
     prisma.quickBooksSyncEvent.findFirst({
-      where: { companyId: ctx.company.id, entityType: ENTITY_INVOICE, internalId: invoice.id },
+      where: activeQbo.ok
+        ? { ...eventScopeWhere(activeQbo.scope), entityType: ENTITY_INVOICE, internalId: invoice.id }
+        : { companyId: "__no_active_qbo_scope__" },
       orderBy: { createdAt: "desc" },
     }),
     prisma.quickBooksMapping.findMany({
       where: {
-        companyId: ctx.company.id,
+        ...(activeQbo.ok ? mappingScopeWhere(activeQbo.scope) : { companyId: "__no_active_qbo_scope__" }),
         entityType: ENTITY_PAYMENT,
         internalId: { in: invoice.payments.map((payment) => payment.id) },
       },

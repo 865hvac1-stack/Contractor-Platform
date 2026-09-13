@@ -19,17 +19,30 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { getActiveQuickBooksScope, quickBooksOwnershipCounts } from "@/lib/quickbooks/ownership";
+import { redirect } from "next/navigation";
+import { maskRealmId } from "@/lib/quickbooks/errors";
 
 export default async function QuickBooksManagePage() {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
-  const [connection, settings, center, mappings] = await Promise.all([
+  const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+  if (!active.ok) redirect("/settings/quickbooks");
+  const [connection, settings, center, mappings, ownership] = await Promise.all([
     getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
     getQuickBooksSettings(ctx.company.id),
-    loadQuickBooksSyncCenter(prisma, ctx.company.id),
-    listCompanyItemMappings(prisma, ctx.company.id),
+    loadQuickBooksSyncCenter(prisma, active.scope),
+    listCompanyItemMappings(prisma, active.scope),
+    quickBooksOwnershipCounts(prisma, ctx.company.id),
   ]);
   const preview = center.preview;
+  const advancedDiagnostics = {
+    realm: maskRealmId(center.diagnosis.realmId),
+    mappingCount: center.diagnosis.mappings.length,
+    recentEventCount: center.diagnosis.events.length,
+    invoiceEligibility: center.diagnosis.invoicePaidSources.slice(0, 20),
+    paymentEligibility: center.diagnosis.paymentEligibility.slice(0, 20),
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -40,7 +53,7 @@ export default async function QuickBooksManagePage() {
         <h1 className="mt-2 font-display text-3xl tracking-tight">QuickBooks Sync Center</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {settings.qboCompanyName || "QuickBooks"} ·{" "}
-          {settings.syncActivated ? "Automatic sync is on" : "Safe mode — preview first"}
+          {center.preview.syncActivated ? "Automatic sync is on for this realm" : "Safe mode — preview first"}
         </p>
       </div>
 
@@ -65,6 +78,7 @@ export default async function QuickBooksManagePage() {
           ]}
         />
         <CountCard title="Expenses" lines={[`${preview.expensesSynced} synced`, `${preview.expensesPending} pending`, `${preview.expensesErrors} errors`]} />
+        <CountCard title="Products / Services" lines={[`${mappings.serviceItems.length} service mappings`, mappings.defaultItem ? "Default mapped" : "Default not mapped"]} />
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
@@ -93,15 +107,38 @@ export default async function QuickBooksManagePage() {
         </div>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-        <h2 className="font-medium">Payment sync diagnosis</h2>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Safe IDs only. Compare payment.invoiceId to the INVOICE mapping internalId and the invoice.create event.
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <h2 className="font-medium">Realm isolation</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Only mappings and activity owned by the current {active.scope.environment} realm are shown or used.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-white p-3 text-xs leading-5">
-          {JSON.stringify(center.diagnosis, null, 2)}
-        </pre>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Sandbox-owned</dt>
+            <dd>{ownership.sandbox.mappings} mappings · {ownership.sandbox.events} events</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Production-owned</dt>
+            <dd>{ownership.production.mappings} mappings · {ownership.production.events} events</dd>
+          </div>
+          <div>
+            <dt className="text-[var(--muted-foreground)]">Legacy / blocked</dt>
+            <dd>{ownership.legacyUnscoped.mappings} mappings · {ownership.legacyUnscoped.events} events</dd>
+          </div>
+        </dl>
       </section>
+
+      {ctx.user.isPlatformAdmin ? (
+        <details className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <summary className="cursor-pointer font-medium">Advanced diagnostics</summary>
+          <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            Sanitized current-realm identifiers and eligibility details. Results are capped and contain no credentials.
+          </p>
+          <pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-[var(--cy-gray)] p-3 text-xs leading-5">
+            {JSON.stringify(advancedDiagnostics, null, 2)}
+          </pre>
+        </details>
+      ) : null}
 
       <section className="space-y-2 rounded-2xl border border-[var(--border)] bg-white p-5">
         <h2 className="font-medium">Products / Services</h2>

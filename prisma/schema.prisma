@@ -1425,6 +1425,9 @@ model QuickBooksSettings {
   appEnvironment      String?
   syncActivated       Boolean                  @default(false)
   syncStartDate       DateTime?                @db.Date
+  syncEnvironment     String?
+  syncRealmId         String?
+  syncActivatedAt     DateTime?
   qboCompanyName      String?
   qboCompanyVerifiedAt DateTime?
   wizardCompletedAt   DateTime?
@@ -1437,6 +1440,9 @@ model QuickBooksSettings {
 model QuickBooksMapping {
   id            String               @id @default(cuid())
   companyId     String
+  environment   String?
+  realmId       String?
+  ownershipStatus String              @default("LEGACY_UNSCOPED")
   entityType    String
   internalId    String
   quickbooksId  String
@@ -1450,13 +1456,18 @@ model QuickBooksMapping {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, entityType, internalId])
-  @@index([companyId, entityType, quickbooksId])
+  @@unique([companyId, environment, realmId, entityType, internalId])
+  @@index([companyId, entityType, internalId])
+  @@index([companyId, environment, realmId, entityType, quickbooksId])
+  @@index([companyId, ownershipStatus])
 }
 
 model QuickBooksSyncEvent {
   id            String               @id @default(cuid())
   companyId     String
+  environment   String?
+  realmId       String?
+  ownershipStatus String              @default("LEGACY_UNSCOPED")
   entityType    String
   internalId    String?
   quickbooksId  String?
@@ -1468,8 +1479,9 @@ model QuickBooksSyncEvent {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@index([companyId, createdAt])
-  @@index([companyId, entityType, internalId])
+  @@index([companyId, environment, realmId, createdAt])
+  @@index([companyId, environment, realmId, entityType, internalId])
+  @@index([companyId, ownershipStatus])
 }
 
 // ============================================================
@@ -1507,6 +1519,7 @@ model IntegrationConnection {
   status            IntegrationStatus @default(NOT_CONNECTED)
   accountLabel      String?
   externalAccountId String?
+  environment       String?
   scopes            String[]          @default([])
   lastSyncAt        DateTime?
   lastAttemptAt     DateTime?

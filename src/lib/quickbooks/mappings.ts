@@ -7,6 +7,13 @@ import {
   hasValidQuickBooksMapping,
   mappingKey,
 } from "@/lib/quickbooks/eligibility";
+import {
+  eventScopeWhere,
+  mappingBelongsToScope,
+  mappingScopeWhere,
+  QBO_SCOPED,
+  type QuickBooksScope,
+} from "@/lib/quickbooks/ownership";
 
 export const DEFAULT_ITEM_INTERNAL_ID = "default";
 export const ENTITY_DEFAULT_ITEM = "DEFAULT_ITEM";
@@ -16,17 +23,21 @@ export const ENTITY_INVOICE = "INVOICE";
 export const ENTITY_PAYMENT = "PAYMENT";
 export const INVOICE_MISSING_IN_QBO = "Invoice is not in QuickBooks yet.";
 
-export function invoiceMappingIdentity(input: { companyId: string; invoiceId: string }) {
+export function invoiceMappingIdentity(input: QuickBooksScope & { invoiceId: string }) {
   return {
     companyId: input.companyId,
+    environment: input.environment,
+    realmId: input.realmId,
     entityType: ENTITY_INVOICE,
     internalId: input.invoiceId,
   };
 }
 
-export function paymentMappingIdentity(input: { companyId: string; paymentId: string }) {
+export function paymentMappingIdentity(input: QuickBooksScope & { paymentId: string }) {
   return {
     companyId: input.companyId,
+    environment: input.environment,
+    realmId: input.realmId,
     entityType: ENTITY_PAYMENT,
     internalId: input.paymentId,
   };
@@ -47,6 +58,7 @@ export type ItemMappingRecord = {
   lastSyncError: string | null;
   name?: string | null;
   realmId?: string | null;
+  environment?: string | null;
 };
 
 export type SavedItemMappings = {
@@ -57,7 +69,7 @@ export type SavedItemMappings = {
 
 type MappingRow = Pick<
   QuickBooksMapping,
-  "entityType" | "internalId" | "quickbooksId" | "status" | "lastSyncError" | "metadata"
+  "entityType" | "internalId" | "quickbooksId" | "status" | "lastSyncError" | "metadata" | "realmId" | "environment"
 >;
 
 function metadataName(metadata: unknown) {
@@ -85,7 +97,8 @@ export function mappingFromRow(row: MappingRow): ItemMappingRecord {
     status: row.status,
     lastSyncError: row.lastSyncError,
     name: metadataName(row.metadata),
-    realmId: metadataRealm(row.metadata),
+    realmId: row.realmId,
+    environment: row.environment,
   };
 }
 
@@ -99,10 +112,10 @@ export function loadSavedItemMappings(rows: MappingRow[]): SavedItemMappings {
   };
 }
 
-export async function listCompanyItemMappings(prisma: PrismaClient, companyId: string) {
+export async function listCompanyItemMappings(prisma: PrismaClient, scope: QuickBooksScope) {
   const rows = await prisma.quickBooksMapping.findMany({
     where: {
-      companyId,
+      ...mappingScopeWhere(scope),
       entityType: { in: [ENTITY_DEFAULT_ITEM, ENTITY_SERVICE_ITEM, ENTITY_EXPENSE_ACCOUNT] },
     },
   });
@@ -120,28 +133,31 @@ function findActiveItem(items: QboItemOption[] | undefined, id: string) {
 export async function persistItemMapping(
   prisma: PrismaClient,
   input: {
-    companyId: string;
+    scope: QuickBooksScope;
     entityType: string;
     internalId: string;
     quickbooksId: string;
     name?: string | null;
-    realmId?: string | null;
   }
 ) {
   const metadata = {
     name: input.name ?? null,
-    realmId: input.realmId ?? null,
+    realmId: input.scope.realmId,
+    environment: input.scope.environment,
   };
   return prisma.quickBooksMapping.upsert({
     where: {
-      companyId_entityType_internalId: {
-        companyId: input.companyId,
+      companyId_environment_realmId_entityType_internalId: {
+        companyId: input.scope.companyId,
+        environment: input.scope.environment,
+        realmId: input.scope.realmId,
         entityType: input.entityType,
         internalId: input.internalId,
       },
     },
     create: {
-      companyId: input.companyId,
+      ...input.scope,
+      ownershipStatus: QBO_SCOPED,
       entityType: input.entityType,
       internalId: input.internalId,
       quickbooksId: input.quickbooksId,
@@ -162,11 +178,11 @@ export async function persistItemMapping(
 
 export async function markItemMappingNeedsReview(
   prisma: PrismaClient,
-  input: { companyId: string; entityType: string; internalId: string; error: string }
+  input: { scope: QuickBooksScope; entityType: string; internalId: string; error: string }
 ) {
   await prisma.quickBooksMapping.updateMany({
     where: {
-      companyId: input.companyId,
+      ...mappingScopeWhere(input.scope),
       entityType: input.entityType,
       internalId: input.internalId,
     },
@@ -177,8 +193,7 @@ export async function markItemMappingNeedsReview(
 export async function saveCompanyItemMappings(
   prisma: PrismaClient,
   input: {
-    companyId: string;
-    realmId?: string | null;
+    scope: QuickBooksScope;
     defaultItemId?: string | null;
     serviceItems?: Array<{ serviceTypeId: string; quickbooksId: string }>;
     expenseAccountId?: string | null;
@@ -193,12 +208,11 @@ export async function saveCompanyItemMappings(
       return { ok: false as const, error: "That QuickBooks Product/Service is not active on this company." };
     }
     await persistItemMapping(prisma, {
-      companyId: input.companyId,
+      scope: input.scope,
       entityType: ENTITY_DEFAULT_ITEM,
       internalId: DEFAULT_ITEM_INTERNAL_ID,
       quickbooksId: input.defaultItemId,
       name: check.item?.name ?? null,
-      realmId: input.realmId,
     });
     saved.push("default");
   }
@@ -209,12 +223,11 @@ export async function saveCompanyItemMappings(
       return { ok: false as const, error: "A service mapping points to a QuickBooks item that is not active on this company." };
     }
     await persistItemMapping(prisma, {
-      companyId: input.companyId,
+      scope: input.scope,
       entityType: ENTITY_SERVICE_ITEM,
       internalId: row.serviceTypeId,
       quickbooksId: row.quickbooksId,
       name: check.item?.name ?? null,
-      realmId: input.realmId,
     });
     saved.push(row.serviceTypeId);
   }
@@ -224,12 +237,11 @@ export async function saveCompanyItemMappings(
       return { ok: false as const, error: "That QuickBooks expense account is not active on this company." };
     }
     await persistItemMapping(prisma, {
-      companyId: input.companyId,
+      scope: input.scope,
       entityType: ENTITY_EXPENSE_ACCOUNT,
       internalId: DEFAULT_ITEM_INTERNAL_ID,
       quickbooksId: input.expenseAccountId,
       name: check.item?.name ?? null,
-      realmId: input.realmId,
     });
   }
   if (!saved.length && !input.expenseAccountId) {
@@ -241,20 +253,19 @@ export async function saveCompanyItemMappings(
 export async function resolveInvoiceItemMapping(
   prisma: PrismaClient,
   input: {
-    companyId: string;
+    scope: QuickBooksScope;
     serviceTypeId?: string | null;
-    realmId?: string | null;
     activeItems?: QboItemOption[];
   }
 ): Promise<{ itemId: string; name?: string | null } | { error: string; review: true }> {
   const service = input.serviceTypeId
     ? await prisma.quickBooksMapping.findFirst({
-        where: { companyId: input.companyId, entityType: ENTITY_SERVICE_ITEM, internalId: input.serviceTypeId },
+        where: { ...mappingScopeWhere(input.scope), entityType: ENTITY_SERVICE_ITEM, internalId: input.serviceTypeId },
       })
     : null;
   const fallback = await prisma.quickBooksMapping.findFirst({
     where: {
-      companyId: input.companyId,
+      ...mappingScopeWhere(input.scope),
       entityType: ENTITY_DEFAULT_ITEM,
       internalId: DEFAULT_ITEM_INTERNAL_ID,
     },
@@ -266,10 +277,9 @@ export async function resolveInvoiceItemMapping(
   if (chosen.status === "NEEDS_REVIEW" || chosen.status === "FAILED") {
     return { error: chosen.lastSyncError || humanQuickBooksError({ missing: "item" }), review: true };
   }
-  const savedRealm = metadataRealm(chosen.metadata);
-  if (input.realmId && savedRealm && savedRealm !== input.realmId) {
+  if (!mappingBelongsToScope(chosen, input.scope)) {
     await markItemMappingNeedsReview(prisma, {
-      companyId: input.companyId,
+      scope: input.scope,
       entityType: chosen.entityType,
       internalId: chosen.internalId,
       error: "This Product/Service mapping belongs to a different QuickBooks company.",
@@ -279,7 +289,7 @@ export async function resolveInvoiceItemMapping(
   const check = findActiveItem(input.activeItems, chosen.quickbooksId);
   if (check.known && !check.item) {
     await markItemMappingNeedsReview(prisma, {
-      companyId: input.companyId,
+      scope: input.scope,
       entityType: chosen.entityType,
       internalId: chosen.internalId,
       error: "The saved QuickBooks Product/Service is missing or inactive.",
@@ -292,28 +302,29 @@ export async function resolveInvoiceItemMapping(
 export async function persistInvoiceMapping(
   prisma: PrismaClient,
   input: {
-    companyId: string;
+    scope: QuickBooksScope;
     invoiceId: string;
     quickbooksId: string;
-    realmId?: string | null;
     syncToken?: string | null;
     qboBalance?: string | null;
     qboTotal?: number | null;
     qboDocNumber?: string | null;
   }
 ) {
-  const identity = invoiceMappingIdentity({ companyId: input.companyId, invoiceId: input.invoiceId });
+  const identity = invoiceMappingIdentity({ ...input.scope, invoiceId: input.invoiceId });
   const metadata = {
-    realmId: input.realmId ?? null,
+    realmId: input.scope.realmId,
+    environment: input.scope.environment,
     qboInvoiceId: input.quickbooksId,
     qboDocNumber: input.qboDocNumber ?? null,
     qboBalance: input.qboBalance ?? null,
     qboTotal: input.qboTotal ?? null,
   };
   return prisma.quickBooksMapping.upsert({
-    where: { companyId_entityType_internalId: identity },
+    where: { companyId_environment_realmId_entityType_internalId: identity },
     create: {
       ...identity,
+      ownershipStatus: QBO_SCOPED,
       quickbooksId: input.quickbooksId,
       status: "SYNCED",
       lastSyncedAt: new Date(),
@@ -335,24 +346,25 @@ export async function persistInvoiceMapping(
 export async function persistPaymentMapping(
   prisma: PrismaClient,
   input: {
-    companyId: string;
+    scope: QuickBooksScope;
     paymentId: string;
     quickbooksId: string;
     invoiceId: string;
     qboInvoiceId: string;
-    realmId?: string | null;
   }
 ) {
-  const identity = paymentMappingIdentity({ companyId: input.companyId, paymentId: input.paymentId });
+  const identity = paymentMappingIdentity({ ...input.scope, paymentId: input.paymentId });
   const metadata = {
-    realmId: input.realmId ?? null,
+    realmId: input.scope.realmId,
+    environment: input.scope.environment,
     invoiceId: input.invoiceId,
     qboInvoiceId: input.qboInvoiceId,
   };
   return prisma.quickBooksMapping.upsert({
-    where: { companyId_entityType_internalId: identity },
+    where: { companyId_environment_realmId_entityType_internalId: identity },
     create: {
       ...identity,
+      ownershipStatus: QBO_SCOPED,
       quickbooksId: input.quickbooksId,
       status: "SYNCED",
       lastSyncedAt: new Date(),
@@ -371,11 +383,11 @@ export async function persistPaymentMapping(
 
 async function loadInvoiceMappingRow(
   prisma: PrismaClient,
-  input: { companyId: string; invoiceId: string }
+  input: QuickBooksScope & { invoiceId: string }
 ) {
   const identity = invoiceMappingIdentity(input);
   const unique = await prisma.quickBooksMapping.findUnique({
-    where: { companyId_entityType_internalId: identity },
+    where: { companyId_environment_realmId_entityType_internalId: identity },
   });
   if (unique) return unique;
   return prisma.quickBooksMapping.findFirst({
@@ -434,11 +446,11 @@ export function formatInvoicePaymentTrace(trace: InvoicePaymentTrace) {
 
 async function healInvoiceMappingFromEvent(
   prisma: PrismaClient,
-  input: { companyId: string; invoiceId: string; realmId?: string | null }
+  input: QuickBooksScope & { invoiceId: string }
 ) {
   const event = await prisma.quickBooksSyncEvent.findFirst({
     where: {
-      companyId: input.companyId,
+      ...eventScopeWhere(input),
       entityType: ENTITY_INVOICE,
       internalId: input.invoiceId,
       status: "SYNCED",
@@ -449,19 +461,17 @@ async function healInvoiceMappingFromEvent(
   });
   if (!isPersistedQboId(event?.quickbooksId)) return null;
   return persistInvoiceMapping(prisma, {
-    companyId: input.companyId,
+    scope: input,
     invoiceId: input.invoiceId,
     quickbooksId: event!.quickbooksId!,
-    realmId: input.realmId,
   });
 }
 
 export async function resolveQuickBooksInvoiceMapping(
   prisma: PrismaClient,
   input: {
-    companyId: string;
+    scope: QuickBooksScope;
     invoiceId: string;
-    realmId?: string | null;
     paymentId?: string | null;
     paymentInvoiceId?: string | null;
     paymentCompanyId?: string | null;
@@ -475,14 +485,14 @@ export async function resolveQuickBooksInvoiceMapping(
   const baseTrace = (): InvoicePaymentTrace => ({
     paymentId: input.paymentId ?? null,
     paymentInvoiceId: input.paymentInvoiceId ?? null,
-    paymentCompanyId: input.paymentCompanyId ?? input.companyId,
+    paymentCompanyId: input.paymentCompanyId ?? input.scope.companyId,
     invoiceId: invoiceId || null,
     invoiceNumber: input.invoice?.invoiceNumber ?? null,
     invoiceCompanyId: input.invoice?.companyId ?? null,
-    lookupCompanyId: input.companyId,
+    lookupCompanyId: input.scope.companyId,
     lookupEntityType: ENTITY_INVOICE,
     lookupInternalId: invoiceId || null,
-    realmId: input.realmId ?? null,
+    realmId: input.scope.realmId,
     mappingFound: false,
     mappingId: null,
     mappingInternalId: null,
@@ -506,7 +516,7 @@ export async function resolveQuickBooksInvoiceMapping(
     input.invoice && input.invoice.id === invoiceId
       ? input.invoice
       : await prisma.invoice.findFirst({
-          where: { id: invoiceId, companyId: input.companyId },
+          where: { id: invoiceId, companyId: input.scope.companyId },
           select: { id: true, companyId: true, invoiceNumber: true },
         });
   if (!invoice) {
@@ -518,21 +528,21 @@ export async function resolveQuickBooksInvoiceMapping(
   }
 
   const lookupCompanyId = invoice.companyId;
-  const canonical = invoiceMappingIdentity({ companyId: lookupCompanyId, invoiceId: invoice.id });
-  let row = await loadInvoiceMappingRow(prisma, { companyId: lookupCompanyId, invoiceId: invoice.id });
+  const scoped = { ...input.scope, companyId: lookupCompanyId };
+  const canonical = invoiceMappingIdentity({ ...scoped, invoiceId: invoice.id });
+  let row = await loadInvoiceMappingRow(prisma, { ...scoped, invoiceId: invoice.id });
   let reason = row ? "canonical Invoice.id mapping" : "canonical mapping missing";
 
   if ((!isPersistedQboId(row?.quickbooksId) || row?.status === "FAILED") && invoice.invoiceNumber) {
     const byNumber = await loadInvoiceMappingRow(prisma, {
-      companyId: lookupCompanyId,
+      ...scoped,
       invoiceId: invoice.invoiceNumber,
     });
     if (byNumber && isPersistedQboId(byNumber.quickbooksId) && byNumber.status !== "FAILED") {
       row = await persistInvoiceMapping(prisma, {
-        companyId: lookupCompanyId,
+        scope: scoped,
         invoiceId: invoice.id,
         quickbooksId: byNumber.quickbooksId,
-        realmId: input.realmId ?? metadataRealm(byNumber.metadata),
       });
       reason = "repaired legacy mapping keyed by invoiceNumber onto Invoice.id";
     }
@@ -540,9 +550,8 @@ export async function resolveQuickBooksInvoiceMapping(
 
   if (!isPersistedQboId(row?.quickbooksId) || row?.status === "FAILED") {
     const healed = await healInvoiceMappingFromEvent(prisma, {
-      companyId: lookupCompanyId,
+      ...scoped,
       invoiceId: invoice.id,
-      realmId: input.realmId,
     });
     if (healed) {
       row = healed;
@@ -550,7 +559,7 @@ export async function resolveQuickBooksInvoiceMapping(
     } else if (invoice.invoiceNumber) {
       const numberedEvent = await prisma.quickBooksSyncEvent.findFirst({
         where: {
-          companyId: lookupCompanyId,
+          ...eventScopeWhere(scoped),
           entityType: ENTITY_INVOICE,
           internalId: invoice.invoiceNumber,
           status: "SYNCED",
@@ -561,10 +570,9 @@ export async function resolveQuickBooksInvoiceMapping(
       });
       if (isPersistedQboId(numberedEvent?.quickbooksId)) {
         row = await persistInvoiceMapping(prisma, {
-          companyId: lookupCompanyId,
+          scope: scoped,
           invoiceId: invoice.id,
           quickbooksId: numberedEvent!.quickbooksId!,
-          realmId: input.realmId,
         });
         reason = "healed event keyed by invoiceNumber onto Invoice.id";
       }
@@ -573,7 +581,7 @@ export async function resolveQuickBooksInvoiceMapping(
 
   const event = await prisma.quickBooksSyncEvent.findFirst({
     where: {
-      companyId: lookupCompanyId,
+      ...eventScopeWhere(scoped),
       entityType: ENTITY_INVOICE,
       internalId: invoice.id,
       status: "SYNCED",
@@ -599,7 +607,7 @@ export async function resolveQuickBooksInvoiceMapping(
     eventInternalId: event?.internalId ?? null,
     eventQuickbooksId: event?.quickbooksId ?? null,
     invoiceIdsEqual: (input.paymentInvoiceId || invoiceId) === invoice.id,
-    companyIdsEqual: (input.paymentCompanyId || input.companyId) === invoice.companyId,
+    companyIdsEqual: (input.paymentCompanyId || input.scope.companyId) === invoice.companyId,
     reason,
   };
 
@@ -613,10 +621,11 @@ export async function resolveQuickBooksInvoiceMapping(
   if (row!.status === "NEEDS_REVIEW" && row!.lastSyncError) {
     return { error: row!.lastSyncError, review: true, trace: { ...trace, reason: row!.lastSyncError } };
   }
-  const savedRealm = metadataRealm(row!.metadata);
-  if (input.realmId && savedRealm && savedRealm !== input.realmId) {
+  if (!mappingBelongsToScope(row, scoped)) {
     await markItemMappingNeedsReview(prisma, {
-      ...canonical,
+      scope: scoped,
+      entityType: canonical.entityType,
+      internalId: canonical.internalId,
       error: "This invoice mapping belongs to a different QuickBooks company.",
     });
     return {
@@ -628,7 +637,8 @@ export async function resolveQuickBooksInvoiceMapping(
   return { quickbooksId: row!.quickbooksId, invoiceId: invoice.id, identity: canonical };
 }
 
-export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, companyId: string) {
+export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, scope: QuickBooksScope) {
+  const companyId = scope.companyId;
   const [invoices, payments, mappings, events, connection, settings] = await Promise.all([
     prisma.invoice.findMany({
       where: { companyId, status: { notIn: ["DRAFT", "VOID"] } },
@@ -671,10 +681,10 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
       orderBy: { createdAt: "desc" },
     }),
     prisma.quickBooksMapping.findMany({
-      where: { companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+      where: { ...mappingScopeWhere(scope), entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
     }),
     prisma.quickBooksSyncEvent.findMany({
-      where: { companyId, entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
+      where: { ...eventScopeWhere(scope), entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] } },
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
@@ -789,11 +799,11 @@ export async function diagnoseCompanyInvoicePayments(prisma: PrismaClient, compa
 
 export async function resolveQuickBooksPaymentMapping(
   prisma: PrismaClient,
-  input: { companyId: string; paymentId: string }
+  input: QuickBooksScope & { paymentId: string }
 ) {
   const identity = paymentMappingIdentity(input);
   const row = await prisma.quickBooksMapping.findUnique({
-    where: { companyId_entityType_internalId: identity },
+    where: { companyId_environment_realmId_entityType_internalId: identity },
   });
   if (row?.status === "SYNCED" && isPersistedQboId(row.quickbooksId)) {
     return { quickbooksId: row.quickbooksId, identity };

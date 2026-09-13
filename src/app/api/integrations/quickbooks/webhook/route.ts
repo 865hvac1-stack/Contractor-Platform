@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { quickbooksWebhookConfigured } from "@/lib/quickbooks/webhook";
+import { normalizedQuickBooksEnvironment, QBO_SCOPED } from "@/lib/quickbooks/ownership";
 
 function validSignature(payload: string, signature: string | null) {
   const secret = process.env.INTUIT_WEBHOOK_VERIFIER_TOKEN?.trim();
@@ -33,9 +34,10 @@ export async function POST(request: Request) {
     if (!realmId) continue;
     const connection = await prisma.integrationConnection.findFirst({
       where: { providerKey: QUICKBOOKS_PROVIDER_KEY, externalAccountId: realmId },
-      select: { companyId: true },
+      select: { companyId: true, environment: true },
     });
-    if (!connection) continue;
+    const environment = normalizedQuickBooksEnvironment(connection?.environment);
+    if (!connection || !environment) continue;
     const entities = notice.dataChangeEvent?.entities ?? [];
     for (const entity of entities) {
       if (!entity.id || !entity.name) continue;
@@ -43,6 +45,9 @@ export async function POST(request: Request) {
       const recent = await prisma.quickBooksSyncEvent.findFirst({
         where: {
           companyId: connection.companyId,
+          environment,
+          realmId,
+          ownershipStatus: QBO_SCOPED,
           entityType: entity.name.toUpperCase(),
           quickbooksId: entity.id,
           action,
@@ -53,6 +58,9 @@ export async function POST(request: Request) {
       await prisma.quickBooksSyncEvent.create({
         data: {
           companyId: connection.companyId,
+          environment,
+          realmId,
+          ownershipStatus: QBO_SCOPED,
           entityType: entity.name.toUpperCase(),
           quickbooksId: entity.id,
           direction: "WEBHOOK",

@@ -3,9 +3,10 @@ import { getCompanyConnection, getValidAccessToken } from "@/lib/integrations/st
 import { liveQboTransport, type QboTransport } from "@/lib/quickbooks/client";
 import { loadQuickBooksAppCredentials } from "@/lib/quickbooks/app";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
+import { normalizedQuickBooksEnvironment, type QuickBooksScope } from "@/lib/quickbooks/ownership";
 
 export async function loadQuickBooksTransport(companyId: string): Promise<
-  | { ok: true; transport: QboTransport; connectionId: string; realmId: string }
+  | { ok: true; transport: QboTransport; connectionId: string; realmId: string; environment: "sandbox" | "production"; scope: QuickBooksScope }
   | { ok: false; error: string; reauth?: boolean }
 > {
   const connection = await getCompanyConnection(companyId, QUICKBOOKS_PROVIDER_KEY);
@@ -18,6 +19,17 @@ export async function loadQuickBooksTransport(companyId: string): Promise<
   if (!connection.externalAccountId) {
     return { ok: false, error: "QuickBooks company id is missing. Reconnect." };
   }
+  const environment = normalizedQuickBooksEnvironment(connection.environment);
+  if (!environment) {
+    return { ok: false, error: "QuickBooks connection environment is missing. Reconnect before continuing." };
+  }
+  const app = await loadQuickBooksAppCredentials(prisma, companyId);
+  if (!app || app.environment !== environment) {
+    return {
+      ok: false,
+      error: "QuickBooks connection environment does not match the configured Intuit app. Reconnect before continuing.",
+    };
+  }
   const tokens = await getValidAccessToken({
     companyId,
     connectionId: connection.id,
@@ -26,16 +38,19 @@ export async function loadQuickBooksTransport(companyId: string): Promise<
   if (!tokens) {
     return { ok: false, error: "Reconnect QuickBooks. Authorization expired.", reauth: true };
   }
-  const app = await loadQuickBooksAppCredentials(prisma, companyId);
+  const scope = { companyId, environment, realmId: connection.externalAccountId };
   return {
     ok: true,
     transport: liveQboTransport({
       accessToken: tokens.accessToken,
       realmId: connection.externalAccountId,
-      environment: app?.environment,
+      environment,
+      companyId,
     }),
     connectionId: connection.id,
     realmId: connection.externalAccountId,
+    environment,
+    scope,
   };
 }
 

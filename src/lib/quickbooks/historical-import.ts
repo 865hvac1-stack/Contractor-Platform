@@ -9,6 +9,7 @@ import { loadQuickBooksTransport } from "@/lib/quickbooks/connection";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import type { QboTransport } from "@/lib/quickbooks/client";
 import { historicalImportMappingMetadata } from "@/lib/quickbooks/historical-reset";
+import { mappingScopeWhere, QBO_SCOPED } from "@/lib/quickbooks/ownership";
 
 export const QBO_HISTORICAL_CATEGORIES = ["customers", "invoices", "payments", "items", "expenses"] as const;
 export type QboHistoricalCategory = (typeof QBO_HISTORICAL_CATEGORIES)[number];
@@ -72,11 +73,6 @@ export async function previewQuickBooksHistorical(
   companyId: string
 ): Promise<QboHistoricalPreview> {
   const transport = await loadQuickBooksTransport(companyId);
-  const [linkedCustomers, linkedInvoices, linkedPayments] = await Promise.all([
-    prisma.quickBooksMapping.count({ where: { companyId, entityType: "CUSTOMER" } }),
-    prisma.quickBooksMapping.count({ where: { companyId, entityType: "INVOICE" } }),
-    prisma.quickBooksMapping.count({ where: { companyId, entityType: "PAYMENT" } }),
-  ]);
   if (!transport.ok) {
     return {
       connected: false,
@@ -87,11 +83,16 @@ export async function previewQuickBooksHistorical(
       payments: 0,
       items: 0,
       expenses: 0,
-      alreadyLinkedCustomers: linkedCustomers,
-      alreadyLinkedInvoices: linkedInvoices,
-      alreadyLinkedPayments: linkedPayments,
+      alreadyLinkedCustomers: 0,
+      alreadyLinkedInvoices: 0,
+      alreadyLinkedPayments: 0,
     };
   }
+  const [linkedCustomers, linkedInvoices, linkedPayments] = await Promise.all([
+    prisma.quickBooksMapping.count({ where: { ...mappingScopeWhere(transport.scope), entityType: "CUSTOMER" } }),
+    prisma.quickBooksMapping.count({ where: { ...mappingScopeWhere(transport.scope), entityType: "INVOICE" } }),
+    prisma.quickBooksMapping.count({ where: { ...mappingScopeWhere(transport.scope), entityType: "PAYMENT" } }),
+  ]);
   const [customers, invoices, payments, items, expenses] = await Promise.all([
     qboCount(transport.transport, "Customer"),
     qboCount(transport.transport, "Invoice"),
@@ -184,11 +185,15 @@ export async function importQuickBooksHistorical(input: {
     },
   });
   const mappings = await input.prisma.quickBooksMapping.findMany({
-    where: { companyId: input.companyId, entityType: "CUSTOMER" },
+    where: { ...mappingScopeWhere(transport.scope), entityType: "CUSTOMER" },
     select: { internalId: true, quickbooksId: true },
   });
   const identity = buildIdentityIndex(
-    existingCustomers,
+    existingCustomers.map((row) =>
+      row.sourceSystem === QUICKBOOKS_SOURCE || row.sourceSystem === QUICKBOOKS_PROVIDER_KEY
+        ? { ...row, sourceSystem: null, externalId: null }
+        : row
+    ),
     mappings.map((row) => ({
       customerId: row.internalId,
       externalId: row.quickbooksId,
@@ -273,8 +278,8 @@ export async function importQuickBooksHistorical(input: {
         qboToCustomer.set(row.Id, customerId);
         const existingCustomerMap = await input.prisma.quickBooksMapping.findUnique({
           where: {
-            companyId_entityType_internalId: {
-              companyId: input.companyId,
+            companyId_environment_realmId_entityType_internalId: {
+              ...transport.scope,
               entityType: "CUSTOMER",
               internalId: customerId,
             },
@@ -290,7 +295,8 @@ export async function importQuickBooksHistorical(input: {
         } else {
           await input.prisma.quickBooksMapping.create({
             data: {
-              companyId: input.companyId,
+              ...transport.scope,
+              ownershipStatus: QBO_SCOPED,
               entityType: "CUSTOMER",
               internalId: customerId,
               quickbooksId: row.Id,
@@ -308,7 +314,7 @@ export async function importQuickBooksHistorical(input: {
   const invoiceByQbo = new Map<string, string>();
   if (input.categories.includes("invoices")) {
     const existing = await input.prisma.quickBooksMapping.findMany({
-      where: { companyId: input.companyId, entityType: "INVOICE" },
+      where: { ...mappingScopeWhere(transport.scope), entityType: "INVOICE" },
       select: { internalId: true, quickbooksId: true },
     });
     for (const row of existing) invoiceByQbo.set(row.quickbooksId, row.internalId);
@@ -366,14 +372,15 @@ export async function importQuickBooksHistorical(input: {
         invoiceByQbo.set(row.Id, createdInvoice.id);
         await input.prisma.quickBooksMapping.upsert({
           where: {
-            companyId_entityType_internalId: {
-              companyId: input.companyId,
+            companyId_environment_realmId_entityType_internalId: {
+              ...transport.scope,
               entityType: "INVOICE",
               internalId: createdInvoice.id,
             },
           },
           create: {
-            companyId: input.companyId,
+            ...transport.scope,
+            ownershipStatus: QBO_SCOPED,
             entityType: "INVOICE",
             internalId: createdInvoice.id,
             quickbooksId: row.Id,
@@ -391,7 +398,7 @@ export async function importQuickBooksHistorical(input: {
 
   if (input.categories.includes("payments")) {
     const existing = await input.prisma.quickBooksMapping.findMany({
-      where: { companyId: input.companyId, entityType: "PAYMENT" },
+      where: { ...mappingScopeWhere(transport.scope), entityType: "PAYMENT" },
       select: { quickbooksId: true },
     });
     const known = new Set(existing.map((row) => row.quickbooksId));
@@ -445,14 +452,15 @@ export async function importQuickBooksHistorical(input: {
         });
         await input.prisma.quickBooksMapping.upsert({
           where: {
-            companyId_entityType_internalId: {
-              companyId: input.companyId,
+            companyId_environment_realmId_entityType_internalId: {
+              ...transport.scope,
               entityType: "PAYMENT",
               internalId: createdPayment.id,
             },
           },
           create: {
-            companyId: input.companyId,
+            ...transport.scope,
+            ownershipStatus: QBO_SCOPED,
             entityType: "PAYMENT",
             internalId: createdPayment.id,
             quickbooksId: row.Id,

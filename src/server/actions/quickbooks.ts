@@ -20,6 +20,11 @@ import { qboCreateCustomer, qboListExpenseAccounts, qboListItems, qboSearchCusto
 import { upsertMapping } from "@/lib/quickbooks/sync";
 import { saveCompanyItemMappings } from "@/lib/quickbooks/mappings";
 import type { QuickBooksInvoiceTrigger } from "@prisma/client";
+import {
+  assertQuickBooksWriteSafety,
+  isQuickBooksSyncActivated,
+  mappingScopeWhere,
+} from "@/lib/quickbooks/ownership";
 
 export async function saveQuickBooksSettingsAction(
   _prev: ActionResult | null,
@@ -223,6 +228,11 @@ export async function saveQuickBooksWizardAction(
     const trigger = String(formData.get("invoiceSyncTrigger") || "MANUAL_ONLY") as QuickBooksInvoiceTrigger;
     const activate = String(formData.get("activate") || "") === "yes";
     const syncStartDate = resolveSyncStartDate(option, custom);
+    const loaded = activate ? await loadQuickBooksTransport(ctx.company.id) : null;
+    if (activate && (!loaded || !loaded.ok)) {
+      return { ok: false, error: loaded && !loaded.ok ? loaded.error : "QuickBooks connection could not be verified." };
+    }
+    const activatedAt = activate ? new Date() : null;
     await prisma.quickBooksSettings.upsert({
       where: { companyId: ctx.company.id },
       create: {
@@ -230,12 +240,18 @@ export async function saveQuickBooksWizardAction(
         invoiceSyncTrigger: trigger,
         syncStartDate,
         syncActivated: activate,
+        syncEnvironment: loaded?.ok ? loaded.environment : null,
+        syncRealmId: loaded?.ok ? loaded.realmId : null,
+        syncActivatedAt: activatedAt,
         wizardCompletedAt: activate ? new Date() : null,
       },
       update: {
         invoiceSyncTrigger: trigger,
         syncStartDate,
         syncActivated: activate ? true : undefined,
+        syncEnvironment: loaded?.ok ? loaded.environment : undefined,
+        syncRealmId: loaded?.ok ? loaded.realmId : undefined,
+        syncActivatedAt: loaded?.ok ? activatedAt : undefined,
         wizardCompletedAt: activate ? new Date() : undefined,
       },
     });
@@ -274,12 +290,11 @@ export async function saveQuickBooksItemMappingsAction(
       return [{ serviceTypeId: key.slice("serviceItem:".length), quickbooksId: value.trim() }];
     });
     const loaded = await loadQuickBooksTransport(ctx.company.id);
-    const connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
-    const activeItems = loaded.ok ? await qboListItems(loaded.transport) : [];
-    const activeAccounts = loaded.ok ? await qboListExpenseAccounts(loaded.transport) : [];
+    if (!loaded.ok) return { ok: false, error: loaded.error };
+    const activeItems = await qboListItems(loaded.transport);
+    const activeAccounts = await qboListExpenseAccounts(loaded.transport);
     const saved = await saveCompanyItemMappings(prisma, {
-      companyId: ctx.company.id,
-      realmId: connection?.externalAccountId,
+      scope: loaded.scope,
       defaultItemId,
       serviceItems,
       expenseAccountId,
@@ -326,8 +341,10 @@ export async function linkQuickBooksCustomerAction(
       select: { id: true },
     });
     if (!customer || !quickbooksId) return { ok: false, error: "Choose a QuickBooks customer to link." };
+    const loaded = await loadQuickBooksTransport(ctx.company.id);
+    if (!loaded.ok) return { ok: false, error: loaded.error };
     await upsertMapping(prisma, {
-      companyId: ctx.company.id,
+      scope: loaded.scope,
       entityType: "CUSTOMER",
       internalId: customer.id,
       quickbooksId,
@@ -360,6 +377,15 @@ export async function createQuickBooksCustomerAction(
     if (!customer) return { ok: false, error: "Customer not found." };
     const loaded = await loadQuickBooksTransport(ctx.company.id);
     if (!loaded.ok) return { ok: false, error: loaded.error };
+    const guard = await assertQuickBooksWriteSafety(prisma, {
+      companyId: ctx.company.id,
+      transport: loaded.transport,
+      entityType: "CUSTOMER",
+      internalId: customer.id,
+      importMode: customer.importMode,
+      eligible: true,
+    });
+    if (!guard.ok) return guard;
     const display = customer.businessName || `${customer.firstName} ${customer.lastName}`.trim() || "Customer";
     const existing = await qboSearchCustomers(loaded.transport, {
       displayName: display,
@@ -376,7 +402,7 @@ export async function createQuickBooksCustomerAction(
       phone: customer.phone,
     });
     await upsertMapping(prisma, {
-      companyId: ctx.company.id,
+      scope: loaded.scope,
       entityType: "CUSTOMER",
       internalId: customer.id,
       quickbooksId: qbId,
@@ -403,9 +429,11 @@ export async function unlinkQuickBooksCustomerAction(
   try {
     const ctx = await requirePermission("accounting:manage");
     const customerId = String(formData.get("customerId") || "");
+    const loaded = await loadQuickBooksTransport(ctx.company.id);
+    if (!loaded.ok) return { ok: false, error: loaded.error };
     const invoiceMaps = await prisma.quickBooksMapping.count({
       where: {
-        companyId: ctx.company.id,
+        ...mappingScopeWhere(loaded.scope),
         entityType: "INVOICE",
         status: "SYNCED",
         internalId: {
@@ -422,7 +450,7 @@ export async function unlinkQuickBooksCustomerAction(
       return { ok: false, error: "Unlink invoices first. This customer already has synced invoices." };
     }
     await prisma.quickBooksMapping.deleteMany({
-      where: { companyId: ctx.company.id, entityType: "CUSTOMER", internalId: customerId },
+      where: { ...mappingScopeWhere(loaded.scope), entityType: "CUSTOMER", internalId: customerId },
     });
     await writeAudit({
       companyId: ctx.company.id,
@@ -535,15 +563,19 @@ export async function maybeAutoSyncInvoice(input: {
   importMode?: string | null;
 }) {
   const settings = await getQuickBooksSettings(input.companyId);
-  if (!settings.syncActivated) return;
+  const loaded = await loadQuickBooksTransport(input.companyId);
+  if (!loaded.ok || !isQuickBooksSyncActivated(settings, loaded.scope)) return;
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: input.invoiceId, companyId: input.companyId },
+    select: { createdAt: true, importMode: true },
+  });
+  if (!invoice || !settings.syncActivatedAt || invoice.createdAt < settings.syncActivatedAt) return;
   const gate = canAutoSyncInvoice({
     trigger: settings.invoiceSyncTrigger,
     event: input.event,
-    importMode: input.importMode,
+    importMode: input.importMode ?? invoice.importMode,
   });
   if (!gate.allowed) return;
-  const loaded = await loadQuickBooksTransport(input.companyId);
-  if (!loaded.ok) return;
   await syncInvoiceToQuickBooks(prisma, loaded.transport, input);
 }
 
@@ -552,12 +584,10 @@ export async function maybeAutoSyncPayment(input: {
   paymentId: string;
   importMode?: string | null;
 }) {
-  if (input.importMode === "HISTORICAL") return;
   const settings = await getQuickBooksSettings(input.companyId);
-  if (!settings.syncActivated) return;
-  if (settings.invoiceSyncTrigger !== "WHEN_PAYMENT_RECEIVED") return;
   const loaded = await loadQuickBooksTransport(input.companyId);
-  if (!loaded.ok) return;
+  if (!loaded.ok || !isQuickBooksSyncActivated(settings, loaded.scope)) return;
+  if (settings.invoiceSyncTrigger !== "WHEN_PAYMENT_RECEIVED") return;
   const payment = await prisma.payment.findFirst({
     where: { id: input.paymentId, companyId: input.companyId },
     include: {
@@ -573,7 +603,15 @@ export async function maybeAutoSyncPayment(input: {
       },
     },
   });
-  if (!payment) return;
+  if (
+    !payment ||
+    !settings.syncActivatedAt ||
+    payment.createdAt < settings.syncActivatedAt ||
+    input.importMode === "HISTORICAL" ||
+    input.importMode === "REFERENCE" ||
+    payment.importMode === "HISTORICAL" ||
+    payment.importMode === "REFERENCE"
+  ) return;
   const siblings = await prisma.payment.findMany({
     where: { companyId: input.companyId, invoiceId: payment.invoiceId },
     select: {
@@ -597,7 +635,7 @@ export async function maybeAutoSyncPayment(input: {
   const { syncPaymentWithInvoiceDependency } = await import("@/lib/quickbooks/engine");
   const mappings = await prisma.quickBooksMapping.findMany({
     where: {
-      companyId: input.companyId,
+      ...mappingScopeWhere(loaded.scope),
       entityType: { in: [ENTITY_INVOICE, ENTITY_PAYMENT] },
     },
     select: { entityType: true, internalId: true, status: true, quickbooksId: true },

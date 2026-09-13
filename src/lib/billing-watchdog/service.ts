@@ -6,6 +6,11 @@ import { persistWatchdogFindings } from "@/lib/billing-watchdog/persist";
 import { FILTER_TYPES, TYPE_LABELS } from "@/lib/billing-watchdog/labels";
 import type { BillingWatchdogFindingView, BillingWatchdogSummary } from "@/lib/billing-watchdog/types";
 import { getJobBillingReadiness, type ReadinessJob } from "@/lib/billing-watchdog/readiness";
+import {
+  getActiveQuickBooksScope,
+  isQuickBooksSyncActivated,
+  mappingScopeWhere,
+} from "@/lib/quickbooks/ownership";
 
 function customerLabel(customer: { businessName: string | null; firstName: string; lastName: string }) {
   return customer.businessName?.trim() || `${customer.firstName} ${customer.lastName}`.trim();
@@ -14,6 +19,7 @@ function customerLabel(customer: { businessName: string | null; firstName: strin
 export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: string, asOf = new Date()) {
   const settings = await getBillingWatchdogSettings(prisma, companyId, asOf);
   const lookback = new Date(settings.startDate);
+  const activeQbo = await getActiveQuickBooksScope(prisma, companyId);
   const [jobs, invoices, payments, qboSettings, qboMaps, exclusions] = await Promise.all([
     prisma.job.findMany({
       where: {
@@ -97,9 +103,15 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
       },
       take: 500,
     }),
-    prisma.quickBooksSettings.findUnique({ where: { companyId }, select: { syncActivated: true } }),
+    prisma.quickBooksSettings.findUnique({
+      where: { companyId },
+      select: { syncActivated: true, syncEnvironment: true, syncRealmId: true, syncActivatedAt: true },
+    }),
     prisma.quickBooksMapping.findMany({
-      where: { companyId, entityType: { in: ["INVOICE", "PAYMENT"] } },
+      where: {
+        ...(activeQbo.ok ? mappingScopeWhere(activeQbo.scope) : { companyId: "__no_active_qbo_scope__" }),
+        entityType: { in: ["INVOICE", "PAYMENT"] },
+      },
       select: { entityType: true, internalId: true, status: true, lastSyncedAt: true },
     }),
     prisma.billingWatchdogFinding.findMany({
@@ -107,6 +119,7 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
       select: { fingerprint: true, jobId: true },
     }),
   ]);
+  const qboSyncActivated = activeQbo.ok && isQuickBooksSyncActivated(qboSettings, activeQbo.scope);
 
   const customerIds = new Set<string>();
   for (const job of jobs) customerIds.add(job.customerId);
@@ -162,7 +175,7 @@ export async function refreshBillingWatchdog(prisma: PrismaClient, companyId: st
       email: row.email,
       phone: row.phone,
     })),
-    qboConnected: Boolean(qboSettings?.syncActivated),
+    qboConnected: qboSyncActivated,
     qboInvoiceMaps: qboMaps.filter((row) => row.entityType === "INVOICE"),
     qboPaymentMaps: qboMaps.filter((row) => row.entityType === "PAYMENT"),
     excludedFingerprints: new Set(exclusions.map((row) => row.fingerprint)),

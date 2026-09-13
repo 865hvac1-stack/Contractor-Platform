@@ -179,15 +179,21 @@ export async function approveExpenseAction(
     const { getQuickBooksSettings } = await import("@/lib/quickbooks/connection");
     const { loadQuickBooksTransport } = await import("@/lib/quickbooks/connection");
     const { syncExpenseToQuickBooks } = await import("@/lib/quickbooks/sync");
+    const { isQuickBooksSyncActivated } = await import("@/lib/quickbooks/ownership");
     const settings = await getQuickBooksSettings(ctx.company.id);
-    if (settings.syncActivated && expense.importMode !== "HISTORICAL") {
-      const loaded = await loadQuickBooksTransport(ctx.company.id);
-      if (loaded.ok) {
+    const loaded = await loadQuickBooksTransport(ctx.company.id);
+    if (
+      loaded.ok &&
+      isQuickBooksSyncActivated(settings, loaded.scope) &&
+      settings.syncActivatedAt &&
+      expense.createdAt >= settings.syncActivatedAt &&
+      expense.importMode !== "HISTORICAL" &&
+      expense.importMode !== "REFERENCE"
+    ) {
         await syncExpenseToQuickBooks(prisma, loaded.transport, {
           companyId: ctx.company.id,
           expenseId: expense.id,
         });
-      }
     }
     revalidatePath(`/expenses/${expense.id}`);
     revalidatePath("/expenses");

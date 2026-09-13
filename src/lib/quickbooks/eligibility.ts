@@ -1,4 +1,4 @@
-import { isHistoricalImport } from "@/lib/imports/safety";
+import { isNonOperationalImport } from "@/lib/imports/safety";
 
 function collectedAmountCents(payment: { status: string; amountCents: number; refundedCents?: number | null }) {
   if (!isQboPaymentSuccessStatus(payment.status) && payment.status !== "REFUNDED") return 0;
@@ -145,7 +145,7 @@ export function evaluateInvoiceEligibility(
       reason: "Draft and void invoices are not eligible for QuickBooks sync.",
     };
   }
-  if (isHistoricalImport(invoice.importMode)) {
+  if (isNonOperationalImport(invoice.importMode)) {
     return {
       state: "HISTORICAL",
       canSyncAsDependency: false,
@@ -335,7 +335,7 @@ export function evaluatePaymentEligibility(input: {
       ...base,
     };
   }
-  if (isHistoricalImport(input.payment.importMode)) {
+  if (isNonOperationalImport(input.payment.importMode)) {
     return {
       state: "HISTORICAL",
       pending: false,

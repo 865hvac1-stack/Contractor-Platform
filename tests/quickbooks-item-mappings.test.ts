@@ -3,19 +3,74 @@ import type { PrismaClient, QuickBooksMapping } from "@prisma/client";
 import {
   ENTITY_INVOICE,
   ENTITY_PAYMENT,
-  invoiceMappingIdentity,
-  listCompanyItemMappings,
-  persistInvoiceMapping,
-  persistItemMapping,
-  persistPaymentMapping,
-  resolveInvoiceItemMapping,
-  resolveQuickBooksInvoiceMapping,
-  saveCompanyItemMappings,
+  invoiceMappingIdentity as scopedInvoiceMappingIdentity,
+  listCompanyItemMappings as scopedListCompanyItemMappings,
+  persistInvoiceMapping as scopedPersistInvoiceMapping,
+  persistItemMapping as scopedPersistItemMapping,
+  persistPaymentMapping as scopedPersistPaymentMapping,
+  resolveInvoiceItemMapping as scopedResolveInvoiceItemMapping,
+  resolveQuickBooksInvoiceMapping as scopedResolveQuickBooksInvoiceMapping,
+  saveCompanyItemMappings as scopedSaveCompanyItemMappings,
 } from "@/lib/quickbooks/mappings";
 import { qboCreateOrUpdateInvoice, qboCreatePayment, qboListItems, type QboTransport } from "@/lib/quickbooks/client";
 import { canAutoSyncInvoice, syncInvoiceToQuickBooks, syncPaymentToQuickBooks } from "@/lib/quickbooks/sync";
 
 type Row = QuickBooksMapping;
+type LegacyScope = { companyId: string; realmId?: string | null };
+
+function testScope(input: LegacyScope) {
+  return { companyId: input.companyId, environment: "sandbox" as const, realmId: input.realmId || "realm-a" };
+}
+
+function invoiceMappingIdentity(input: LegacyScope & { invoiceId: string }) {
+  return scopedInvoiceMappingIdentity({ ...testScope(input), invoiceId: input.invoiceId });
+}
+
+function listCompanyItemMappings(prisma: PrismaClient, companyId: string) {
+  return scopedListCompanyItemMappings(prisma, testScope({ companyId }));
+}
+
+function persistItemMapping(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedPersistItemMapping>[1], "scope">
+) {
+  return scopedPersistItemMapping(prisma, { ...input, scope: testScope(input) });
+}
+
+function persistInvoiceMapping(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedPersistInvoiceMapping>[1], "scope">
+) {
+  return scopedPersistInvoiceMapping(prisma, { ...input, scope: testScope(input) });
+}
+
+function persistPaymentMapping(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedPersistPaymentMapping>[1], "scope">
+) {
+  return scopedPersistPaymentMapping(prisma, { ...input, scope: testScope(input) });
+}
+
+function resolveInvoiceItemMapping(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedResolveInvoiceItemMapping>[1], "scope">
+) {
+  return scopedResolveInvoiceItemMapping(prisma, { ...input, scope: testScope(input) });
+}
+
+function resolveQuickBooksInvoiceMapping(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedResolveQuickBooksInvoiceMapping>[1], "scope">
+) {
+  return scopedResolveQuickBooksInvoiceMapping(prisma, { ...input, scope: testScope(input) });
+}
+
+function saveCompanyItemMappings(
+  prisma: PrismaClient,
+  input: LegacyScope & Omit<Parameters<typeof scopedSaveCompanyItemMappings>[1], "scope">
+) {
+  return scopedSaveCompanyItemMappings(prisma, { ...input, scope: testScope(input) });
+}
 
 function memoryPrisma() {
   const rows: Row[] = [];
@@ -50,14 +105,22 @@ function memoryPrisma() {
           create,
           update,
         }: {
-          where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+          where: {
+            companyId_environment_realmId_entityType_internalId: {
+              companyId: string;
+              environment: string;
+              realmId: string;
+              entityType: string;
+              internalId: string;
+            };
+          };
           create: Omit<Row, "id" | "createdAt" | "updatedAt" | "lastSyncedAt" | "syncToken"> & {
             lastSyncedAt?: Date | null;
             syncToken?: string | null;
           };
           update: Partial<Row>;
         }) {
-          const key = where.companyId_entityType_internalId;
+          const key = where.companyId_environment_realmId_entityType_internalId;
           const existing = rows.find(
             (row) =>
               row.companyId === key.companyId &&
@@ -248,11 +311,13 @@ describe("QuickBooks Product/Service mappings", () => {
 
   it("sends the mapped QuickBooks ItemRef, not the ContractorYou service name", async () => {
     const calls: { path: string; body?: unknown }[] = [];
-    const transport: QboTransport = async ({ path, body }) => {
+    const transport = Object.assign((async ({ path, body }) => {
       calls.push({ path, body });
       if (path.startsWith("/invoice/")) return { ok: true, status: 200, json: { Invoice: { Id: "77", SyncToken: "0" } } };
       return { ok: true, status: 200, json: { Invoice: { Id: "77" } } };
-    };
+    }) as QboTransport, {
+      context: { ...testScope({ companyId: "co-a" }), apiHost: "sandbox-quickbooks.api.intuit.com" },
+    });
     await qboCreateOrUpdateInvoice(transport, {
       customerId: "cust-1",
       docNumber: "INV-00003",
@@ -364,7 +429,7 @@ function syncMemory() {
     },
     integrationConnection: {
       async findFirst() {
-        return { externalAccountId: "realm-a" };
+        return { status: "CONNECTED", externalAccountId: "realm-a", environment: "sandbox" };
       },
       async updateMany() {
         return { count: 1 };
@@ -417,9 +482,9 @@ function syncMemory() {
       async findUnique({
         where,
       }: {
-        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+        where: { companyId_environment_realmId_entityType_internalId: ReturnType<typeof testScope> & { entityType: string; internalId: string } };
       }) {
-        const key = where.companyId_entityType_internalId;
+        const key = where.companyId_environment_realmId_entityType_internalId;
         return (
           mappings.find(
             (row) =>
@@ -446,11 +511,11 @@ function syncMemory() {
         create,
         update,
       }: {
-        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+        where: { companyId_environment_realmId_entityType_internalId: ReturnType<typeof testScope> & { entityType: string; internalId: string } };
         create: Record<string, unknown>;
         update: Record<string, unknown>;
       }) {
-        const key = where.companyId_entityType_internalId;
+        const key = where.companyId_environment_realmId_entityType_internalId;
         const existing = mappings.find(
           (row) =>
             row.companyId === key.companyId && row.entityType === key.entityType && row.internalId === key.internalId
@@ -477,10 +542,10 @@ function syncMemory() {
         where,
         data,
       }: {
-        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+        where: { companyId_environment_realmId_entityType_internalId: ReturnType<typeof testScope> & { entityType: string; internalId: string } };
         data: Record<string, unknown>;
       }) {
-        const key = where.companyId_entityType_internalId;
+        const key = where.companyId_environment_realmId_entityType_internalId;
         const existing = mappings.find(
           (row) =>
             row.companyId === key.companyId && row.entityType === key.entityType && row.internalId === key.internalId
@@ -515,7 +580,7 @@ function syncMemory() {
 }
 
 function invoiceTransport(calls: { path: string; body?: unknown }[]): QboTransport {
-  return async ({ path, body }) => {
+  const transport: QboTransport = async ({ path, body }) => {
     calls.push({ path, body });
     if (path === "/query") return { ok: true, status: 200, json: { QueryResponse: {} } };
     if (path === "/customer") return { ok: true, status: 200, json: { Customer: { Id: "QB-CUST-1" } } };
@@ -529,6 +594,9 @@ function invoiceTransport(calls: { path: string; body?: unknown }[]): QboTranspo
     if (path === "/payment") return { ok: true, status: 200, json: { Payment: { Id: "QB-PAY-1" } } };
     return { ok: false, status: 404, json: {} };
   };
+  return Object.assign(transport, {
+    context: { ...testScope({ companyId: "co-a" }), apiHost: "sandbox-quickbooks.api.intuit.com" },
+  });
 }
 
 describe("QuickBooks invoice and payment sync with saved mappings", () => {
@@ -621,6 +689,12 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
       quickbooksId: "3",
       name: "Services",
     });
+    await persistItemMapping(db.client, {
+      companyId: "co-a",
+      entityType: "CUSTOMER",
+      internalId: db.invoice.customer.id,
+      quickbooksId: "QB-CUST-1",
+    });
     await persistInvoiceMapping(db.client, {
       companyId: "co-a",
       invoiceId: db.invoice.id,
@@ -642,7 +716,7 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
       companyId: "co-a",
       paymentId: db.payment.id,
     });
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.error).toBe(true);
     expect(result.quickbooksId).toBe("QB-PAY-1");
     expect((calls.find((call) => call.path === "/payment")?.body as { Line: Array<{ LinkedTxn?: Array<{ TxnId?: string }> }> }).Line[0]?.LinkedTxn?.[0]?.TxnId).toBe("145");
   });
@@ -727,7 +801,7 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
 
   it("never treats QBO DocNumber as the LinkedTxn Invoice Id", async () => {
     const calls: { path: string; body?: unknown }[] = [];
-    const transport: QboTransport = async ({ path, body }) => {
+    const transport = Object.assign((async ({ path, body }) => {
       calls.push({ path, body });
       if (path === "/query") return { ok: true, status: 200, json: { QueryResponse: {} } };
       if (path.startsWith("/invoice/")) {
@@ -736,7 +810,9 @@ describe("QuickBooks invoice and payment sync with saved mappings", () => {
       if (path === "/invoice") return { ok: true, status: 200, json: { Invoice: { Id: "145", DocNumber: "INV-00003" } } };
       if (path === "/payment") return { ok: true, status: 200, json: { Payment: { Id: "99" } } };
       return { ok: true, status: 200, json: { Customer: { Id: "QB-CUST-1" } } };
-    };
+    }) as QboTransport, {
+      context: { ...testScope({ companyId: "co-a" }), apiHost: "sandbox-quickbooks.api.intuit.com" },
+    });
     const db = syncMemory();
     await persistItemMapping(db.client, {
       companyId: "co-a",

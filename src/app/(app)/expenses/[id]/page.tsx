@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { ActionForm } from "@/components/action-form";
 import { approveExpenseAction } from "@/server/actions/expenses";
 import { syncExpenseToQuickBooksAction } from "@/server/actions/quickbooks";
+import { getActiveQuickBooksScope, mappingScopeWhere } from "@/lib/quickbooks/ownership";
 
 export default async function ExpenseDetailPage({
   params,
@@ -29,8 +30,11 @@ export default async function ExpenseDetailPage({
     },
   });
   if (!expense) notFound();
+  const activeQbo = await getActiveQuickBooksScope(prisma, ctx.company.id);
   const mapping = await prisma.quickBooksMapping.findFirst({
-    where: { companyId: ctx.company.id, entityType: "EXPENSE", internalId: expense.id },
+    where: activeQbo.ok
+      ? { ...mappingScopeWhere(activeQbo.scope), entityType: "EXPENSE", internalId: expense.id }
+      : { companyId: "__no_active_qbo_scope__" },
   });
   const canApprove = can(ctx.role, "accounting:manage");
 

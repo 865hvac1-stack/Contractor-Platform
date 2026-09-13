@@ -39,18 +39,19 @@ export default async function QuickBooksSetupPage({
   const step = STEPS.some((item) => item.key === rawStep) ? rawStep! : "1";
   const connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
   if (!connection?.externalAccountId) redirect("/settings/quickbooks");
+  const loaded = await loadQuickBooksTransport(ctx.company.id);
+  if (!loaded.ok) redirect("/settings/quickbooks");
   const [settings, preview, serviceTypes, mappings] = await Promise.all([
     getQuickBooksSettings(ctx.company.id),
-    previewQuickBooksSync(prisma, ctx.company.id),
+    previewQuickBooksSync(prisma, loaded.scope),
     prisma.serviceType.findMany({
       where: { companyId: ctx.company.id, active: true },
       orderBy: { sortOrder: "asc" },
     }),
-    listCompanyItemMappings(prisma, ctx.company.id),
+    listCompanyItemMappings(prisma, loaded.scope),
   ]);
-  const loaded = await loadQuickBooksTransport(ctx.company.id);
-  const items = loaded.ok ? await qboListItems(loaded.transport) : [];
-  const accounts = loaded.ok ? await qboListExpenseAccounts(loaded.transport) : [];
+  const items = await qboListItems(loaded.transport);
+  const accounts = await qboListExpenseAccounts(loaded.transport);
   const defaultItem = mappings.defaultItem?.quickbooksId ?? "";
   const expenseAccount = mappings.expenseAccount?.quickbooksId ?? "";
   const serviceMappings = Object.fromEntries(mappings.serviceItems.map((row) => [row.internalId, row.quickbooksId]));

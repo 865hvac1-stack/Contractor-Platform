@@ -14,6 +14,7 @@ export async function verifyQuickBooksCompany(prisma: PrismaClient, companyId: s
       where: { companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
       data: {
         status: "ERROR",
+        lastHealthAt: new Date(),
         errorMessage: "QuickBooks did not return a verified company name.",
         healthMessage: "Connected login is present, but company verification failed.",
       },
@@ -34,10 +35,17 @@ export async function verifyQuickBooksCompany(prisma: PrismaClient, companyId: s
     where: { companyId, providerKey: QUICKBOOKS_PROVIDER_KEY },
     data: {
       status: "CONNECTED",
+      lastHealthAt: new Date(),
       accountLabel: info.name,
       errorMessage: null,
       healthMessage: "QuickBooks company verified.",
     },
   });
-  return { ok: true as const, name: info.name, realmId: loaded.realmId };
+  return {
+    ok: true as const,
+    name: info.name,
+    realmId: loaded.realmId,
+    environment: loaded.environment,
+    verifiedAt: new Date(),
+  };
 }

@@ -18,6 +18,7 @@ import type { QboTransport } from "@/lib/quickbooks/client";
 const start = new Date("2026-09-01");
 const inScope = new Date("2026-09-10");
 const outOfScope = new Date("2026-08-01");
+const TEST_SCOPE = { companyId: "co-a", environment: "sandbox" as const, realmId: "realm-a" };
 
 const invoice00003 = {
   id: "cmtvxeg4k001pp51yr3w5tuak",
@@ -361,7 +362,7 @@ describe("QuickBooks Sync Center payment counts", () => {
         ],
         mappings: [mapping(invoice00003.id)],
       }),
-      "co-a"
+      TEST_SCOPE
     );
     expect(preview.paymentsSynced).toBe(0);
     expect(preview.paymentsPending).toBe(0);
@@ -440,7 +441,7 @@ function dependencyMemory() {
       },
     },
     integrationConnection: {
-      async findFirst() { return { externalAccountId: "realm-a" }; },
+      async findFirst() { return { status: "CONNECTED", externalAccountId: "realm-a", environment: "sandbox" }; },
       async updateMany() { return { count: 1 }; },
     },
     quickBooksSyncEvent: {
@@ -469,9 +470,9 @@ function dependencyMemory() {
       async findUnique({
         where,
       }: {
-        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+        where: { companyId_environment_realmId_entityType_internalId: typeof TEST_SCOPE & { entityType: string; internalId: string } };
       }) {
-        const key = where.companyId_entityType_internalId;
+        const key = where.companyId_environment_realmId_entityType_internalId;
         return (
           mappings.find(
             (row) =>
@@ -498,11 +499,11 @@ function dependencyMemory() {
         create,
         update,
       }: {
-        where: { companyId_entityType_internalId: { companyId: string; entityType: string; internalId: string } };
+        where: { companyId_environment_realmId_entityType_internalId: typeof TEST_SCOPE & { entityType: string; internalId: string } };
         create: Record<string, unknown>;
         update: Record<string, unknown>;
       }) {
-        const key = where.companyId_entityType_internalId;
+        const key = where.companyId_environment_realmId_entityType_internalId;
         const existing = mappings.find(
           (row) =>
             row.companyId === key.companyId && row.entityType === key.entityType && row.internalId === key.internalId
@@ -527,7 +528,7 @@ function dependencyMemory() {
       },
     },
   } as unknown as PrismaClient;
-  const transport: QboTransport = async ({ path, body }) => {
+  const transport = Object.assign((async ({ path, body }) => {
     if (path === "/query") return { ok: true, status: 200, json: { QueryResponse: {} } };
     if (path === "/customer") return { ok: true, status: 200, json: { Customer: { Id: "QB-CUST-1" } } };
     if (path.startsWith("/invoice/")) {
@@ -542,7 +543,9 @@ function dependencyMemory() {
       return { ok: true, status: 200, json: { Payment: { Id: "QB-PAY-NEW" } } };
     }
     return { ok: true, status: 200, json: { Item: [] } };
-  };
+  }) as QboTransport, {
+    context: { ...TEST_SCOPE, apiHost: "sandbox-quickbooks.api.intuit.com" },
+  });
   return { client, mappings, invoice, payment, invoiceCreates, paymentCreates, transport, events };
 }
 
@@ -551,7 +554,7 @@ describe("QuickBooks dependency-order payment sync", () => {
     const db = dependencyMemory();
     const { persistItemMapping } = await import("@/lib/quickbooks/mappings");
     await persistItemMapping(db.client, {
-      companyId: "co-a",
+      scope: TEST_SCOPE,
       entityType: "DEFAULT_ITEM",
       internalId: "default",
       quickbooksId: "3",
@@ -593,19 +596,25 @@ describe("QuickBooks dependency-order payment sync", () => {
     const db = dependencyMemory();
     const { persistItemMapping } = await import("@/lib/quickbooks/mappings");
     await persistItemMapping(db.client, {
-      companyId: "co-a",
+      scope: TEST_SCOPE,
       entityType: "DEFAULT_ITEM",
       internalId: "default",
       quickbooksId: "3",
     });
+    await persistItemMapping(db.client, {
+      scope: TEST_SCOPE,
+      entityType: "CUSTOMER",
+      internalId: db.invoice.customer.id,
+      quickbooksId: "QB-CUST-1",
+    });
     await persistInvoiceMapping(db.client, {
-      companyId: "co-a",
+      scope: TEST_SCOPE,
       invoiceId: "inv-dep",
       quickbooksId: "145",
     });
     const first = await syncPaymentToQuickBooks(db.client, db.transport, { companyId: "co-a", paymentId: "pay-dep" });
     const second = await syncPaymentToQuickBooks(db.client, db.transport, { companyId: "co-a", paymentId: "pay-dep" });
-    expect(first.ok).toBe(true);
+    expect(first.ok, first.error).toBe(true);
     expect(second.ok).toBe(true);
     expect(first.quickbooksId).toBe(second.quickbooksId);
     expect(db.paymentCreates).toHaveLength(1);
@@ -626,7 +635,7 @@ describe("QuickBooks dependency-order payment sync", () => {
       extra,
     ];
     await persistInvoiceMapping(db.client, {
-      companyId: "co-a",
+      scope: TEST_SCOPE,
       invoiceId: "inv-dep",
       quickbooksId: "145",
     });
@@ -640,7 +649,7 @@ describe("QuickBooks dependency-order payment sync", () => {
   it("does not fabricate a QuickBooks payment for a mapped paid invoice with no payment row", async () => {
     const db = dependencyMemory();
     await persistInvoiceMapping(db.client, {
-      companyId: "co-a",
+      scope: TEST_SCOPE,
       invoiceId: invoice00003.id,
       quickbooksId: "145",
     });

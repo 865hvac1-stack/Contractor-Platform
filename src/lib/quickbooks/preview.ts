@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { isHistoricalImport } from "@/lib/imports/safety";
+import { isNonOperationalImport } from "@/lib/imports/safety";
 import { ENTITY_INVOICE, ENTITY_PAYMENT } from "@/lib/quickbooks/mappings";
 
 const ENTITY_EXPENSE = "EXPENSE";
@@ -15,6 +15,7 @@ import {
   type PaymentReviewItem,
   type QboMappingSnapshot,
 } from "@/lib/quickbooks/eligibility";
+import { isQuickBooksSyncActivated, mappingScopeWhere, type QuickBooksScope } from "@/lib/quickbooks/ownership";
 
 export type QuickBooksPreview = {
   customersAvailable: number;
@@ -46,10 +47,12 @@ export type QuickBooksPreview = {
 
 export async function previewQuickBooksSync(
   prisma: PrismaClient,
-  companyId: string
+  scope: QuickBooksScope
 ): Promise<QuickBooksPreview> {
+  const companyId = scope.companyId;
   const settings = await prisma.quickBooksSettings.findUnique({ where: { companyId } });
   const start = settings?.syncStartDate ?? null;
+  const syncActivated = isQuickBooksSyncActivated(settings, scope);
 
   const [customers, invoices, payments, expenses, mappings] = await Promise.all([
     prisma.customer.findMany({
@@ -86,7 +89,7 @@ export async function previewQuickBooksSync(
       select: { id: true, date: true, importMode: true },
     }),
     prisma.quickBooksMapping.findMany({
-      where: { companyId, entityType: { in: ["CUSTOMER", ENTITY_INVOICE, ENTITY_PAYMENT, ENTITY_EXPENSE] } },
+      where: { ...mappingScopeWhere(scope), entityType: { in: ["CUSTOMER", ENTITY_INVOICE, ENTITY_PAYMENT, ENTITY_EXPENSE] } },
       select: { entityType: true, internalId: true, status: true, quickbooksId: true },
     }),
   ]);
@@ -179,7 +182,7 @@ export async function previewQuickBooksSync(
   for (const expense of expenses) {
     const mapping = map.get(mappingKey(ENTITY_EXPENSE, expense.id));
     if (mapping?.status === "FAILED") expensesErrors += 1;
-    if (isHistoricalImport(expense.importMode)) {
+    if (isNonOperationalImport(expense.importMode)) {
       historicalProtected += 1;
       continue;
     }
@@ -223,7 +226,7 @@ export async function previewQuickBooksSync(
     needReview: mappingNeedReview + paymentsNeedsReview,
     historicalProtected,
     beforeStartDate,
-    syncActivated: Boolean(settings?.syncActivated),
+    syncActivated,
     syncStartDate: start,
     paymentReviews,
     paymentEligibility,
