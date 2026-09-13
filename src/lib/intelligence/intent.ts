@@ -83,7 +83,9 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
     tools.add("getPricebookPerformance");
     tools.add("getPricebookItemPerformance");
   }
-  if (/who sold|revenue by|produced/.test(q)) tools.add("getRevenueByTechnician");
+  if (/how much did we make|outstanding a\/?r|who owes|invoices over 30|average service ticket|top 20 customers|spent over|johnstone|largest expense|gross margin|maintenance customers generate/.test(q)) {
+    tools.add("getImportedFinancials");
+  }
   if (/margin by technician|gross profit/.test(q)) tools.add("getMarginByTechnician");
   if (/business health|health only|why is (my|our) health|why is (my|our) business/.test(q)) {
     tools.add("getBusinessHealth");

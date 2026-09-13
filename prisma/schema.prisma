@@ -199,6 +199,16 @@ enum QuickBooksSyncStatus {
   NEEDS_REVIEW
 }
 
+enum AccountingClassification {
+  INCOME
+  COGS
+  OPERATING_EXPENSE
+  ASSET
+  LIABILITY
+  EQUITY
+  OTHER
+}
+
 enum PricebookItemType {
   SERVICE
   PRODUCT
@@ -590,6 +600,10 @@ model Company {
   importProfiles ImportMappingProfile[]
   importResetOperations ImportResetOperation[]
   importReviewItems ImportReviewItem[]
+  quickBooksSyncRuns QuickBooksSyncRun[]
+  quickBooksImportReviews QuickBooksImportReview[]
+  vendors Vendor[]
+  accountingAccounts AccountingAccount[]
   migrationProjects MigrationProject[]
   vehicles Vehicle[]
   jobCosts JobCost[]
@@ -740,6 +754,12 @@ model Customer {
   externalId             String?
   importSessionId        String?
   importMode             String                 @default("LIVE")
+  quickbooksCustomerId   String?
+  quickbooksRealmId      String?
+  quickbooksLastModifiedAt DateTime?
+  lastSyncedAt           DateTime?
+  syncStatus             String?
+  syncError              String?
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 
@@ -772,6 +792,8 @@ model Customer {
   @@index([companyId, phone])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, quickbooksCustomerId])
+  @@index([companyId, quickbooksRealmId])
 }
 
 model Property {
@@ -1148,6 +1170,12 @@ model Invoice {
   externalId     String?
   importSessionId String?
   importMode     String        @default("LIVE")
+  quickbooksInvoiceId String?
+  quickbooksRealmId   String?
+  quickbooksLastModifiedAt DateTime?
+  lastSyncedAt        DateTime?
+  syncStatus          String?
+  syncError           String?
   publicToken    String?       @unique
   sentAt         DateTime?
   deliveryStatus String        @default("NONE")
@@ -1177,6 +1205,7 @@ model Invoice {
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
   @@index([companyId, deliveryStatus])
+  @@index([companyId, quickbooksInvoiceId])
 }
 
 model InvoiceLineItem {
@@ -1189,6 +1218,9 @@ model InvoiceLineItem {
   taxable        Boolean @default(true)
   category       String?
   sortOrder      Int     @default(0)
+  amountCents    Int?
+  externalId     String?
+  quickbooksItemId String?
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -1216,6 +1248,12 @@ model Payment {
   externalId     String?
   importSessionId String?
   importMode     String         @default("LIVE")
+  quickbooksPaymentId String?
+  quickbooksRealmId   String?
+  quickbooksLastModifiedAt DateTime?
+  lastSyncedAt        DateTime?
+  syncStatus          String?
+  syncError           String?
   refundedCents  Int            @default(0)
   stripeAccountId String?
   currency       String         @default("usd")
@@ -1232,6 +1270,7 @@ model Payment {
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
   @@index([companyId, status])
+  @@index([companyId, quickbooksPaymentId])
 }
 
 model StripeConnectAccount {
@@ -1291,12 +1330,24 @@ model Expense {
   externalId      String?
   importSessionId String?
   importMode      String          @default("LIVE")
+  vendorId        String?
+  accountId       String?
+  transactionType String?
+  quickbooksPurchaseId String?
+  quickbooksVendorId   String?
+  quickbooksRealmId    String?
+  quickbooksLastModifiedAt DateTime?
+  lastSyncedAt         DateTime?
+  syncStatus           String?
+  syncError            String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job       Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
   customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vendorRecord Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  account   AccountingAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   createdBy User     @relation("ExpenseCreator", fields: [createdById], references: [id])
   receipt   Receipt? @relation(fields: [receiptId], references: [id])
   jobCosts  JobCost[]
@@ -1309,6 +1360,9 @@ model Expense {
   @@index([companyId, status])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
+  @@index([companyId, quickbooksPurchaseId])
+  @@index([companyId, vendorId])
+  @@index([companyId, accountId])
 }
 
 model Receipt {
@@ -1431,6 +1485,10 @@ model QuickBooksSettings {
   qboCompanyName      String?
   qboCompanyVerifiedAt DateTime?
   wizardCompletedAt   DateTime?
+  lastSuccessfulInboundSyncAt DateTime?
+  lastAttemptedInboundSyncAt  DateTime?
+  inboundSyncHealth           String?
+  writeBackEnabled            Boolean                  @default(false)
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 
@@ -1482,6 +1540,141 @@ model QuickBooksSyncEvent {
   @@index([companyId, environment, realmId, createdAt])
   @@index([companyId, environment, realmId, entityType, internalId])
   @@index([companyId, ownershipStatus])
+}
+
+model QuickBooksSyncRun {
+  id                 String    @id @default(cuid())
+  companyId          String
+  initiatedById      String?
+  realmId            String
+  environment        String
+  type               String
+  objectType         String?
+  status             String    @default("PENDING")
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  recordsExamined    Int       @default(0)
+  createdCount       Int       @default(0)
+  updatedCount       Int       @default(0)
+  linkedCount        Int       @default(0)
+  skippedCount       Int       @default(0)
+  conflictCount      Int       @default(0)
+  failedCount        Int       @default(0)
+  errorMessage       String?
+  checkpoint         Json?
+  plan               Json?
+  writeBackAttempted Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company    Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  categories QuickBooksSyncRunCategory[]
+  reviews    QuickBooksImportReview[]
+
+  @@index([companyId, createdAt])
+  @@index([companyId, environment, realmId, type, createdAt])
+  @@index([companyId, status])
+}
+
+model QuickBooksSyncRunCategory {
+  id              String   @id @default(cuid())
+  runId           String
+  objectType      String
+  availableInQbo  Int      @default(0)
+  alreadyLinked   Int      @default(0)
+  newCount        Int      @default(0)
+  updatedCount    Int      @default(0)
+  duplicateCount  Int      @default(0)
+  conflictCount   Int      @default(0)
+  skippedCount    Int      @default(0)
+  failedCount     Int      @default(0)
+  lastSyncedAt    DateTime?
+  details         Json?
+
+  run QuickBooksSyncRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, objectType])
+  @@index([runId])
+}
+
+model QuickBooksImportReview {
+  id                 String   @id @default(cuid())
+  companyId          String
+  runId              String?
+  environment        String
+  realmId            String
+  objectType         String
+  quickbooksId       String
+  displayName        String
+  confidence         String
+  status             String   @default("OPEN")
+  proposedInternalId String?
+  proposedAction     String   @default("PENDING")
+  reason             String
+  payload            Json
+  matchSignals       Json?
+  errorMessage       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  run     QuickBooksSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, environment, realmId, objectType, quickbooksId])
+  @@index([companyId, status, objectType])
+  @@index([companyId, confidence, status])
+  @@index([runId])
+}
+
+model Vendor {
+  id                 String    @id @default(cuid())
+  companyId          String
+  name               String
+  email              String?
+  phone              String?
+  notes              String?
+  active             Boolean   @default(true)
+  sourceSystem       String?
+  externalId         String?
+  quickbooksVendorId String?
+  quickbooksRealmId  String?
+  quickbooksLastModifiedAt DateTime?
+  lastSyncedAt       DateTime?
+  syncStatus         String?
+  syncError          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([companyId, name])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, quickbooksVendorId])
+}
+
+model AccountingAccount {
+  id                 String                   @id @default(cuid())
+  companyId          String
+  name               String
+  accountType        String
+  classification     AccountingClassification @default(OTHER)
+  fullyQualifiedName String?
+  active             Boolean                  @default(true)
+  sourceSystem       String?
+  externalId         String?
+  quickbooksAccountId String?
+  quickbooksRealmId  String?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([companyId, classification])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, quickbooksAccountId])
 }
 
 // ============================================================
@@ -2949,6 +3142,16 @@ model PricebookItem {
   active              Boolean           @default(true)
   sortOrder           Int               @default(0)
   importMode          String            @default("LIVE")
+  sourceSystem        String?
+  externalId          String?
+  quickbooksItemId    String?
+  quickbooksRealmId   String?
+  incomeAccount       String?
+  cogsAccount         String?
+  taxCode             String?
+  lastSyncedAt        DateTime?
+  syncStatus          String?
+  syncError           String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
@@ -2960,6 +3163,8 @@ model PricebookItem {
   @@index([companyId, categoryId])
   @@index([companyId, name])
   @@index([companyId, sku])
+  @@index([companyId, sourceSystem, externalId])
+  @@index([companyId, quickbooksItemId])
 }
 
 model EstimateOption {

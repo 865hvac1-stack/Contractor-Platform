@@ -508,6 +508,64 @@ export function Customer360View({
             </section>
           ) : null}
 
+          {workspace.canSeeMoney && "lifetimeInvoiced" in workspace.value ? (
+            <section id="financial-history" className="rounded-2xl border border-[var(--border)] bg-white p-4">
+              <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Financial history</h2>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                Includes QuickBooks historical invoices and payments linked to this customer. Revenue is invoiced activity; collected is payments. They are not added together.
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <MoneyLink label="Lifetime revenue (collected)" value={workspace.value.lifetimeCollected ?? 0} href={`/payments?customerId=${customer.id}`} />
+                <MoneyLink label="Total invoiced" value={workspace.value.lifetimeInvoiced ?? 0} href={`/invoices?customerId=${customer.id}`} />
+                <MoneyLink label="Outstanding balance" value={workspace.value.outstanding ?? 0} href={`/invoices?customerId=${customer.id}`} />
+                <MoneyLink label="Average invoice" value={workspace.value.averageInvoiceCents ?? 0} href={`/invoices?customerId=${customer.id}`} />
+                <div>
+                  <dt className="text-[var(--muted-foreground)]">Last payment</dt>
+                  <dd>
+                    {workspace.value.lastPaymentCents != null
+                      ? formatMoney(workspace.value.lastPaymentCents)
+                      : "None"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--muted-foreground)]">Open invoices</dt>
+                  <dd>{workspace.value.openInvoiceCount ?? 0}</dd>
+                </div>
+              </dl>
+              <ul className="mt-4 space-y-2 text-sm">
+                {workspace.invoices.slice(0, 8).map((invoice) => (
+                  <li key={invoice.id}>
+                    <Link href={`/invoices/${invoice.id}`} className="text-[var(--cy-orange)] hover:underline">
+                      {invoice.invoiceNumber}
+                    </Link>
+                    <span className="text-[var(--muted-foreground)]">
+                      {" "}
+                      · {invoice.status} · {formatMoney(invoice.totalCents)}
+                      {invoice.sourceSystem === "QUICKBOOKS" ? " · QuickBooks" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <ul className="mt-3 space-y-1 text-sm text-[var(--muted-foreground)]">
+                {workspace.payments.slice(0, 5).map((payment) => (
+                  <li key={payment.id}>
+                    {formatMoney(payment.amountCents)}
+                    {payment.sourceSystem === "QUICKBOOKS" ? " · QuickBooks" : ""}
+                    {payment.invoiceId ? (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <Link href={`/invoices/${payment.invoiceId}`} className="text-[var(--cy-orange)] hover:underline">
+                          invoice
+                        </Link>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <section className="rounded-2xl border border-[var(--border)] bg-white p-4 text-sm">
             <h2 className="text-sm font-semibold text-[var(--cy-navy)]">Customer details</h2>
             <dl className="mt-3 space-y-2">

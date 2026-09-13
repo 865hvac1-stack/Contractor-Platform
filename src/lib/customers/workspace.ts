@@ -465,6 +465,13 @@ export async function getCustomer360(input: Customer360Options) {
           jobsCompleted: completedCount,
           properties: customer.properties.length,
           memberships: customer.customerMemberships.filter((row) => row.status === "ACTIVE").length,
+          averageInvoiceCents: invoices.filter((row) => row.status !== "VOID").length
+            ? Math.round(lifetimeInvoiced / invoices.filter((row) => row.status !== "VOID").length)
+            : 0,
+          lastPaymentAt: payments[0]?.paidAt ?? null,
+          lastPaymentCents: payments[0]?.amountCents ?? null,
+          openInvoiceCount: invoices.filter((row) => row.balanceCents > 0 && row.status !== "VOID").length,
+          historicalInvoiceCount: invoices.filter((row) => row.sourceSystem === "QUICKBOOKS" || row.importMode === "HISTORICAL").length,
         }
       : {
           customerSince: customer.createdAt,

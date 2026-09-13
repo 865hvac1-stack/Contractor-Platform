@@ -12,7 +12,7 @@ import {
   executeHousecallProReset,
   HCP_RESET_CONFIRMATION,
 } from "@/lib/imports/reset";
-import { previewQuickBooksHistorical, importQuickBooksHistorical, type QboHistoricalCategory } from "@/lib/quickbooks/historical-import";
+import { previewQuickBooksHistorical, type QboHistoricalCategory } from "@/lib/quickbooks/historical-import";
 import {
   dryRunQuickBooksHistoricalReset,
   executeQuickBooksHistoricalReset,
@@ -190,17 +190,10 @@ export async function importQuickBooksHistoricalAction(
     if (String(formData.get("confirm") || "") !== "IMPORT QUICKBOOKS HISTORY") {
       return { ok: false, error: "Type IMPORT QUICKBOOKS HISTORY to confirm. Nothing was imported." };
     }
-    const result = await importQuickBooksHistorical({
-      prisma,
-      companyId: ctx.company.id,
-      userId: ctx.user.id,
-      categories,
-    });
-    revalidatePath("/settings/import");
-    revalidatePath("/customers");
     return {
-      ok: true,
-      message: `Imported ${result.created.invoices} historical invoices and ${result.created.payments} payments. ${result.created.review} records need review. Historical records will not sync back to QuickBooks.`,
+      ok: false,
+      error:
+        "Bulk QuickBooks import moved to QuickBooks Sync Center. Analyze first, review possible duplicates, then import one approved stage at a time. Nothing was imported.",
     };
   } catch (error) {
     return { ok: false, error: publicActionError(error) };

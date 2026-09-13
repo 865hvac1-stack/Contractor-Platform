@@ -87,6 +87,7 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getBusinessHealth: "intelligence:view",
   getOperatingNotes: "intelligence:view",
   getWaitingBoard: "jobs:view",
+  getImportedFinancials: "accounting:view",
 };
 
 export const TOOL_DEFINITIONS = [
@@ -352,6 +353,12 @@ export const TOOL_DEFINITIONS = [
     description:
       "Verified Customer Waiting Board snapshot: longest waits, updates due, parts overdue, ready to schedule, vendor delays, and revenue tied up from real invoices or approved estimates only. Read-only. Does not change waiting state.",
     parameters: {},
+  },
+  {
+    name: "getImportedFinancials",
+    description:
+      "Tenant-scoped imported QuickBooks financial totals only. Never invent numbers. If Chart of Accounts is unmapped, say profit is unavailable.",
+    parameters: { question: { type: "string" } },
   },
 ] as const;
 
@@ -1349,6 +1356,18 @@ export async function runIntelligenceTool(
           note: "Waiting Board answers use verified ContractorYou records only. Intelligence cannot change waiting state.",
         },
         grounding: { sources: ["waiting_records", "invoices", "estimates"] },
+      };
+    }
+    case "getImportedFinancials": {
+      if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "accounting:view")) {
+        return deny("Company-wide accounting history is not available for this role.");
+      }
+      const { queryImportedFinancials } = await import("@/lib/quickbooks/ask-financial");
+      const data = await queryImportedFinancials(prisma, ctx.companyId, String(args.question || ""));
+      return {
+        ok: true,
+        data,
+        grounding: { sources: ["quickbooks_imported_invoices", "quickbooks_imported_payments", "quickbooks_imported_expenses"] },
       };
     }
     default:

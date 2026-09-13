@@ -2,10 +2,8 @@
 
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { QuickBooksHistoricalResetZone } from "@/components/imports/quickbooks-historical-reset";
-import { importQuickBooksHistoricalAction, previewQuickBooksHistoricalAction } from "@/server/actions/import-reset";
+import { previewQuickBooksHistoricalAction } from "@/server/actions/import-reset";
 
 export function QuickBooksHistoricalImport({
   preview,
@@ -76,29 +74,15 @@ export function QuickBooksHistoricalImport({
       </ActionForm>
 
       {preview?.connected ? (
-        <ActionForm action={importQuickBooksHistoricalAction} className="mt-6 space-y-3 border-t border-[var(--border)] pt-4">
-          <p className="text-sm font-medium">Select categories, then confirm</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="customers" defaultChecked /> Customers
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="invoices" defaultChecked /> Historical invoices
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="payments" defaultChecked /> Historical payments
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="expenses" /> Expenses
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="items" /> Products / services
-          </label>
-          <div className="space-y-1">
-            <Label htmlFor="qbo-confirm">Type IMPORT QUICKBOOKS HISTORY</Label>
-            <Input id="qbo-confirm" name="confirm" autoComplete="off" />
-          </div>
-          <Button type="submit">Import selected history</Button>
-        </ActionForm>
+        <div className="mt-6 space-y-3 border-t border-[var(--border)] pt-4">
+          <p className="text-sm">
+            One-click history import is disabled. Use the QuickBooks Sync Center to analyze, review duplicates, and
+            import approved records by stage.
+          </p>
+          <a href="/settings/quickbooks/manage" className="text-sm text-[var(--cy-orange)]">
+            Open Sync Center →
+          </a>
+        </div>
       ) : null}
 
       <QuickBooksHistoricalResetZone

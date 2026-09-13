@@ -15,6 +15,7 @@ import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { quickBooksCardState, QUICKBOOKS_STATUS_COPY } from "@/lib/quickbooks/status";
 import { refreshBillingWatchdog } from "@/lib/billing-watchdog/service";
 import { BillingWatchdogHomeCard } from "@/components/billing-watchdog/home-card";
+import { importedMoneySnapshot } from "@/lib/quickbooks/imported-finance";
 
 export default async function MoneyPage({
   searchParams,
@@ -30,10 +31,13 @@ export default async function MoneyPage({
   const ctx = await requirePermission("invoices:view");
   const finance = parseFinanceSearch(await searchParams);
   const snapshot = await loadFinancialSnapshot(ctx.company.id, finance.range);
-  const [qboConnection, qboSettings, watchdog] = await Promise.all([
+  const [qboConnection, qboSettings, watchdog, imported] = await Promise.all([
     getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
     prisma.quickBooksSettings.findUnique({ where: { companyId: ctx.company.id } }),
     refreshBillingWatchdog(prisma, ctx.company.id),
+    can(ctx.role, "accounting:view")
+      ? importedMoneySnapshot(prisma, ctx.company.id, snapshot.period.start, snapshot.period.end)
+      : null,
   ]);
   const qboCard = quickBooksCardState({
     connection: qboConnection,
@@ -162,6 +166,46 @@ export default async function MoneyPage({
             )}
           </section>
         </div>
+      ) : null}
+
+      {imported ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <h2 className="font-medium text-[var(--cy-navy)]">Imported QuickBooks history · {snapshot.period.label}</h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            {imported.incompleteReason ||
+              "These figures use imported QuickBooks invoices, payments, and classified accounts. Collected is payments, not invoice totals plus payments."}
+          </p>
+          <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MoneyStat label="QBO invoiced" value={formatMoney(imported.revenueCents)} href="/settings/quickbooks/manage" />
+            <MoneyStat label="QBO collected" value={formatMoney(imported.collectedCents)} href="/settings/quickbooks/manage" />
+            <MoneyStat label="QBO outstanding" value={formatMoney(imported.outstandingCents)} href="/settings/quickbooks/manage" />
+            <MoneyStat
+              label="QBO expenses"
+              value={formatMoney(imported.expenseCents)}
+              href="/settings/quickbooks/manage"
+            />
+            <MoneyStat
+              label="COGS"
+              value={imported.cogsCents == null ? "Map accounts first" : formatMoney(imported.cogsCents)}
+              href="/settings/quickbooks/manage"
+            />
+            <MoneyStat
+              label="Gross profit"
+              value={imported.grossProfitCents == null ? "Map accounts first" : formatMoney(imported.grossProfitCents)}
+              href="/settings/quickbooks/manage"
+            />
+            <MoneyStat
+              label="Gross margin"
+              value={imported.grossMarginPercent == null ? "Map accounts first" : `${imported.grossMarginPercent}%`}
+              href="/settings/quickbooks/manage"
+            />
+            <MoneyStat
+              label="Average ticket"
+              value={imported.averageTicketCents == null ? "—" : formatMoney(imported.averageTicketCents)}
+              href="/settings/quickbooks/manage"
+            />
+          </dl>
+        </section>
       ) : null}
 
       <div className="flex flex-wrap gap-3 text-sm font-medium">

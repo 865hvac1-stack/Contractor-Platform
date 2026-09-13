@@ -108,6 +108,9 @@ export default async function InvoiceDetailPage({
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             {invoice.customer.firstName} {invoice.customer.lastName}
             {invoice.job ? ` · Job ${invoice.job.jobNumber}` : ""}
+            {invoice.sourceSystem === "QUICKBOOKS"
+              ? ` · Historical QuickBooks invoice ${invoice.quickbooksInvoiceId || invoice.externalId || ""}`
+              : ""}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">

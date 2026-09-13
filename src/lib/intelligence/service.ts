@@ -160,6 +160,7 @@ export async function askContractorYou(input: AskInput) {
         jobId: input.jobId ?? undefined,
         customerId: input.customerId ?? undefined,
         propertyId: input.propertyId ?? undefined,
+        question,
       });
       if (result.grounding?.sources) result.grounding.sources.forEach((s) => groundingSources.add(s));
       toolPayloads.push({ name, result: result.ok ? sanitizeForModel(result.data) : { error: result.error } });

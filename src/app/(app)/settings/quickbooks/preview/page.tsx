@@ -30,11 +30,16 @@ export default async function QuickBooksProductionPreviewPage() {
         <p className="mt-2 text-sm text-sky-950">
           Nothing on this page is imported into ContractorYou or written back to QuickBooks.
         </p>
-        <ActionForm action={refreshQuickBooksPreviewAction} className="mt-4">
-          <Button type="submit" size="sm" variant="outline">
-            Refresh preview
-          </Button>
-        </ActionForm>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <ActionForm action={refreshQuickBooksPreviewAction}>
+            <Button type="submit" size="sm" variant="outline">
+              Refresh preview
+            </Button>
+          </ActionForm>
+          <Link href="/settings/quickbooks/manage" className="inline-flex h-8 items-center rounded-md border border-[var(--border)] px-3 text-sm">
+            Open Sync Center
+          </Link>
+        </div>
       </section>
 
       {result.error ? (
