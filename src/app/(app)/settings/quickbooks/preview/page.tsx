@@ -3,6 +3,9 @@ import { requirePermission } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { loadQuickBooksProductionPreview } from "@/lib/quickbooks/production-preview";
 import { maskRealmId } from "@/lib/quickbooks/errors";
+import { refreshQuickBooksPreviewAction } from "@/server/actions/quickbooks";
+import { ActionForm } from "@/components/action-form";
+import { Button } from "@/components/ui/button";
 
 export default async function QuickBooksProductionPreviewPage() {
   const ctx = await requirePermission("accounting:view");
@@ -27,6 +30,11 @@ export default async function QuickBooksProductionPreviewPage() {
         <p className="mt-2 text-sm text-sky-950">
           Nothing on this page is imported into ContractorYou or written back to QuickBooks.
         </p>
+        <ActionForm action={refreshQuickBooksPreviewAction} className="mt-4">
+          <Button type="submit" size="sm" variant="outline">
+            Refresh preview
+          </Button>
+        </ActionForm>
       </section>
 
       {result.error ? (
@@ -43,34 +51,26 @@ export default async function QuickBooksProductionPreviewPage() {
             {maskRealmId(result.preview.realmId)}
           </p>
           <div className="grid gap-4 md:grid-cols-2">
-            <PreviewCard title="Customers" count={result.preview.customers.count}>
+            <PreviewCard title="Customers" count={result.preview.customers.count} error={result.preview.customers.error}>
               {result.preview.customers.sample.map((row) => (
                 <li key={row.id}>{row.name}</li>
               ))}
             </PreviewCard>
-            <PreviewCard title="Invoices" count={result.preview.invoices.count}>
-              <li>
-                {result.preview.invoices.open == null || result.preview.invoices.paid == null
-                  ? "Open / paid totals unavailable"
-                  : `${result.preview.invoices.open} open · ${result.preview.invoices.paid} paid`}
-              </li>
-              <li>
-                Date range: {result.preview.invoices.oldest || "—"} to {result.preview.invoices.newest || "—"}
-              </li>
+            <PreviewCard title="Invoices" count={result.preview.invoices.count} error={result.preview.invoices.error}>
               {result.preview.invoices.sample.map((row) => (
                 <li key={row.id}>
                   {row.number} · {row.date || "No date"} · {row.status}
                 </li>
               ))}
             </PreviewCard>
-            <PreviewCard title="Payments" count={result.preview.payments.count}>
+            <PreviewCard title="Payments" count={result.preview.payments.count} error={result.preview.payments.error}>
               {result.preview.payments.sample.map((row) => (
                 <li key={row.id}>
                   {row.date || "No date"} · {row.amount == null ? "Amount unavailable" : `$${row.amount.toFixed(2)}`}
                 </li>
               ))}
             </PreviewCard>
-            <PreviewCard title="Products / Services" count={result.preview.items.count}>
+            <PreviewCard title="Products / Services" count={result.preview.items.count} error={result.preview.items.error}>
               {result.preview.items.sample.map((row) => (
                 <li key={row.id}>
                   {row.name}
@@ -78,7 +78,7 @@ export default async function QuickBooksProductionPreviewPage() {
                 </li>
               ))}
             </PreviewCard>
-            <PreviewCard title="Expenses / Purchases" count={result.preview.expenses.count}>
+            <PreviewCard title="Expenses / Purchases" count={result.preview.expenses.count} error={result.preview.expenses.error}>
               {result.preview.expenses.sample.map((row) => (
                 <li key={row.id}>
                   {row.date || "No date"} · {row.amount == null ? "Amount unavailable" : `$${row.amount.toFixed(2)}`}
@@ -95,10 +95,12 @@ export default async function QuickBooksProductionPreviewPage() {
 function PreviewCard({
   title,
   count,
+  error,
   children,
 }: {
   title: string;
   count: number | null;
+  error: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -110,6 +112,7 @@ function PreviewCard({
       <p className="text-xs text-[var(--muted-foreground)]">
         {count == null ? "Not available under the current Accounting API response" : "available in QuickBooks"}
       </p>
+      {error ? <p className="mt-3 text-sm text-amber-700">{error}</p> : null}
       <ul className="mt-4 space-y-1 text-sm text-[var(--muted-foreground)]">{children}</ul>
     </section>
   );

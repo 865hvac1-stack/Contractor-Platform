@@ -22,9 +22,34 @@ import { saveCompanyItemMappings } from "@/lib/quickbooks/mappings";
 import type { QuickBooksInvoiceTrigger } from "@prisma/client";
 import {
   assertQuickBooksWriteSafety,
+  getActiveQuickBooksScope,
   isQuickBooksSyncActivated,
   mappingScopeWhere,
 } from "@/lib/quickbooks/ownership";
+import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
+
+export async function refreshQuickBooksPreviewAction(
+  _prev?: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:view");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const refresh = requestQuickBooksPreviewRefresh(active.scope);
+    if (!refresh.ok) {
+      return {
+        ok: false,
+        error: `Please wait ${refresh.retryAfterSeconds} seconds before refreshing the QuickBooks preview again.`,
+      };
+    }
+    revalidatePath("/settings/quickbooks/preview");
+    return { ok: true, message: "Preview refreshed with read-only QuickBooks requests." };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not refresh the QuickBooks preview." };
+  }
+}
 
 export async function saveQuickBooksSettingsAction(
   _prev: ActionResult | null,

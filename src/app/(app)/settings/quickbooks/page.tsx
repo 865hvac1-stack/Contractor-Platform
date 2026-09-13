@@ -37,13 +37,23 @@ export default async function QuickBooksSettingsPage({
 }) {
   const ctx = await requirePermission("accounting:view");
   const { error, connected } = await searchParams;
-  let connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
+  let [connection, existingSettings] = await Promise.all([
+    getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY),
+    getQuickBooksSettings(ctx.company.id),
+  ]);
   let verification: Awaited<ReturnType<typeof verifyQuickBooksCompany>> | null = null;
-  if (connection?.status === "CONNECTED" && connection.externalAccountId) {
+  const verificationStale =
+    !existingSettings.qboCompanyVerifiedAt ||
+    existingSettings.qboCompanyVerifiedAt.getTime() < Date.now() - 5 * 60 * 1_000;
+  if (
+    connection?.status === "CONNECTED" &&
+    connection.externalAccountId &&
+    verificationStale
+  ) {
     verification = await verifyQuickBooksCompany(prisma, ctx.company.id);
     connection = await getCompanyConnection(ctx.company.id, QUICKBOOKS_PROVIDER_KEY);
   }
-  const freshSettings = await getQuickBooksSettings(ctx.company.id);
+  const freshSettings = verification ? await getQuickBooksSettings(ctx.company.id) : existingSettings;
   const status = publicQuickBooksStatus(connection);
   const card = quickBooksCardState({
     connection,
@@ -133,7 +143,14 @@ export default async function QuickBooksSettingsPage({
           </div>
           <div>
             <dt className="text-[var(--muted-foreground)]">API verification</dt>
-            <dd className="mt-0.5">{verification?.ok ? "Verified" : "Needs attention"}</dd>
+            <dd className="mt-0.5">
+              {verification?.ok ||
+              (connection?.status === "CONNECTED" &&
+                freshSettings.qboCompanyName &&
+                freshSettings.qboCompanyVerifiedAt)
+                ? "Verified"
+                : "Needs attention"}
+            </dd>
           </div>
           <div>
             <dt className="text-[var(--muted-foreground)]">Verified</dt>

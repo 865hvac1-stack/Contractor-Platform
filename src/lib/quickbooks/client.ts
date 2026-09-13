@@ -13,11 +13,54 @@ export type QboTransport = ((input: {
   path: string;
   query?: string;
   body?: unknown;
-}) => Promise<{ ok: boolean; status: number; json: unknown; intuitTid?: string | null }>) & {
+}) => Promise<{
+  ok: boolean;
+  status: number;
+  json: unknown;
+  intuitTid?: string | null;
+  retryAfterSeconds?: number | null;
+}>) & {
   context?: QboTransportContext;
 };
 
 export type ScopedQboTransport = QboTransport & { context: QboTransportContext };
+
+const QBO_READ_MAX_ATTEMPTS = 3;
+const QBO_READ_MAX_DELAY_MS = 5_000;
+
+export function retryAfterMilliseconds(value: string | null, now = Date.now()) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+export async function fetchQuickBooksReadWithRetry(input: {
+  request: () => Promise<Response>;
+  sleep?: (milliseconds: number) => Promise<void>;
+  random?: () => number;
+  maxAttempts?: number;
+  maxDelayMs?: number;
+}) {
+  const sleep =
+    input.sleep ??
+    ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const random = input.random ?? Math.random;
+  const maxAttempts = Math.max(1, input.maxAttempts ?? QBO_READ_MAX_ATTEMPTS);
+  const maxDelayMs = input.maxDelayMs ?? QBO_READ_MAX_DELAY_MS;
+  let response = await input.request();
+  let attempts = 1;
+  while (response.status === 429 && attempts < maxAttempts) {
+    const retryAfter = retryAfterMilliseconds(response.headers.get("retry-after"));
+    const delay = retryAfter ?? Math.min(500 * 2 ** (attempts - 1) + Math.floor(random() * 250), maxDelayMs);
+    if (delay > maxDelayMs) break;
+    await sleep(delay);
+    response = await input.request();
+    attempts += 1;
+  }
+  return { response, attempts };
+}
 
 export type QboRefs = {
   customerId?: string;
@@ -34,22 +77,54 @@ export function liveQboTransport(input: {
 }): ScopedQboTransport {
   const environment = input.environment ?? "sandbox";
   const apiBase = quickbooksApiBase(environment);
+  let rateLimitedUntil = 0;
+  let lastRateLimitTid: string | null = null;
   const transport: QboTransport = async ({ method, path, query, body }) => {
+    if (method === "GET" && rateLimitedUntil > Date.now()) {
+      return {
+        ok: false,
+        status: 429,
+        json: {},
+        intuitTid: lastRateLimitTid,
+        retryAfterSeconds: Math.ceil((rateLimitedUntil - Date.now()) / 1_000),
+      };
+    }
     const url = new URL(`${apiBase}/v3/company/${input.realmId}${path}`);
     url.searchParams.set("minorversion", "65");
     if (query) url.searchParams.set("query", query);
-    const response = await fetch(url, {
-      method: method === "GET" ? "GET" : "POST",
-      headers: {
-        Authorization: `Bearer ${input.accessToken}`,
-        Accept: "application/json",
-        ...(method === "POST_JSON" ? { "Content-Type": "application/json" } : {}),
-      },
-      body: method === "POST_JSON" ? JSON.stringify(body) : undefined,
-    });
+    const request = async () => {
+      const result = await fetch(url, {
+        method: method === "GET" ? "GET" : "POST",
+        headers: {
+          Authorization: `Bearer ${input.accessToken}`,
+          Accept: "application/json",
+          ...(method === "POST_JSON" ? { "Content-Type": "application/json" } : {}),
+        },
+        body: method === "POST_JSON" ? JSON.stringify(body) : undefined,
+      });
+      if (method === "GET" && result.status === 429) {
+        lastRateLimitTid = readIntuitTid(result.headers) ?? lastRateLimitTid;
+        logQuickBooksDiagnostic({
+          method: "GET",
+          path,
+          status: 429,
+          intuitTid: lastRateLimitTid,
+        });
+      }
+      return result;
+    };
+    const { response } =
+      method === "GET" ? await fetchQuickBooksReadWithRetry({ request }) : { response: await request() };
     const json = await response.json().catch(() => ({}));
-    const intuitTid = readIntuitTid(response.headers);
-    if (!response.ok) {
+    const intuitTid = readIntuitTid(response.headers) ?? (response.status === 429 ? lastRateLimitTid : null);
+    const retryAfterMs = response.status === 429
+      ? retryAfterMilliseconds(response.headers.get("retry-after")) ?? 5_000
+      : null;
+    if (retryAfterMs != null) {
+      rateLimitedUntil = Date.now() + retryAfterMs;
+      lastRateLimitTid = intuitTid;
+    }
+    if (!response.ok && response.status !== 429) {
       logQuickBooksDiagnostic({
         method: method === "GET" ? "GET" : "POST",
         path,
@@ -58,7 +133,13 @@ export function liveQboTransport(input: {
         fault: parseQboFault(json),
       });
     }
-    return { ok: response.ok, status: response.status, json, intuitTid };
+    return {
+      ok: response.ok,
+      status: response.status,
+      json,
+      intuitTid,
+      retryAfterSeconds: retryAfterMs == null ? null : Math.ceil(retryAfterMs / 1_000),
+    };
   };
   return Object.assign(transport, {
     context: {
