@@ -123,6 +123,12 @@ describe("sidebar and mobile source", () => {
     expect(shell).toContain("<AppNav");
     expect(shell).toContain("MobileTabBar");
     expect(shell).toContain("GlobalSearch");
+    expect(shell).toContain("h-dvh");
+    expect(shell).toContain("md:overflow-y-auto");
+    expect(shell).toContain("<SettingsLink");
+    const more = readFileSync(resolve("src/app/(app)/more/page.tsx"), "utf8");
+    expect(more).toContain("SETTINGS_ITEM");
+    expect(more).toContain('can(ctx.role, "company:settings")');
     expect(visibleMobileTabs("COMPANY_OWNER").map((item) => item.label)).toEqual([
       "Home",
       "Jobs",

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/tenant";
-import { moreGroups } from "@/lib/nav";
+import { moreGroups, SETTINGS_ITEM } from "@/lib/nav";
+import { can } from "@/lib/permissions";
 
 export default async function MorePage() {
   const ctx = await requirePermission("dashboard:view");
   const groups = moreGroups(ctx.role);
+  const settingsVisible = can(ctx.role, "company:settings");
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -34,6 +36,20 @@ export default async function MorePage() {
           </ul>
         </section>
       ))}
+      {settingsVisible ? (
+        <section>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+            Workspace
+          </h2>
+          <Link
+            href={SETTINGS_ITEM.href}
+            className="mt-2 flex min-h-12 items-center gap-3 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 hover:border-[var(--cy-orange)]/40 hover:bg-[var(--cy-gray)]/70"
+          >
+            <SETTINGS_ITEM.icon className="size-4 text-[var(--cy-navy)]" />
+            <span className="font-medium text-[var(--cy-navy)]">Settings</span>
+          </Link>
+        </section>
+      ) : null}
     </div>
   );
 }

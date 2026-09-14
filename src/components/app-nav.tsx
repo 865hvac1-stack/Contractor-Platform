@@ -50,7 +50,7 @@ export function AppNav({
   const primary = visiblePrimaryNav(role);
 
   return (
-    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="ContractorYou">
+    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3" aria-label="ContractorYou">
       {primary.map((item) => (
         <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
       ))}

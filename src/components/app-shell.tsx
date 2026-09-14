@@ -71,8 +71,8 @@ export function AppShell({
     pathname.startsWith("/dispatch") ? "dispatch" : pathname.startsWith("/office") ? "office" : "command";
 
   return (
-    <div className="flex min-h-screen bg-[var(--background)]">
-      <aside className="hidden w-[260px] shrink-0 flex-col bg-[var(--cy-navy)] md:flex">
+    <div className="flex min-h-screen bg-[var(--background)] md:h-dvh md:overflow-hidden">
+      <aside className="sticky top-0 hidden h-dvh w-[260px] shrink-0 flex-col overflow-hidden bg-[var(--cy-navy)] md:flex">
         <div className="border-b border-white/8 px-4 py-5">
           <BrandMark variant="full" tone="light" />
           <div className="mt-3 flex items-center gap-2">
@@ -129,7 +129,7 @@ export function AppShell({
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col md:h-dvh md:overflow-hidden">
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-white/95 px-3 backdrop-blur md:gap-3 md:px-6">
           <Button
             variant="ghost"
@@ -207,7 +207,7 @@ export function AppShell({
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:pb-0">
           <div
             className={`mx-auto w-full px-4 ${
               pathname.startsWith("/dispatch")
