@@ -430,6 +430,9 @@ export function DispatchJobDrawer({
           <a href={mapsUrl(job.address)} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
             Directions
           </a>
+          <Link href={`/jobs/${job.id}#schedule`} className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
+            Change Appointment
+          </Link>
           <Link href={`/jobs/${job.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white">
             Open Job 360
           </Link>

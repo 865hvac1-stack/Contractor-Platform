@@ -23,6 +23,7 @@ import { AppNav } from "@/components/app-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { isSettingsActive } from "@/lib/nav";
 import { accessibleWorkspaces, type WorkspaceId } from "@/lib/workspaces";
+import { can } from "@/lib/permissions";
 
 function SettingsLink({
   pathname,
@@ -67,6 +68,7 @@ export function AppShell({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const workspaces = accessibleWorkspaces(role);
+  const canSettings = can(role, "company:settings");
   const current: WorkspaceId =
     pathname.startsWith("/dispatch") ? "dispatch" : pathname.startsWith("/office") ? "office" : "command";
 
@@ -89,9 +91,11 @@ export function AppShell({
           ) : null}
         </div>
         <AppNav pathname={pathname} role={role} />
-        <div className="border-t border-white/8 p-3">
-          <SettingsLink pathname={pathname} />
-        </div>
+        {canSettings ? (
+          <div className="border-t border-white/8 p-3">
+            <SettingsLink pathname={pathname} />
+          </div>
+        ) : null}
       </aside>
 
       {open ? (
@@ -122,9 +126,11 @@ export function AppShell({
               ) : null}
             </div>
             <AppNav pathname={pathname} role={role} onNavigate={() => setOpen(false)} />
-            <div className="border-t border-white/8 p-3">
-              <SettingsLink pathname={pathname} onNavigate={() => setOpen(false)} />
-            </div>
+            {canSettings ? (
+              <div className="border-t border-white/8 p-3">
+                <SettingsLink pathname={pathname} onNavigate={() => setOpen(false)} />
+              </div>
+            ) : null}
           </aside>
         </div>
       ) : null}
@@ -190,11 +196,13 @@ export function AppShell({
                   Help and support
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Link href="/settings" className="w-full">
-                  Settings
-                </Link>
-              </DropdownMenuItem>
+              {canSettings ? (
+                <DropdownMenuItem>
+                  <Link href="/settings" className="w-full">
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <form action={logoutAction} className="w-full">

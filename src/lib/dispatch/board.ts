@@ -28,6 +28,11 @@ const jobInclude = {
       },
     },
   },
+  waitingRecords: {
+    where: { state: "ACTIVE" as const },
+    include: { column: { select: { key: true } } },
+    take: 3,
+  },
 } as const;
 
 export type DispatchIssueKind =
@@ -166,6 +171,7 @@ export function toDispatchCard(job: {
     status: string;
     part: { inventoryStocks: Array<{ onHand: number; reserved: number }> };
   }>;
+  waitingRecords?: Array<{ column: { key: string } }>;
 }) {
   const kind = classifyDispatchJob({ jobType: job.jobType, priority: job.priority, description: job.description });
   return {
@@ -193,12 +199,15 @@ export function toDispatchCard(job: {
     assigneeIds: job.assignments.map((row) => row.userId),
     assignees: job.assignments.map((row) => `${row.user.firstName} ${row.user.lastName}`.trim()),
     bookedByContractorYou: Boolean(job.bookedByContractorYou),
-    partsStatus: partsStatus(job.jobParts ?? []),
+    partsStatus: partsStatus(
+      job.jobParts ?? [],
+      Boolean(job.waitingRecords?.some((row) => row.column.key === "WAITING_ON_PART"))
+    ),
   };
 }
 
-function partsStatus(parts: NonNullable<Parameters<typeof toDispatchCard>[0]["jobParts"]>) {
-  if (!parts.length) return "NONE" as const;
+function partsStatus(parts: NonNullable<Parameters<typeof toDispatchCard>[0]["jobParts"]>, waitingOnPart = false) {
+  if (!parts.length) return waitingOnPart ? "NEEDED" as const : "NONE" as const;
   const unavailable = parts.some(
     (row) =>
       row.status === "NEEDED" &&

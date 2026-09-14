@@ -34,6 +34,7 @@ export async function addJobPartAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("jobs:view");
+    if (!can(ctx.role, "inventory:use")) return { ok: false, error: "You do not have permission to use inventory." };
     const jobId = String(formData.get("jobId") || "");
     const partId = String(formData.get("partId") || "");
     const quantity = positiveInt(formData.get("quantity"));
@@ -86,7 +87,7 @@ export async function reserveJobPartAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("jobs:view");
-    if (!can(ctx.role, "jobs:manage") && !can(ctx.role, "schedule:manage")) {
+    if (!can(ctx.role, "inventory:use") || (!can(ctx.role, "jobs:manage") && !can(ctx.role, "schedule:manage"))) {
       return { ok: false, error: "You do not have permission to reserve inventory." };
     }
     const jobPartId = String(formData.get("jobPartId") || "");
@@ -147,6 +148,7 @@ export async function pickUpJobPartAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("jobs:view");
+    if (!can(ctx.role, "inventory:use")) return { ok: false, error: "You do not have permission to use inventory." };
     const id = String(formData.get("jobPartId") || "");
     const row = await prisma.jobPart.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!row || row.status !== "RESERVED") return { ok: false, error: "Only a reserved part can be marked picked up." };
@@ -175,6 +177,7 @@ export async function installJobPartAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("jobs:view");
+    if (!can(ctx.role, "inventory:use")) return { ok: false, error: "You do not have permission to use inventory." };
     const id = String(formData.get("jobPartId") || "");
     const initial = await prisma.jobPart.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!initial) return { ok: false, error: "Job part not found." };
@@ -264,6 +267,7 @@ export async function cancelJobPartAction(
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("jobs:view");
+    if (!can(ctx.role, "inventory:use")) return { ok: false, error: "You do not have permission to use inventory." };
     const id = String(formData.get("jobPartId") || "");
     const initial = await prisma.jobPart.findFirst({ where: { id, companyId: ctx.company.id } });
     if (!initial) return { ok: false, error: "Job part not found." };

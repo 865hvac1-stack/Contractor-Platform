@@ -50,6 +50,9 @@ export type Permission =
   | "pricebook:view"
   | "pricebook:manage"
   | "pricebook:cost"
+  | "inventory:view"
+  | "inventory:use"
+  | "inventory:manage"
   | "memberships:view"
   | "memberships:manage"
   | "compensation:view_own"
@@ -108,6 +111,9 @@ const ALL_COMPANY: Permission[] = [
   "pricebook:view",
   "pricebook:manage",
   "pricebook:cost",
+  "inventory:view",
+  "inventory:use",
+  "inventory:manage",
   "memberships:view",
   "memberships:manage",
   "compensation:view_own",
@@ -162,6 +168,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "receipts:manage",
     "pricebook:view",
     "pricebook:manage",
+    "inventory:view",
+    "inventory:use",
+    "inventory:manage",
     "memberships:view",
     "memberships:manage",
     "compensation:view_own",
@@ -183,6 +192,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "equipment:view",
     "playbooks:view",
     "intelligence:view",
+    "inventory:view",
+    "inventory:use",
   ],
   SALES: [
     "customers:manage",
@@ -221,6 +232,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "intelligence:view",
     "receipts:view",
     "receipts:manage",
+    "inventory:view",
+    "inventory:use",
     "pricebook:view",
     "estimates:manage",
     "memberships:view",
@@ -240,6 +253,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "intelligence:view",
     "receipts:view",
     "receipts:manage",
+    "inventory:view",
+    "inventory:use",
   ],
   MANAGER: [
     "customers:view",
@@ -271,6 +286,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "receipts:manage",
     "job_costs:view",
     "pricebook:view",
+    "inventory:view",
+    "inventory:use",
+    "inventory:manage",
     "memberships:view",
     "compensation:view_own",
     "compensation:view_all",

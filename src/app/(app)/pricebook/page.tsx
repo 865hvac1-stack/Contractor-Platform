@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createInventoryLocationAction, receiveInventoryAction } from "@/server/actions/inventory";
+import { createInventoryLocationAction, receiveInventoryAction, transferInventoryAction } from "@/server/actions/inventory";
 
 const TYPES = ["SERVICE", "PRODUCT", "MATERIAL", "ADD_ON", "MEMBERSHIP", "BUNDLE", "OTHER"] as const;
 
@@ -27,6 +27,8 @@ export default async function PricebookPage({
   const params = await searchParams;
   const canManage = can(ctx.role, "pricebook:manage");
   const canCost = can(ctx.role, "pricebook:cost");
+  const canViewInventory = can(ctx.role, "inventory:view");
+  const canManageInventory = can(ctx.role, "inventory:manage");
   const q = params.q ?? "";
   const categoryId = params.category || "";
 
@@ -87,7 +89,7 @@ export default async function PricebookPage({
         </Button>
       </form>
 
-      <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+      {canViewInventory ? <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-[var(--cy-navy)]">Inventory locations</h2>
@@ -108,7 +110,7 @@ export default async function PricebookPage({
             No inventory locations configured. Add a warehouse or truck before receiving stock.
           </p>
         ) : null}
-        {canManage ? (
+        {canManageInventory ? (
           <ActionForm action={createInventoryLocationAction} className="mt-4 flex flex-wrap gap-2">
             <Input name="name" placeholder="Main Warehouse or Truck name" className="max-w-xs" required />
             <select name="type" className="h-8 rounded-lg border border-input px-2.5 text-sm" defaultValue="WAREHOUSE">
@@ -119,7 +121,7 @@ export default async function PricebookPage({
             <Button type="submit" size="sm">Add location</Button>
           </ActionForm>
         ) : null}
-      </section>
+      </section> : null}
 
       {canManage ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -220,7 +222,7 @@ export default async function PricebookPage({
                       Est. cost {formatMoney(item.internalCostCents)}
                     </p>
                   ) : null}
-                  {["MATERIAL", "PRODUCT"].includes(item.type) ? (
+                  {canViewInventory && ["MATERIAL", "PRODUCT"].includes(item.type) ? (
                     <p className={`text-xs font-medium ${
                       item.inventoryStocks.some((stock) => stock.onHand - stock.reserved < stock.minimumStock)
                         ? "text-amber-700"
@@ -234,7 +236,7 @@ export default async function PricebookPage({
                   ) : null}
                 </div>
               </div>
-              {["MATERIAL", "PRODUCT"].includes(item.type) && item.inventoryStocks.length ? (
+              {canViewInventory && ["MATERIAL", "PRODUCT"].includes(item.type) && item.inventoryStocks.length ? (
                 <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
                   {item.inventoryStocks.map((stock) => (
                     <li key={stock.id} className="rounded-lg bg-[var(--cy-gray)] px-3 py-2">
@@ -243,7 +245,7 @@ export default async function PricebookPage({
                   ))}
                 </ul>
               ) : null}
-              {canManage && ["MATERIAL", "PRODUCT"].includes(item.type) && locations.length ? (
+              {canManageInventory && ["MATERIAL", "PRODUCT"].includes(item.type) && locations.length ? (
                 <ActionForm action={receiveInventoryAction} className="mt-3 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="partId" value={item.id} />
                   <label className="text-xs">Location
@@ -258,6 +260,23 @@ export default async function PricebookPage({
                     <Input name="minimumStock" type="number" min="0" step="1" className="mt-1 w-24" defaultValue="0" required />
                   </label>
                   <Button type="submit" size="sm" variant="outline">Receive stock</Button>
+                </ActionForm>
+              ) : null}
+              {canManageInventory && item.inventoryStocks.length > 0 && locations.length > 1 ? (
+                <ActionForm action={transferInventoryAction} className="mt-2 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="partId" value={item.id} />
+                  <label className="text-xs">From
+                    <select name="fromLocationId" className="mt-1 block h-8 rounded-lg border border-input px-2 text-sm">
+                      {item.inventoryStocks.map((stock) => <option key={stock.id} value={stock.locationId}>{stock.location.name} · {stock.onHand - stock.reserved} available</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs">To
+                    <select name="toLocationId" className="mt-1 block h-8 rounded-lg border border-input px-2 text-sm">
+                      {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                    </select>
+                  </label>
+                  <Input name="quantity" type="number" min="1" step="1" className="w-24" defaultValue="1" required />
+                  <Button type="submit" size="sm" variant="ghost">Transfer</Button>
                 </ActionForm>
               ) : null}
               {canManage ? (

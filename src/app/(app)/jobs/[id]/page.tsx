@@ -121,6 +121,27 @@ export default async function JobDetailPage({
         canInvoice={can(ctx.role, "invoices:manage")}
         canViewMoney={can(ctx.role, "invoices:view")}
         canDelete={can(ctx.role, "jobs:manage")}
+        workflowPanel={
+          workflow ? (
+            <JobWorkflowPanel
+              jobId={view.job.id}
+              playbookName={workflow.playbookName}
+              customerName={view.customer.name}
+              scheduledLabel={formatJobDateTime(view.job.scheduledStart, ctx.company.timezone)}
+              definition={workflow.definition}
+              currentStageKey={workflow.currentStageKey}
+              completedStepIds={workflow.completedStepIds}
+              remaining={workflow.remaining}
+              checklist={workflow.checklist}
+              customerPhone={view.customer.phone}
+              customerId={view.customer.id}
+              propertyAddress={view.property.line}
+              canAct={canAct && !view.job.historical}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted-foreground)]">No playbook is attached. Use the operational sections below.</p>
+          )
+        }
       />
 
       <JobWaitingPanel
@@ -156,31 +177,13 @@ export default async function JobDetailPage({
         parts={parts}
         jobParts={jobParts}
         stocks={stocks}
-        canAdd={can(ctx.role, "jobs:manage") || canAct}
-        canReserve={can(ctx.role, "jobs:manage") || can(ctx.role, "schedule:manage")}
-        canUse={canAct}
+        canAdd={can(ctx.role, "inventory:use") && (can(ctx.role, "jobs:manage") || canAct)}
+        canReserve={can(ctx.role, "inventory:use") && (can(ctx.role, "jobs:manage") || can(ctx.role, "schedule:manage"))}
+        canUse={can(ctx.role, "inventory:use") && canAct}
       />
 
       {can(ctx.role, "intelligence:view") ? (
         <AskContractorYou suggestions={suggestedQuestions(ctx.role, view.job.id)} jobId={view.job.id} compact />
-      ) : null}
-
-      {workflow ? (
-        <JobWorkflowPanel
-          jobId={view.job.id}
-          playbookName={workflow.playbookName}
-          customerName={view.customer.name}
-          scheduledLabel={formatJobDateTime(view.job.scheduledStart, ctx.company.timezone)}
-          definition={workflow.definition}
-          currentStageKey={workflow.currentStageKey}
-          completedStepIds={workflow.completedStepIds}
-          remaining={workflow.remaining}
-          checklist={workflow.checklist}
-          customerPhone={view.customer.phone}
-          customerId={view.customer.id}
-          propertyAddress={view.property.line}
-          canAct={canAct && !view.job.historical}
-        />
       ) : null}
 
       {can(ctx.role, "jobs:manage") || canAct ? (

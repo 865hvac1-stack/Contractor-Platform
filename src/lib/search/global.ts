@@ -307,7 +307,7 @@ export async function globalSearch(input: {
     }
   }
 
-  if (can(input.role, "pricebook:view")) {
+  if (can(input.role, "pricebook:view") && can(input.role, "inventory:view")) {
     const parts = await prisma.pricebookItem.findMany({
       where: {
         companyId: input.companyId,

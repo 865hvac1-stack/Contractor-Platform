@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { parseDefinition, remainingRequiredItems } from "@/lib/playbooks/engine";
 import { detectWaitingAttention } from "@/lib/waiting/attention";
 import { formatDateTime } from "@/lib/datetime";
+import { detectInventoryAttention } from "@/lib/inventory/attention";
 
 /**
  * Reusable Needs Attention architecture.
@@ -52,6 +53,8 @@ export async function getNeedsAttention(companyId: string): Promise<AttentionIte
       return order[a.severity] - order[b.severity];
     });
 }
+
+registerAttentionDetector((companyId) => detectInventoryAttention(prisma, companyId));
 
 // ---- Built-in detectors ----
 

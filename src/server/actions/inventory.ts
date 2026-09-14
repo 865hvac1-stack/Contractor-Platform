@@ -17,7 +17,7 @@ export async function createInventoryLocationAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("pricebook:manage");
+    const ctx = await requirePermission("inventory:manage");
     const name = String(formData.get("name") || "").trim();
     const type = String(formData.get("type") || "WAREHOUSE");
     if (!name) return { ok: false, error: "Enter a location name." };
@@ -46,7 +46,7 @@ export async function receiveInventoryAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("pricebook:manage");
+    const ctx = await requirePermission("inventory:manage");
     const partId = String(formData.get("partId") || "");
     const locationId = String(formData.get("locationId") || "");
     const quantity = integer(formData.get("quantity"), 1);
@@ -107,5 +107,83 @@ export async function receiveInventoryAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: "Could not receive inventory." };
+  }
+}
+
+export async function transferInventoryAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("inventory:manage");
+    const partId = String(formData.get("partId") || "");
+    const fromLocationId = String(formData.get("fromLocationId") || "");
+    const toLocationId = String(formData.get("toLocationId") || "");
+    const quantity = integer(formData.get("quantity"), 1);
+    if (!quantity || !fromLocationId || !toLocationId || fromLocationId === toLocationId) {
+      return { ok: false, error: "Choose two different locations and a positive quantity." };
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const source = await tx.inventoryStock.findUnique({
+        where: {
+          companyId_partId_locationId: {
+            companyId: ctx.company.id,
+            partId,
+            locationId: fromLocationId,
+          },
+        },
+      });
+      if (!source || source.onHand - source.reserved < quantity) {
+        return { ok: false as const, error: "Not enough available stock to transfer." };
+      }
+      const destination = await tx.inventoryLocation.findFirst({
+        where: { id: toLocationId, companyId: ctx.company.id, active: true },
+      });
+      if (!destination) return { ok: false as const, error: "Destination location is unavailable." };
+      await tx.inventoryStock.update({
+        where: { id: source.id },
+        data: { onHand: { decrement: quantity } },
+      });
+      await tx.inventoryStock.upsert({
+        where: {
+          companyId_partId_locationId: {
+            companyId: ctx.company.id,
+            partId,
+            locationId: toLocationId,
+          },
+        },
+        create: { companyId: ctx.company.id, partId, locationId: toLocationId, onHand: quantity },
+        update: { onHand: { increment: quantity } },
+      });
+      await tx.inventoryMovement.create({
+        data: {
+          companyId: ctx.company.id,
+          partId,
+          quantity,
+          type: "TRANSFER",
+          fromLocationId,
+          toLocationId,
+          actorId: ctx.user.id,
+          source: "MANUAL_TRANSFER",
+          notes: String(formData.get("notes") || "") || null,
+        },
+      });
+      return { ok: true as const };
+    });
+    if (!result.ok) return result;
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "inventory.transferred",
+      entityType: "PricebookItem",
+      entityId: partId,
+      metadata: { fromLocationId, toLocationId, quantity },
+    });
+    revalidatePath("/pricebook");
+    revalidatePath("/dispatch");
+    return { ok: true, message: "Inventory transferred and recorded in the movement ledger." };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not transfer inventory." };
   }
 }

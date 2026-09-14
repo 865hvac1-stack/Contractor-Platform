@@ -126,6 +126,7 @@ describe("sidebar and mobile source", () => {
     expect(shell).toContain("h-dvh");
     expect(shell).toContain("md:overflow-y-auto");
     expect(shell).toContain("<SettingsLink");
+    expect(shell).toContain('can(role, "company:settings")');
     const more = readFileSync(resolve("src/app/(app)/more/page.tsx"), "utf8");
     expect(more).toContain("SETTINGS_ITEM");
     expect(more).toContain('can(ctx.role, "company:settings")');

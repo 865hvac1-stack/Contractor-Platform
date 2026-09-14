@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { deriveJobOperationalAlerts } from "@/lib/jobs/operations";
+import { can } from "@/lib/permissions";
 
 describe("Owner and office 360 integration", () => {
   it("derives job alerts only from persisted operational state", () => {
@@ -52,6 +53,15 @@ describe("Owner and office 360 integration", () => {
     expect(actions).toContain('sourceType: "INVENTORY"');
     expect(actions).toContain('category: "MATERIALS"');
     expect(actions).toContain("alreadyInstalled");
+  });
+
+  it("keeps inventory permissions role-aware", () => {
+    expect(can("COMPANY_OWNER", "inventory:manage")).toBe(true);
+    expect(can("OFFICE", "inventory:manage")).toBe(true);
+    expect(can("DISPATCHER", "inventory:use")).toBe(true);
+    expect(can("TECHNICIAN", "inventory:use")).toBe(true);
+    expect(can("TECHNICIAN", "inventory:manage")).toBe(false);
+    expect(can("SALES", "inventory:view")).toBe(false);
   });
 
   it("keeps QuickBooks outside owner cleanup implementation", () => {

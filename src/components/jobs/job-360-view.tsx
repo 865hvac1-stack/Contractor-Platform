@@ -36,6 +36,7 @@ export function Job360View({
   canInvoice,
   canViewMoney,
   canDelete,
+  workflowPanel,
 }: {
   view: Job360;
   backHref: string;
@@ -44,6 +45,7 @@ export function Job360View({
   canInvoice: boolean;
   canViewMoney: boolean;
   canDelete: boolean;
+  workflowPanel?: React.ReactNode;
 }) {
   const service = view.job.serviceTypeName || view.job.jobType;
   const performedBy = view.technicians.assigned[0]?.name || view.technicians.importedName;
@@ -141,6 +143,12 @@ export function Job360View({
         </div>
         {canCall && view.customer.phone ? (
           <CompanySmsForm to={view.customer.phone} customerId={view.customer.id} />
+        ) : null}
+        {workflowPanel ? (
+          <section id="next-step" className="scroll-mt-20 rounded-2xl border border-[var(--cy-orange)]/25 bg-[var(--cy-orange-muted)]/50 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Next Step</p>
+            {workflowPanel}
+          </section>
         ) : null}
         {view.job.historical ? (
           <p className="rounded-xl bg-[var(--cy-gray)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
