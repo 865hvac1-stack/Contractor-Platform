@@ -8,7 +8,7 @@ const resolveAction = vi.fn(async (_previous: unknown, formData: FormData) => ({
   ok: true,
   message: `Saved ${formData.get("resolution")}`,
 }));
-const skipAction = vi.fn(async () => ({ ok: true, message: "Skipped" }));
+const skipAction = vi.fn(async (_previous: unknown, _formData: FormData) => ({ ok: true, message: "Skipped" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh }),
