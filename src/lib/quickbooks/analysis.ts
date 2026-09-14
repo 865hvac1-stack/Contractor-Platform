@@ -18,7 +18,7 @@ import {
 } from "@/lib/quickbooks/read-only";
 
 const PAGE = 50;
-const BUDGET_MS = 18_000;
+const BUDGET_MS = 8_000;
 
 export type AnalysisCheckpoint = {
   customerStart: number;
@@ -120,6 +120,14 @@ export type ImportPlan = {
       details: Record<string, number>;
     }
   >;
+};
+
+export type AnalysisProgress = {
+  category: InboundObjectType | "COMPLETE";
+  categoryLabel: string;
+  recordsExamined: number;
+  totalAvailable: number;
+  percent: number;
 };
 
 function emptyCategory() {
@@ -284,7 +292,10 @@ export async function runQuickBooksImportAnalysis(input: {
     PURCHASE: await mappingCount(prisma, scope, "PURCHASE"),
   };
 
-  const plan = emptyPlan(counts, linked);
+  const previousCategories = await prisma.quickBooksSyncRunCategory.findMany({
+    where: { runId: run.id },
+  });
+  const plan = restorePlan(counts, linked, previousCategories);
   const started = Date.now();
   let examined = run.recordsExamined;
   let conflicts = run.conflictCount;
@@ -604,7 +615,15 @@ export async function runQuickBooksImportAnalysis(input: {
         writeBackAttempted: false,
       },
     });
-    return { ok: true as const, runId: run.id, paused: true, finished: false, plan: toImportPlan(plan) };
+    return {
+      ok: true as const,
+      runId: run.id,
+      paused: true,
+      finished: false,
+      autoContinue: false,
+      plan: toImportPlan(plan),
+      progress: analysisProgress(checkpoint, examined, counts),
+    };
   }
 
   const importPlan = toImportPlan(plan);
@@ -629,7 +648,15 @@ export async function runQuickBooksImportAnalysis(input: {
       data: { lastSuccessfulInboundSyncAt: new Date(), inboundSyncHealth: "READY" },
     });
   }
-  return { ok: true as const, runId: run.id, paused: !finished, finished, plan: importPlan };
+  return {
+    ok: true as const,
+    runId: run.id,
+    paused: !finished,
+    finished,
+    autoContinue: !finished && failed === run.failedCount,
+    plan: importPlan,
+    progress: analysisProgress(checkpoint, examined, counts),
+  };
 }
 
 function title(objectType: InboundObjectType) {
@@ -642,6 +669,71 @@ function emptyPlan(counts: Record<InboundObjectType, number>, linked: Record<Inb
     plan[objectType] = { ...emptyCategory(), availableInQbo: counts[objectType], alreadyLinked: linked[objectType] };
   }
   return plan;
+}
+
+function restorePlan(
+  counts: Record<InboundObjectType, number>,
+  linked: Record<InboundObjectType, number>,
+  previous: Array<{
+    objectType: string;
+    newCount: number;
+    updatedCount: number;
+    duplicateCount: number;
+    conflictCount: number;
+    skippedCount: number;
+    details: Prisma.JsonValue | null;
+  }>
+) {
+  const plan = emptyPlan(counts, linked);
+  for (const saved of previous) {
+    if (!INBOUND_OBJECT_TYPES.includes(saved.objectType as InboundObjectType)) continue;
+    const objectType = saved.objectType as InboundObjectType;
+    const details =
+      saved.details && typeof saved.details === "object" && !Array.isArray(saved.details)
+        ? (saved.details as Record<string, number>)
+        : {};
+    plan[objectType] = {
+      ...plan[objectType],
+      newCount: saved.newCount,
+      possible: saved.duplicateCount,
+      missingRelationships: saved.conflictCount,
+      skipped: saved.skippedCount,
+      exact: Number(details.exact ?? 0),
+      high: Number(details.high ?? 0),
+      none: Number(details.none ?? 0),
+      details,
+    };
+  }
+  return plan;
+}
+
+export function analysisProgress(
+  checkpoint: AnalysisCheckpoint,
+  recordsExamined: number,
+  counts: Record<InboundObjectType, number>
+): AnalysisProgress {
+  const order: Array<[keyof AnalysisCheckpoint, InboundObjectType]> = [
+    ["customerStart", "CUSTOMER"],
+    ["itemStart", "ITEM"],
+    ["invoiceStart", "INVOICE"],
+    ["paymentStart", "PAYMENT"],
+    ["purchaseStart", "PURCHASE"],
+    ["vendorStart", "VENDOR"],
+    ["accountStart", "ACCOUNT"],
+  ];
+  const current = order.find(([key]) => key !== "finished" && Number(checkpoint[key]) > 0)?.[1] ?? "COMPLETE";
+  const totalAvailable = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  return {
+    category: current,
+    categoryLabel: current === "COMPLETE" ? "Complete" : INBOUND_LABELS[current],
+    recordsExamined,
+    totalAvailable,
+    percent: checkpoint.finished
+      ? 100
+      : totalAvailable
+        ? Math.min(99, Math.round((recordsExamined / totalAvailable) * 100))
+        : 0,
+  };
 }
 
 function bumpConfidence(
@@ -697,7 +789,14 @@ async function persistCategoryRows(
         conflictCount: row.missingRelationships,
         skippedCount: row.skipped,
         failedCount: 0,
-        details: row.details,
+        details: {
+          ...row.details,
+          exact: row.exact,
+          high: row.high,
+          possible: row.possible,
+          none: row.none,
+          missingRelationships: row.missingRelationships,
+        },
       },
       update: {
         availableInQbo: counts[objectType],
@@ -706,7 +805,14 @@ async function persistCategoryRows(
         updatedCount: row.high + row.exact,
         duplicateCount: row.possible,
         conflictCount: row.missingRelationships,
-        details: row.details,
+        details: {
+          ...row.details,
+          exact: row.exact,
+          high: row.high,
+          possible: row.possible,
+          none: row.none,
+          missingRelationships: row.missingRelationships,
+        },
       },
     });
   }

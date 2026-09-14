@@ -9,12 +9,12 @@ import { maskRealmId } from "@/lib/quickbooks/errors";
 import { formatDateTime } from "@/lib/datetime";
 import { IMPORT_CONFIRMATION } from "@/lib/quickbooks/inbound-types";
 import {
-  analyzeQuickBooksImportAction,
   applyQuickBooksReviewAction,
   importApprovedQuickBooksAction,
   refreshPreviewFromSyncCenterAction,
   syncChangesDisabledAction,
 } from "@/server/actions/quickbooks-sync-center";
+import { AnalyzeImportControl } from "@/components/quickbooks/analyze-import-control";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -109,14 +109,10 @@ export default async function QuickBooksManagePage({
           </Button>
         </ActionForm>
         {canManage ? (
-          <ActionForm action={analyzeQuickBooksImportAction}>
-            {inbound.latestAnalysis?.status === "PAUSED" ? (
-              <input type="hidden" name="resumeRunId" value={inbound.latestAnalysis.id} />
-            ) : null}
-            <Button type="submit" size="sm">
-              {inbound.latestAnalysis?.status === "PAUSED" ? "Continue Analyze Import" : "Analyze Import"}
-            </Button>
-          </ActionForm>
+          <AnalyzeImportControl
+            resumeRunId={inbound.latestAnalysis?.status === "PAUSED" ? inbound.latestAnalysis.id : null}
+            initialStatus={inbound.latestAnalysis?.status}
+          />
         ) : null}
         <Link href="/settings/quickbooks/manage?view=review" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           Review Matches

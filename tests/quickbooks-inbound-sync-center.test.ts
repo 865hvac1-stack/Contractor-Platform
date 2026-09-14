@@ -5,6 +5,8 @@ import { isQuickBooksWriteMethod, QUICKBOOKS_WRITEBACK_ENABLED } from "@/lib/qui
 import { assertImportConfirmation } from "@/lib/quickbooks/inbound-import";
 import { IMPORT_CONFIRMATION } from "@/lib/quickbooks/inbound-types";
 import type { QboTransport } from "@/lib/quickbooks/client";
+import { analysisProgress, type AnalysisCheckpoint } from "@/lib/quickbooks/analysis";
+import type { InboundObjectType } from "@/lib/quickbooks/inbound-types";
 
 function customers() {
   return [
@@ -114,6 +116,35 @@ describe("QuickBooks inbound safety", () => {
     expect(classifyAccountType("Cost of Goods Sold")).toBe("COGS");
     expect(classifyAccountType("Expense")).toBe("OPERATING_EXPENSE");
     expect(classifyAccountType("Bank")).toBe("ASSET");
+  });
+
+  it("reports resumable category progress without importing records", () => {
+    const checkpoint: AnalysisCheckpoint = {
+      customerStart: 301,
+      itemStart: 1,
+      invoiceStart: 1,
+      paymentStart: 1,
+      purchaseStart: 1,
+      vendorStart: 1,
+      accountStart: 1,
+      finished: false,
+    };
+    const counts: Record<InboundObjectType, number> = {
+      CUSTOMER: 3_017,
+      INVOICE: 6_673,
+      PAYMENT: 6_516,
+      ITEM: 271,
+      PURCHASE: 14_658,
+      VENDOR: 100,
+      ACCOUNT: 80,
+    };
+    expect(analysisProgress(checkpoint, 300, counts)).toEqual({
+      category: "CUSTOMER",
+      categoryLabel: "Customers",
+      recordsExamined: 300,
+      totalAvailable: 31_315,
+      percent: 1,
+    });
   });
 });
 

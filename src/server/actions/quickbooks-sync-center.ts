@@ -12,6 +12,35 @@ import { importApprovedQuickBooksRecords } from "@/lib/quickbooks/inbound-import
 import { applyQuickBooksReviewDecision, type ReviewDecision } from "@/lib/quickbooks/inbound-review";
 import { QUICKBOOKS_WRITEBACK_DISABLED_MESSAGE } from "@/lib/quickbooks/writeback";
 import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
+import type { AnalysisProgress } from "@/lib/quickbooks/analysis";
+
+export type AnalyzeQuickBooksState =
+  | {
+      ok: true;
+      message: string;
+      runId: string;
+      paused: boolean;
+      autoContinue: boolean;
+      progress: AnalysisProgress;
+    }
+  | { ok: false; error: string }
+  | null;
+
+function logAnalysisFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unknown analysis failure";
+  const safeMessage = message
+    .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/(access_token|refresh_token|client_secret|password)=\S+/gi, "$1=[REDACTED]")
+    .slice(0, 500);
+  console.error(
+    JSON.stringify({
+      source: "quickbooks-analysis",
+      event: "failed",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      message: safeMessage,
+    })
+  );
+}
 
 function paths() {
   revalidatePath("/settings/quickbooks/manage");
@@ -21,12 +50,13 @@ function paths() {
 }
 
 export async function analyzeQuickBooksImportAction(
-  _prev?: ActionResult | null,
+  _prev: AnalyzeQuickBooksState,
   formData?: FormData
-): Promise<ActionResult> {
+): Promise<AnalyzeQuickBooksState> {
   try {
     const ctx = await requirePermission("accounting:manage");
-    const resumeRunId = String(formData?.get("resumeRunId") || "") || null;
+    const resumeRunId =
+      String(formData?.get("resumeRunId") || "") || (_prev?.ok ? _prev.runId : null);
     const result = await runQuickBooksImportAnalysis({
       prisma,
       companyId: ctx.company.id,
@@ -45,13 +75,20 @@ export async function analyzeQuickBooksImportAction(
     paths();
     return {
       ok: true,
+      runId: result.runId,
+      paused: result.paused,
+      autoContinue: result.autoContinue,
+      progress: result.progress,
       message: result.finished
         ? "Import analysis finished. Nothing was written to QuickBooks or created as live ContractorYou work."
-        : "Analysis paused to respect QuickBooks rate limits. Continue analysis to resume from the checkpoint.",
+        : result.autoContinue
+          ? `Analyzing ${result.progress.categoryLabel.toLowerCase()}…`
+          : "Analysis paused because QuickBooks did not complete a read request. No records were changed. Continue when ready.",
     };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
-    return { ok: false, error: error instanceof Error ? error.message : "Analysis failed." };
+    logAnalysisFailure(error);
+    return { ok: false, error: "Import analysis failed. No records were changed." };
   }
 }
 
