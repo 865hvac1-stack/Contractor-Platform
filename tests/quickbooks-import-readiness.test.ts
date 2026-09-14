@@ -25,10 +25,11 @@ function db(input: {
     quickBooksImportReview: {
       groupBy: vi.fn().mockResolvedValue(input.reviews ?? []),
       findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
     },
-    quickBooksMapping: { findMany: vi.fn().mockResolvedValue([]) },
-    quickBooksReviewDecision: { findMany: vi.fn().mockResolvedValue([]) },
-    customer: { findMany: vi.fn().mockResolvedValue([]) },
+    quickBooksMapping: { count: vi.fn().mockResolvedValue(0) },
+    quickBooksReviewDecision: { groupBy: vi.fn().mockResolvedValue([]) },
+    customer: { count: vi.fn().mockResolvedValue(0) },
   };
 }
 

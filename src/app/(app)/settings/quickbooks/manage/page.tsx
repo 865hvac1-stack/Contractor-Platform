@@ -32,8 +32,9 @@ import {
 } from "@/server/actions/quickbooks";
 import {
   EXCEPTION_REASONS,
-  loadQuickBooksExceptionReview,
+  loadQuickBooksExceptionReviewSafe,
   loadStageOneImportPreviewSafe,
+  safeQuickBooksErrorText,
 } from "@/lib/quickbooks/exception-review";
 import { ExceptionReviewer } from "@/components/quickbooks/exception-reviewer";
 
@@ -67,7 +68,29 @@ export default async function QuickBooksManagePage({
     view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection, automation,
     exceptionReason, skipped, customerSearch,
   } = await searchParams;
-  const inbound = await loadInboundSyncCenter(prisma, active.scope);
+  const inboundResult = await loadInboundSyncCenter(prisma, active.scope)
+    .then((data) => ({ ok: true as const, data }))
+    .catch((error) => {
+      console.error("[quickbooks-sync-center] load failed", error);
+      return { ok: false as const, error: safeQuickBooksErrorText(error, "Sync Center data could not be loaded.") };
+    });
+  if (!inboundResult.ok) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-2xl border border-rose-300 bg-rose-50 p-6">
+        <h1 className="font-semibold text-rose-950">Unable to load the QuickBooks Sync Center.</h1>
+        <p className="mt-2 text-sm text-rose-900">
+          Your review decisions and customer records were not changed. Nothing was imported and QuickBooks was not modified.
+        </p>
+        <p className="mt-3 rounded-lg border border-rose-200 bg-white/70 p-3 font-mono text-xs text-rose-900">
+          {inboundResult.error}
+        </p>
+        <Link href="/settings/quickbooks/manage?view=exceptions#exception-review" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}>
+          Retry
+        </Link>
+      </div>
+    );
+  }
+  const inbound = inboundResult.data;
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
     view === "review" || view === "duplicates" || view === "conflicts"
@@ -84,13 +107,14 @@ export default async function QuickBooksManagePage({
           automation,
         })
       : null;
-  const exceptions = view === "exceptions"
-    ? await loadQuickBooksExceptionReview(prisma, active.scope, {
+  const exceptionResult = view === "exceptions"
+    ? await loadQuickBooksExceptionReviewSafe(prisma, active.scope, {
         reason: exceptionReason,
         skipped: skipped === "1",
         customerSearch,
       })
     : null;
+  const exceptions = exceptionResult?.ok ? exceptionResult.data : null;
   const stageOnePreview = (exceptions?.remaining === 0 || inbound.readiness[0]?.ready)
     ? await loadStageOneImportPreviewSafe(prisma, active.scope)
     : null;
@@ -255,6 +279,25 @@ export default async function QuickBooksManagePage({
           ))}
         </dl>
       </details>
+
+      {exceptionResult && !exceptionResult.ok ? (
+        <section id="exception-review" className="scroll-mt-4 rounded-2xl border border-rose-300 bg-rose-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-800">Stage 1 exceptions</p>
+          <h2 className="mt-1 text-xl font-semibold text-rose-950">Unable to load the exception queue.</h2>
+          <p className="mt-2 text-sm text-rose-900">
+            Your review decisions and customer records were not changed. Nothing was imported and QuickBooks was not modified.
+          </p>
+          <p className="mt-3 rounded-lg border border-rose-200 bg-white/70 p-3 font-mono text-xs text-rose-900">
+            {exceptionResult.error}
+          </p>
+          <Link
+            href="/settings/quickbooks/manage?view=exceptions#exception-review"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}
+          >
+            Retry
+          </Link>
+        </section>
+      ) : null}
 
       {exceptions ? (
         <section id="exception-review" className="scroll-mt-4 rounded-2xl border border-[var(--border)] bg-white p-5">
