@@ -92,18 +92,13 @@ export function classifyInboundCustomer(
     ...(shipKey ? index.byAddress.get(shipKey) ?? [] : []),
   ]);
 
-  if (email) signals.push("email");
-  if (phone) signals.push("phone");
-  if (personKey) signals.push("name");
-  if (billKey || shipKey) signals.push("address");
-
   if (emailHits.length > 1 || phoneHits.length > 1) {
     return {
       confidence: "POSSIBLE",
       customerId: emailHits[0] || phoneHits[0] || null,
       reason: "More than one ContractorYou customer shares this email or phone. Manual review required.",
       proposedAction: "REVIEW",
-      signals,
+      signals: [...(emailHits.length ? ["email"] : []), ...(phoneHits.length ? ["phone"] : [])],
     };
   }
 
@@ -116,7 +111,7 @@ export function classifyInboundCustomer(
       customerId: emailId,
       reason: "Normalized email and phone both match one existing customer.",
       proposedAction: "LINK",
-      signals: [...signals, "email+phone"],
+      signals: ["email", "phone"],
     };
   }
   if (emailId) {
@@ -128,7 +123,7 @@ export function classifyInboundCustomer(
         ? "Normalized email matches, and name or address confirms the same customer."
         : "Normalized email matches one customer. High-confidence link if approved.",
       proposedAction: "LINK",
-      signals,
+      signals: ["email", ...(nameHits.includes(emailId) ? ["name"] : []), ...(addressHits.includes(emailId) ? ["address"] : [])],
     };
   }
   if (phoneId && (nameHits.includes(phoneId) || addressHits.includes(phoneId))) {
@@ -139,7 +134,7 @@ export function classifyInboundCustomer(
         ? "Normalized phone and name match one customer."
         : "Normalized phone and address match one customer.",
       proposedAction: "LINK",
-      signals,
+      signals: ["phone", ...(nameHits.includes(phoneId) ? ["name"] : []), ...(addressHits.includes(phoneId) ? ["address"] : [])],
     };
   }
   if (phoneId) {
@@ -148,7 +143,7 @@ export function classifyInboundCustomer(
       customerId: phoneId,
       reason: "Phone matches, but name and address did not confirm it. Do not merge silently.",
       proposedAction: "REVIEW",
-      signals,
+      signals: ["phone"],
     };
   }
   if (addressHits.length === 1 && nameHits.includes(addressHits[0]!)) {
@@ -157,7 +152,7 @@ export function classifyInboundCustomer(
       customerId: addressHits[0]!,
       reason: "Same name and address — possible duplicate. Manual review required.",
       proposedAction: "REVIEW",
-      signals,
+      signals: ["name", "address"],
     };
   }
   if (nameHits.length === 1 && normalizeText(lastName).length > 2) {
@@ -166,7 +161,7 @@ export function classifyInboundCustomer(
       customerId: nameHits[0]!,
       reason: "Name-only match. Never auto-linked.",
       proposedAction: "REVIEW",
-      signals,
+      signals: ["name"],
     };
   }
   if (nameHits.length > 1) {
@@ -175,7 +170,7 @@ export function classifyInboundCustomer(
       customerId: null,
       reason: "More than one customer has that name.",
       proposedAction: "REVIEW",
-      signals,
+      signals: ["name"],
     };
   }
   return {

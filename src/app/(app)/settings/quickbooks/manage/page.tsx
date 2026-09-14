@@ -15,6 +15,8 @@ import {
   syncChangesDisabledAction,
 } from "@/server/actions/quickbooks-sync-center";
 import { AnalyzeImportControl } from "@/components/quickbooks/analyze-import-control";
+import { loadQuickBooksReviewRows } from "@/lib/quickbooks/review-center";
+import { ANALYSIS_STATUS_DEFINITIONS } from "@/lib/quickbooks/analysis-classification";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -32,28 +34,21 @@ export const dynamic = "force-dynamic";
 export default async function QuickBooksManagePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; filter?: string }>;
+  searchParams: Promise<{ view?: string; filter?: string; q?: string }>;
 }) {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
   const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
   if (!active.ok) redirect("/settings/quickbooks");
-  const { view, filter } = await searchParams;
+  const { view, filter, q } = await searchParams;
   const inbound = await loadInboundSyncCenter(prisma, active.scope);
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
     view === "review" || view === "duplicates" || view === "conflicts"
-      ? await prisma.quickBooksImportReview.findMany({
-          where: {
-            companyId: ctx.company.id,
-            environment: active.scope.environment,
-            realmId: active.scope.realmId,
-            ...(view === "duplicates" ? { confidence: "POSSIBLE" } : {}),
-            ...(view === "conflicts" ? { status: { in: ["OPEN", "FAILED"] } } : {}),
-            ...(filter === "EXACT" || filter === "HIGH" || filter === "NONE" ? { confidence: filter } : {}),
-          },
-          orderBy: { updatedAt: "desc" },
-          take: 80,
+      ? await loadQuickBooksReviewRows(prisma, active.scope, {
+          view,
+          filter,
+          search: q,
         })
       : [];
   const connectionHealth =
@@ -153,10 +148,19 @@ export default async function QuickBooksManagePage({
             <p className="text-xs text-[var(--muted-foreground)]">available in QuickBooks</p>
             <ul className="mt-3 space-y-1 text-sm">
               <li>Already linked {row.linked.toLocaleString()}</li>
+              {row.objectType === "CUSTOMER" ? (
+                <>
+                  <li>Exact proposed matches {row.exact.toLocaleString()}</li>
+                  <li>High-confidence proposed matches {row.high.toLocaleString()}</li>
+                </>
+              ) : null}
               <li>New {row.newCount.toLocaleString()}</li>
               <li>Updated {row.updated.toLocaleString()}</li>
               <li>Possible duplicates {row.duplicates.toLocaleString()}</li>
-              <li>Conflicts {row.conflicts.toLocaleString()}</li>
+              <li>{row.objectType === "PAYMENT" ? "Payments with conflicts" : "Conflicts"} {row.conflicts.toLocaleString()}</li>
+              {row.objectType === "PAYMENT" ? (
+                <li>Conflict issues {row.conflictIssues.toLocaleString()}</li>
+              ) : null}
               <li>Skipped {row.skipped.toLocaleString()}</li>
               <li>Failed {row.failed.toLocaleString()}</li>
               <li>
@@ -167,6 +171,36 @@ export default async function QuickBooksManagePage({
           </article>
         ))}
       </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <h2 className="font-medium">Import readiness</h2>
+        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+          Typed confirmation cannot override an unresolved dependency, possible duplicate, or critical conflict.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {inbound.readiness.map((row) => (
+            <div key={row.stage} className="rounded-xl border border-[var(--border)] p-3 text-sm">
+              <p className="font-medium">Stage {row.stage} · {row.label}</p>
+              <p className={row.ready ? "mt-1 text-emerald-700" : "mt-1 text-amber-700"}>
+                {row.status.replaceAll("_", " ")}
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">{row.reason}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <details className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <summary className="cursor-pointer font-medium">Analysis definitions</summary>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          {Object.entries(ANALYSIS_STATUS_DEFINITIONS).map(([status, definition]) => (
+            <div key={status}>
+              <dt className="font-medium">{status.replaceAll("_", " ")}</dt>
+              <dd className="text-[var(--muted-foreground)]">{definition}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
 
       {inbound.plan ? (
         <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
@@ -187,6 +221,9 @@ export default async function QuickBooksManagePage({
               {[1, 2, 3, 4, 5].map((stage) => (
                 <ActionForm key={stage} action={importApprovedQuickBooksAction} className="rounded-xl border border-[var(--border)] p-4">
                   <p className="text-sm font-medium">Import approved records · Stage {stage}</p>
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    {inbound.readiness.find((row) => row.stage === stage)?.status.replaceAll("_", " ")}
+                  </p>
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                     Type {IMPORT_CONFIRMATION} to confirm. There is no import-everything button.
                   </p>
@@ -194,8 +231,19 @@ export default async function QuickBooksManagePage({
                   {inbound.latestImport?.status === "PAUSED" && inbound.latestImport.objectType === `STAGE_${stage}` ? (
                     <input type="hidden" name="resumeRunId" value={inbound.latestImport.id} />
                   ) : null}
-                  <Input name="confirm" className="mt-3" placeholder={IMPORT_CONFIRMATION} autoComplete="off" />
-                  <Button type="submit" size="sm" className="mt-3">
+                  <Input
+                    name="confirm"
+                    className="mt-3"
+                    placeholder={IMPORT_CONFIRMATION}
+                    autoComplete="off"
+                    disabled={!inbound.readiness.find((row) => row.stage === stage)?.ready}
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="mt-3"
+                    disabled={!inbound.readiness.find((row) => row.stage === stage)?.ready}
+                  >
                     Import Stage {stage}
                   </Button>
                 </ActionForm>
@@ -214,17 +262,73 @@ export default async function QuickBooksManagePage({
           <h2 className="font-medium">
             {view === "duplicates" ? "Possible duplicates" : view === "conflicts" ? "Conflicts" : "Match review"}
           </h2>
+          <form method="get" className="mt-4 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="view" value={view} />
+            <Input
+              name="q"
+              defaultValue={q}
+              placeholder="Search name, phone, email, or address"
+              className="w-full sm:w-80"
+            />
+            <Button type="submit" size="sm" variant="outline">Search</Button>
+          </form>
+          {view === "review" ? (
+            <nav className="mt-3 flex flex-wrap gap-2 text-xs">
+              {[
+                ["", "All"],
+                ["exact", "Exact Match"],
+                ["high", "High Confidence"],
+                ["possible", "Possible Match"],
+                ["new", "New"],
+                ["conflict", "Conflict"],
+              ].map(([value, label]) => (
+                <Link
+                  key={label}
+                  href={`/settings/quickbooks/manage?view=review${value ? `&filter=${value}` : ""}`}
+                  className={cn(
+                    "rounded-full border px-3 py-1",
+                    (filter || "") === value ? "border-[var(--cy-orange)] text-[var(--cy-orange)]" : "border-[var(--border)]"
+                  )}
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          ) : null}
           {reviews.length === 0 ? (
             <p className="mt-3 text-sm text-[var(--muted-foreground)]">Nothing in this queue.</p>
           ) : (
-            <ul className="mt-4 divide-y divide-[var(--border)]">
-              {reviews.map((row) => (
+            <div className="mt-4 space-y-6">
+              {Object.entries(groupReviews(reviews)).map(([objectType, grouped]) => (
+                <div key={objectType}>
+                  {view === "conflicts" ? (
+                    <h3 className="border-b border-[var(--border)] pb-2 text-sm font-semibold">
+                      {objectType.replaceAll("_", " ")} · {grouped.length}
+                    </h3>
+                  ) : null}
+                  <ul className="divide-y divide-[var(--border)]">
+                    {grouped.map((row) => (
                 <li key={row.id} className="py-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">
                         {row.displayName} · {row.objectType}
                       </p>
+                      {row.matchedFields.length ? (
+                        <p className="mt-1 text-xs text-emerald-700">
+                          Matched: {row.matchedFields.join(", ")}
+                        </p>
+                      ) : null}
+                      {row.differingFields.length ? (
+                        <p className="mt-1 text-xs text-amber-700">
+                          Different: {row.differingFields.join(", ")}
+                        </p>
+                      ) : null}
+                      {row.conflictReasons.length ? (
+                        <ul className="mt-2 list-disc pl-4 text-xs text-rose-700">
+                          {row.conflictReasons.map((reason) => <li key={reason}>{reason}</li>)}
+                        </ul>
+                      ) : null}
                       <p className="text-sm text-[var(--muted-foreground)]">{row.reason}</p>
                       <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                         QuickBooks {row.quickbooksId} · {row.confidence} · {row.status}
@@ -232,6 +336,22 @@ export default async function QuickBooksManagePage({
                     </div>
                     <StatusBadge status={row.confidence === "POSSIBLE" ? "NEEDS_REVIEW" : row.status} />
                   </div>
+                  {row.objectType === "CUSTOMER" ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <CustomerSide title="QuickBooks" values={row.qbo} differing={row.differingFields} />
+                      <CustomerSide
+                        title="ContractorYou"
+                        values={row.contractorYou || {
+                          name: "No candidate",
+                          company: null,
+                          phone: null,
+                          email: null,
+                          serviceAddress: null,
+                        }}
+                        differing={row.differingFields}
+                      />
+                    </div>
+                  ) : null}
                   {canManage && row.objectType === "CUSTOMER" ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2">
@@ -264,8 +384,11 @@ export default async function QuickBooksManagePage({
                     </div>
                   ) : null}
                 </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </section>
       ) : null}
@@ -391,6 +514,54 @@ function Fact({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-[var(--muted-foreground)]">{label}</dt>
       <dd className="font-medium">{value}</dd>
+    </div>
+  );
+}
+
+type ReviewRow = Awaited<ReturnType<typeof loadQuickBooksReviewRows>>[number];
+
+function groupReviews(rows: ReviewRow[]) {
+  return rows.reduce<Record<string, ReviewRow[]>>((groups, row) => {
+    (groups[row.objectType] ??= []).push(row);
+    return groups;
+  }, {});
+}
+
+function CustomerSide({
+  title,
+  values,
+  differing,
+}: {
+  title: string;
+  values: {
+    name: string;
+    company?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    billingAddress?: string | null;
+    serviceAddress?: string | null;
+  };
+  differing: string[];
+}) {
+  const fields = [
+    ["Name", values.name, differing.some((field) => field.includes("name"))],
+    ["Company", values.company, differing.includes("company")],
+    ["Phone", values.phone, differing.includes("phone")],
+    ["Email", values.email, differing.includes("email")],
+    ["Billing address", values.billingAddress, differing.includes("billing address")],
+    ["Service/property address", values.serviceAddress, differing.includes("service address")],
+  ] as const;
+  return (
+    <div className="rounded-xl border border-[var(--border)] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{title}</p>
+      <dl className="mt-2 space-y-1 text-sm">
+        {fields.map(([label, value, different]) => (
+          <div key={label} className={different ? "rounded bg-amber-50 px-1 text-amber-950" : ""}>
+            <dt className="inline text-[var(--muted-foreground)]">{label}: </dt>
+            <dd className="inline">{value || "—"}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

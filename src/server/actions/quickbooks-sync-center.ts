@@ -13,6 +13,7 @@ import { applyQuickBooksReviewDecision, type ReviewDecision } from "@/lib/quickb
 import { QUICKBOOKS_WRITEBACK_DISABLED_MESSAGE } from "@/lib/quickbooks/writeback";
 import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
 import type { AnalysisProgress } from "@/lib/quickbooks/analysis";
+import { assertQuickBooksImportStageReady } from "@/lib/quickbooks/import-readiness";
 
 export type AnalyzeQuickBooksState =
   | {
@@ -101,6 +102,10 @@ export async function importApprovedQuickBooksAction(
     const confirmation = String(formData?.get("confirm") || "");
     const stage = Number(formData?.get("stage") || "0");
     const resumeRunId = String(formData?.get("resumeRunId") || "") || null;
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const readiness = await assertQuickBooksImportStageReady(prisma, active.scope, stage);
+    if (!readiness.ok) return readiness;
     const result = await importApprovedQuickBooksRecords({
       prisma,
       companyId: ctx.company.id,

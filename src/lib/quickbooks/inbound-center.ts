@@ -8,9 +8,10 @@ import { mappingScopeWhere, type QuickBooksScope } from "@/lib/quickbooks/owners
 import { INBOUND_LABELS, INBOUND_OBJECT_TYPES, type InboundObjectType } from "@/lib/quickbooks/inbound-types";
 import { QUICKBOOKS_WRITEBACK_ENABLED } from "@/lib/quickbooks/writeback";
 import type { ImportPlan } from "@/lib/quickbooks/analysis";
+import { quickBooksImportReadiness } from "@/lib/quickbooks/import-readiness";
 
 export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBooksScope) {
-  const [connection, settings, center, preview, latestAnalysis, latestImport, reviews, runs, mappingCounts] =
+  const [connection, settings, center, preview, latestAnalysis, latestImport, reviews, runs, mappingCounts, readiness] =
     await Promise.all([
       getCompanyConnection(scope.companyId, QUICKBOOKS_PROVIDER_KEY),
       getQuickBooksSettings(scope.companyId),
@@ -30,7 +31,12 @@ export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBo
       }),
       prisma.quickBooksImportReview.groupBy({
         by: ["objectType", "confidence", "status"],
-        where: { companyId: scope.companyId, environment: scope.environment, realmId: scope.realmId },
+        where: {
+          companyId: scope.companyId,
+          environment: scope.environment,
+          realmId: scope.realmId,
+          status: { in: ["OPEN", "READY", "APPROVED", "FAILED"] },
+        },
         _count: { _all: true },
       }),
       prisma.quickBooksSyncRun.findMany({
@@ -54,6 +60,7 @@ export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBo
           }),
         ] as const)
       ),
+      quickBooksImportReadiness(prisma, scope),
     ]);
 
   const linked = Object.fromEntries(mappingCounts) as Record<InboundObjectType, number>;
@@ -76,13 +83,18 @@ export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBo
         .filter((row) => (confidence ? row.confidence === confidence : true) && (status ? row.status === status : true))
         .reduce((sum, row) => sum + row._count._all, 0);
     const analysisRow = latestAnalysis?.categories.find((row) => row.objectType === objectType);
+    const details =
+      analysisRow?.details && typeof analysisRow.details === "object" && !Array.isArray(analysisRow.details)
+        ? (analysisRow.details as Record<string, number>)
+        : {};
     return {
       available: qboTotals[objectType],
       linked: linked[objectType] ?? 0,
       newCount: analysisRow?.newCount ?? count("NONE", "READY") + count("NONE", "APPROVED"),
       updated: analysisRow?.updatedCount ?? 0,
-      duplicates: count("POSSIBLE") || analysisRow?.duplicateCount || 0,
+      duplicates: count("POSSIBLE", "OPEN") || analysisRow?.duplicateCount || 0,
       conflicts: analysisRow?.conflictCount ?? count(undefined, "OPEN"),
+      conflictIssues: Number(details.conflictIssues ?? analysisRow?.conflictCount ?? 0),
       skipped: analysisRow?.skippedCount ?? count(undefined, "IGNORED"),
       failed: analysisRow?.failedCount ?? count(undefined, "FAILED"),
       lastSynced: analysisRow?.lastSyncedAt ?? latestImport?.completedAt ?? null,
@@ -90,6 +102,7 @@ export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBo
       high: count("HIGH"),
       possible: count("POSSIBLE"),
       none: count("NONE"),
+      details,
     };
   };
 
@@ -103,6 +116,7 @@ export async function loadInboundSyncCenter(prisma: PrismaClient, scope: QuickBo
     latestImport,
     plan: (latestAnalysis?.plan as ImportPlan | null) ?? null,
     runs,
+    readiness,
     writeBackEnabled: QUICKBOOKS_WRITEBACK_ENABLED && settings.writeBackEnabled,
     categories: INBOUND_OBJECT_TYPES.map((objectType) => ({
       objectType,

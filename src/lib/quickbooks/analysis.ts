@@ -16,6 +16,12 @@ import {
   readOnlyQuickBooksTransport,
   type QboAddress,
 } from "@/lib/quickbooks/read-only";
+import {
+  customerFieldComparison,
+  invoiceDuplicateCandidate,
+  isLinkedCustomerChanged,
+  paymentConflictReasons,
+} from "@/lib/quickbooks/analysis-classification";
 
 const PAGE = 50;
 const BUDGET_MS = 8_000;
@@ -71,10 +77,12 @@ type QboItem = {
 type QboInvoice = {
   Id?: string;
   DocNumber?: string;
+  TxnDate?: string;
   Balance?: number;
   TotalAmt?: number;
   PrivateNote?: string;
   CustomerRef?: { value?: string };
+  MetaData?: { LastUpdatedTime?: string };
 };
 
 type QboPayment = {
@@ -115,6 +123,7 @@ export type ImportPlan = {
       possible: number;
       none: number;
       newCount: number;
+      updatedCount: number;
       missingRelationships: number;
       skipped: number;
       details: Record<string, number>;
@@ -139,6 +148,7 @@ function emptyCategory() {
     possible: 0,
     none: 0,
     newCount: 0,
+    updatedCount: 0,
     missingRelationships: 0,
     skipped: 0,
     details: {} as Record<string, number>,
@@ -226,6 +236,7 @@ export async function runQuickBooksImportAnalysis(input: {
         where: { id: input.resumeRunId, companyId: input.companyId, type: "ANALYSIS" },
       })
     : null;
+  const isNewRun = !run;
   if (!run) {
     run = await prisma.quickBooksSyncRun.create({
       data: {
@@ -243,6 +254,17 @@ export async function runQuickBooksImportAnalysis(input: {
     await prisma.quickBooksSyncRun.update({
       where: { id: run.id },
       data: { status: "RUNNING", errorMessage: null, writeBackAttempted: false },
+    });
+  }
+  if (isNewRun) {
+    await prisma.quickBooksImportReview.updateMany({
+      where: {
+        companyId: input.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        status: { in: ["OPEN", "READY", "FAILED"] },
+      },
+      data: { status: "STALE" },
     });
   }
 
@@ -313,6 +335,7 @@ export async function runQuickBooksImportAnalysis(input: {
       sourceSystem: true,
       externalId: true,
       quickbooksCustomerId: true,
+      lastSyncedAt: true,
       properties: { select: { address: true, city: true, zip: true } },
     },
   });
@@ -329,6 +352,80 @@ export async function runQuickBooksImportAnalysis(input: {
     customerMaps.map((row) => ({ customerId: row.internalId, quickbooksId: row.quickbooksId }))
   );
   const mappedCustomerByQbo = new Map(customerMaps.map((row) => [row.quickbooksId, row.internalId]));
+  const customerById = new Map(existingCustomers.map((row) => [row.id, row]));
+  const priorCustomerReviews = await prisma.quickBooksImportReview.findMany({
+    where: {
+      companyId: input.companyId,
+      environment: scope.environment,
+      realmId: scope.realmId,
+      objectType: "CUSTOMER",
+      runId: run.id,
+      status: { in: ["OPEN", "READY", "APPROVED"] },
+    },
+    select: { quickbooksId: true, proposedInternalId: true, confidence: true, proposedAction: true },
+  });
+  const customerResolutionByQbo = new Map<
+    string,
+    { resolved: boolean; customerId: string | null; reason: string }
+  >(
+    priorCustomerReviews.map((row) => [
+      row.quickbooksId,
+      {
+        resolved:
+          (row.proposedAction === "LINK" && Boolean(row.proposedInternalId) && row.confidence !== "POSSIBLE") ||
+          (row.proposedAction === "CREATE" && row.confidence === "NONE"),
+        customerId: row.proposedInternalId,
+        reason: row.confidence,
+      },
+    ])
+  );
+  for (const [quickbooksId, customerId] of mappedCustomerByQbo) {
+    customerResolutionByQbo.set(quickbooksId, { resolved: true, customerId, reason: "ALREADY_LINKED" });
+  }
+  const localInvoices = await prisma.invoice.findMany({
+    where: { companyId: input.companyId },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      issueDate: true,
+      totalCents: true,
+      customerId: true,
+      externalId: true,
+      quickbooksInvoiceId: true,
+      lastSyncedAt: true,
+    },
+  });
+  const invoiceMappings = await prisma.quickBooksMapping.findMany({
+    where: { ...mappingScopeWhere(scope), entityType: "INVOICE" },
+    select: { internalId: true, quickbooksId: true },
+  });
+  const invoiceByQbo = new Map(invoiceMappings.map((row) => [row.quickbooksId, row.internalId]));
+  const priorInvoiceReviews = await prisma.quickBooksImportReview.findMany({
+    where: {
+      companyId: input.companyId,
+      environment: scope.environment,
+      realmId: scope.realmId,
+      objectType: "INVOICE",
+      runId: run.id,
+      status: { in: ["OPEN", "READY", "APPROVED"] },
+    },
+    select: { quickbooksId: true, proposedInternalId: true, proposedAction: true, confidence: true },
+  });
+  const invoiceResolutionByQbo = new Map(
+    priorInvoiceReviews.map((row) => [
+      row.quickbooksId,
+      {
+        resolved:
+          row.confidence !== "CONFLICT" &&
+          row.confidence !== "POSSIBLE" &&
+          (row.proposedAction === "CREATE" || row.proposedAction === "LINK"),
+        invoiceId: row.proposedInternalId,
+      },
+    ])
+  );
+  for (const [quickbooksId, invoiceId] of invoiceByQbo) {
+    invoiceResolutionByQbo.set(quickbooksId, { resolved: true, invoiceId });
+  }
 
   try {
     while (!checkpoint.finished && Date.now() - started < BUDGET_MS) {
@@ -353,12 +450,42 @@ export async function runQuickBooksImportAnalysis(input: {
             billAddr: row.BillAddr,
             shipAddr: row.ShipAddr,
           }, mappedCustomerByQbo.get(row.Id));
-          bumpConfidence(plan, "CUSTOMER", match.confidence);
-          if (match.confidence === "NONE") plan.CUSTOMER.newCount += 1;
-          if (match.confidence === "POSSIBLE") {
-            plan.CUSTOMER.possible += 0;
-            conflicts += 1;
+          const linkedCustomerId = mappedCustomerByQbo.get(row.Id);
+          const candidate = match.customerId ? customerById.get(match.customerId) : null;
+          const comparison = customerFieldComparison(
+            {
+              displayName: row.DisplayName,
+              givenName: row.GivenName,
+              familyName: row.FamilyName,
+              companyName: row.CompanyName,
+              email: row.PrimaryEmailAddr?.Address,
+              phone: row.PrimaryPhone?.FreeFormNumber,
+              billingAddress: formatQboAddress(row.BillAddr),
+              serviceAddress: formatQboAddress(row.ShipAddr),
+            },
+            candidate
+          );
+          if (linkedCustomerId) {
+            if (
+              isLinkedCustomerChanged(
+                comparison,
+                row.MetaData?.LastUpdatedTime,
+                customerById.get(linkedCustomerId)?.lastSyncedAt
+              )
+            ) {
+              plan.CUSTOMER.updatedCount += 1;
+            }
+          } else {
+            bumpConfidence(plan, "CUSTOMER", match.confidence);
+            if (match.confidence === "NONE") plan.CUSTOMER.newCount += 1;
           }
+          customerResolutionByQbo.set(row.Id, {
+            resolved:
+              (match.proposedAction === "LINK" && Boolean(match.customerId) && match.confidence !== "POSSIBLE") ||
+              (match.proposedAction === "CREATE" && match.confidence === "NONE"),
+            customerId: match.customerId,
+            reason: match.confidence,
+          });
           await upsertReview(prisma, {
             companyId: input.companyId,
             scope,
@@ -371,7 +498,10 @@ export async function runQuickBooksImportAnalysis(input: {
             proposedAction: match.proposedAction,
             reason: match.reason,
             payload: row,
-            matchSignals: match.signals,
+            matchSignals: {
+              matched: [...new Set([...match.signals, ...comparison.matched])],
+              differing: comparison.differing,
+            },
           });
         }
         if (page.rows.length) checkpoint.customerStart += page.rows.length;
@@ -439,43 +569,91 @@ export async function runQuickBooksImportAnalysis(input: {
           break;
         }
         if (!page.rows.length) checkpoint.invoiceStart = 0;
-        const invoiceMaps = await prisma.quickBooksMapping.findMany({
-          where: { ...mappingScopeWhere(scope), entityType: "INVOICE" },
-          select: { quickbooksId: true },
-        });
-        const knownInvoices = new Set(invoiceMaps.map((row) => row.quickbooksId));
         for (const row of page.rows) {
           if (!row.Id) continue;
           examined += 1;
-          const linkedInvoice = knownInvoices.has(row.Id);
-          const customerFound = Boolean(row.CustomerRef?.value && mappedCustomerByQbo.has(row.CustomerRef.value));
-          if (linkedInvoice) plan.INVOICE.details.alreadyImported = (plan.INVOICE.details.alreadyImported ?? 0) + 1;
-          else plan.INVOICE.newCount += 1;
-          if (customerFound) plan.INVOICE.details.customerFound = (plan.INVOICE.details.customerFound ?? 0) + 1;
-          else {
+          const linkedInvoiceId =
+            invoiceByQbo.get(row.Id) ||
+            localInvoices.find((invoice) => invoice.quickbooksInvoiceId === row.Id || invoice.externalId === row.Id)?.id;
+          const customerResolution = row.CustomerRef?.value
+            ? customerResolutionByQbo.get(row.CustomerRef.value)
+            : null;
+          const customerResolved = Boolean(customerResolution?.resolved);
+          const duplicate = linkedInvoiceId
+            ? null
+            : invoiceDuplicateCandidate(
+                {
+                  invoiceNumber: row.DocNumber,
+                  date: row.TxnDate,
+                  totalCents: Math.round((row.TotalAmt ?? 0) * 100),
+                  resolvedCustomerId: customerResolution?.customerId,
+                },
+                localInvoices
+              );
+
+          let confidence = "NONE";
+          let proposedAction = "CREATE";
+          let proposedInternalId: string | null = null;
+          let reason = "No existing ContractorYou invoice or external-ID mapping exists.";
+          let status = "NEW";
+
+          if (linkedInvoiceId) {
+            status = "ALREADY_LINKED";
+            confidence = "EXACT";
+            proposedAction = "LINK";
+            proposedInternalId = linkedInvoiceId;
+            reason = "QuickBooks external ID is already linked to this ContractorYou invoice.";
+            plan.INVOICE.details.alreadyImported = (plan.INVOICE.details.alreadyImported ?? 0) + 1;
+            const local = localInvoices.find((invoice) => invoice.id === linkedInvoiceId);
+            const changed = Boolean(
+              local &&
+                (local.totalCents !== Math.round((row.TotalAmt ?? 0) * 100) ||
+                  local.invoiceNumber !== (row.DocNumber || local.invoiceNumber) ||
+                  (row.TxnDate && local.issueDate.toISOString().slice(0, 10) !== row.TxnDate))
+            );
+            if (changed) plan.INVOICE.updatedCount += 1;
+          } else if (duplicate) {
+            status = "POSSIBLE_DUPLICATE";
+            confidence = "POSSIBLE";
+            proposedAction = "REVIEW";
+            proposedInternalId = duplicate.invoiceId;
+            reason = `Possible duplicate matched by ${duplicate.signals.join(", ")}.`;
+            plan.INVOICE.possible += 1;
+          } else if (!customerResolved) {
+            status = "CONFLICT";
+            confidence = "CONFLICT";
+            proposedAction = "REVIEW";
+            reason = "Invoice customer is not resolved. Review the customer match before importing this invoice.";
             plan.INVOICE.missingRelationships += 1;
             plan.INVOICE.details.customerMissing = (plan.INVOICE.details.customerMissing ?? 0) + 1;
+            conflicts += 1;
+          } else {
+            plan.INVOICE.newCount += 1;
           }
+          if (customerResolved) plan.INVOICE.details.customerResolved = (plan.INVOICE.details.customerResolved ?? 0) + 1;
           if ((row.Balance ?? 0) > 0) plan.INVOICE.details.open = (plan.INVOICE.details.open ?? 0) + 1;
           else plan.INVOICE.details.paid = (plan.INVOICE.details.paid ?? 0) + 1;
           if (/void/i.test(row.PrivateNote || "") || /void/i.test(row.DocNumber || "")) {
             plan.INVOICE.details.voided = (plan.INVOICE.details.voided ?? 0) + 1;
           }
-          if (!linkedInvoice && !customerFound) {
-            await upsertReview(prisma, {
-              companyId: input.companyId,
-              scope,
-              runId: run.id,
-              objectType: "INVOICE",
-              quickbooksId: row.Id,
-              displayName: row.DocNumber || row.Id,
-              confidence: "POSSIBLE",
-              proposedAction: "REVIEW",
-              reason: "Invoice customer is not linked in ContractorYou yet.",
-              payload: row,
-            });
-            conflicts += 1;
-          }
+          invoiceResolutionByQbo.set(row.Id, {
+            resolved: status === "NEW" || status === "ALREADY_LINKED",
+            invoiceId: linkedInvoiceId || null,
+          });
+          await upsertReview(prisma, {
+            companyId: input.companyId,
+            scope,
+            runId: run.id,
+            objectType: "INVOICE",
+            quickbooksId: row.Id,
+            displayName: row.DocNumber || row.Id,
+            confidence,
+            proposedInternalId,
+            proposedAction,
+            reason,
+            payload: row,
+            matchSignals: { status, customerResolution: customerResolution?.reason || "UNRESOLVED" },
+          });
         }
         if (page.rows.length) checkpoint.invoiceStart += page.rows.length;
         if (page.rows.length < PAGE) checkpoint.invoiceStart = 0;
@@ -494,28 +672,51 @@ export async function runQuickBooksImportAnalysis(input: {
           select: { quickbooksId: true },
         });
         const knownPayments = new Set(paymentMaps.map((row) => row.quickbooksId));
-        const invoiceMaps = await prisma.quickBooksMapping.findMany({
-          where: { ...mappingScopeWhere(scope), entityType: "INVOICE" },
-          select: { quickbooksId: true },
-        });
-        const knownInvoices = new Set(invoiceMaps.map((row) => row.quickbooksId));
         for (const row of page.rows) {
           if (!row.Id) continue;
           examined += 1;
           const linkedInvoiceId = row.Line?.flatMap((line) => line.LinkedTxn || []).find((txn) => txn.TxnType === "Invoice")?.TxnId;
-          if (knownPayments.has(row.Id)) plan.PAYMENT.details.alreadyImported = (plan.PAYMENT.details.alreadyImported ?? 0) + 1;
-          else plan.PAYMENT.newCount += 1;
-          if (linkedInvoiceId && knownInvoices.has(linkedInvoiceId)) plan.PAYMENT.details.invoiceFound = (plan.PAYMENT.details.invoiceFound ?? 0) + 1;
-          else {
+          const invoiceResolved = Boolean(linkedInvoiceId && invoiceResolutionByQbo.get(linkedInvoiceId)?.resolved);
+          const customerResolved = Boolean(
+            row.CustomerRef?.value && customerResolutionByQbo.get(row.CustomerRef.value)?.resolved
+          );
+          const linked = knownPayments.has(row.Id);
+          const reasons = linked ? [] : paymentConflictReasons({ invoiceResolved, customerResolved });
+          if (linked) {
+            plan.PAYMENT.details.alreadyImported = (plan.PAYMENT.details.alreadyImported ?? 0) + 1;
+          } else if (reasons.length) {
             plan.PAYMENT.missingRelationships += 1;
-            plan.PAYMENT.details.invoiceMissing = (plan.PAYMENT.details.invoiceMissing ?? 0) + 1;
-          }
-          if (row.CustomerRef?.value && mappedCustomerByQbo.has(row.CustomerRef.value)) {
-            plan.PAYMENT.details.customerFound = (plan.PAYMENT.details.customerFound ?? 0) + 1;
+            plan.PAYMENT.details.conflictIssues =
+              (plan.PAYMENT.details.conflictIssues ?? 0) + reasons.length;
+            if (!invoiceResolved) {
+              plan.PAYMENT.details.invoiceMissing = (plan.PAYMENT.details.invoiceMissing ?? 0) + 1;
+            }
+            if (!customerResolved) {
+              plan.PAYMENT.details.customerMissing = (plan.PAYMENT.details.customerMissing ?? 0) + 1;
+            }
+            conflicts += 1;
           } else {
-            plan.PAYMENT.details.customerMissing = (plan.PAYMENT.details.customerMissing ?? 0) + 1;
-            plan.PAYMENT.missingRelationships += 1;
+            plan.PAYMENT.newCount += 1;
+            plan.PAYMENT.details.invoiceResolved = (plan.PAYMENT.details.invoiceResolved ?? 0) + 1;
+            plan.PAYMENT.details.customerResolved = (plan.PAYMENT.details.customerResolved ?? 0) + 1;
           }
+          await upsertReview(prisma, {
+            companyId: input.companyId,
+            scope,
+            runId: run.id,
+            objectType: "PAYMENT",
+            quickbooksId: row.Id,
+            displayName: `Payment ${row.Id}`,
+            confidence: linked ? "EXACT" : reasons.length ? "CONFLICT" : "NONE",
+            proposedAction: linked ? "LINK" : reasons.length ? "REVIEW" : "CREATE",
+            reason: linked
+              ? "QuickBooks payment external ID is already linked."
+              : reasons.length
+                ? reasons.join("; ")
+                : "Invoice and customer relationships are resolved; no existing payment mapping exists.",
+            payload: row,
+            matchSignals: { conflictReasons: reasons, linkedInvoiceId: linkedInvoiceId || null },
+          });
         }
         if (page.rows.length) checkpoint.paymentStart += page.rows.length;
         if (page.rows.length < PAGE) checkpoint.paymentStart = 0;
@@ -663,6 +864,19 @@ function title(objectType: InboundObjectType) {
   return objectType[0] + objectType.slice(1).toLowerCase();
 }
 
+function formatQboAddress(address?: QboAddress | null) {
+  if (!address) return null;
+  return [
+    address.Line1,
+    address.Line2,
+    address.City,
+    address.CountrySubDivisionCode,
+    address.PostalCode,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function emptyPlan(counts: Record<InboundObjectType, number>, linked: Record<InboundObjectType, number>) {
   const plan = {} as Record<InboundObjectType, ReturnType<typeof emptyCategory>>;
   for (const objectType of INBOUND_OBJECT_TYPES) {
@@ -695,6 +909,7 @@ function restorePlan(
     plan[objectType] = {
       ...plan[objectType],
       newCount: saved.newCount,
+      updatedCount: saved.updatedCount,
       possible: saved.duplicateCount,
       missingRelationships: saved.conflictCount,
       skipped: saved.skippedCount,
@@ -784,7 +999,7 @@ async function persistCategoryRows(
         availableInQbo: counts[objectType],
         alreadyLinked: linked[objectType],
         newCount: row.newCount,
-        updatedCount: row.high + row.exact,
+        updatedCount: row.updatedCount,
         duplicateCount: row.possible,
         conflictCount: row.missingRelationships,
         skippedCount: row.skipped,
@@ -796,13 +1011,14 @@ async function persistCategoryRows(
           possible: row.possible,
           none: row.none,
           missingRelationships: row.missingRelationships,
+          updatedCount: row.updatedCount,
         },
       },
       update: {
         availableInQbo: counts[objectType],
         alreadyLinked: linked[objectType],
         newCount: row.newCount,
-        updatedCount: row.high + row.exact,
+        updatedCount: row.updatedCount,
         duplicateCount: row.possible,
         conflictCount: row.missingRelationships,
         details: {
@@ -812,6 +1028,7 @@ async function persistCategoryRows(
           possible: row.possible,
           none: row.none,
           missingRelationships: row.missingRelationships,
+          updatedCount: row.updatedCount,
         },
       },
     });

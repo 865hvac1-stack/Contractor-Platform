@@ -7,6 +7,11 @@ import { IMPORT_CONFIRMATION } from "@/lib/quickbooks/inbound-types";
 import type { QboTransport } from "@/lib/quickbooks/client";
 import { analysisProgress, type AnalysisCheckpoint } from "@/lib/quickbooks/analysis";
 import type { InboundObjectType } from "@/lib/quickbooks/inbound-types";
+import {
+  customerFieldComparison,
+  invoiceDuplicateCandidate,
+  paymentConflictReasons,
+} from "@/lib/quickbooks/analysis-classification";
 
 function customers() {
   return [
@@ -145,6 +150,67 @@ describe("QuickBooks inbound safety", () => {
       totalAvailable: 31_315,
       percent: 1,
     });
+  });
+
+  it("reports customer match fields and differences explicitly", () => {
+    const comparison = customerFieldComparison(
+      {
+        givenName: "Ada",
+        familyName: "West",
+        email: "ADA@example.com",
+        phone: "865-555-0100",
+        billingAddress: "100 Main St Knoxville 37902",
+      },
+      {
+        firstName: "Ada",
+        lastName: "West",
+        email: "ada@example.com",
+        phone: "(865) 555-0100",
+        businessName: "West Heating",
+        properties: [{ address: "100 Main St", city: "Knoxville", zip: "37902" }],
+      }
+    );
+    expect(comparison.matched).toEqual(expect.arrayContaining(["first name", "last name", "email", "phone", "billing address"]));
+    expect(comparison.differing).toContain("company");
+  });
+
+  it("only marks invoices duplicate when a real candidate has corroborating fields", () => {
+    const local = [
+      {
+        id: "invoice-1",
+        invoiceNumber: "1042",
+        issueDate: new Date("2026-01-10T00:00:00Z"),
+        totalCents: 25_000,
+        customerId: "customer-1",
+      },
+    ];
+    expect(
+      invoiceDuplicateCandidate(
+        {
+          invoiceNumber: "1042",
+          date: "2026-01-10",
+          totalCents: 25_000,
+          resolvedCustomerId: "customer-1",
+        },
+        local
+      )
+    ).toMatchObject({ invoiceId: "invoice-1" });
+    expect(
+      invoiceDuplicateCandidate(
+        { invoiceNumber: "9999", date: "2026-01-10", totalCents: 25_000 },
+        local
+      )
+    ).toBeNull();
+  });
+
+  it("separates payments with conflicts from total conflict issues", () => {
+    expect(paymentConflictReasons({ invoiceResolved: false, customerResolved: false })).toEqual([
+      "Payment invoice not found",
+      "Payment customer not found",
+    ]);
+    expect(paymentConflictReasons({ invoiceResolved: true, customerResolved: false })).toEqual([
+      "Payment customer not found",
+    ]);
   });
 });
 
