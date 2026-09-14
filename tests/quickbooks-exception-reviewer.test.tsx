@@ -8,13 +8,14 @@ const resolveAction = vi.fn(async (_previous: unknown, formData: FormData) => ({
   ok: true,
   message: `Saved ${formData.get("resolution")}`,
 }));
+const skipAction = vi.fn(async () => ({ ok: true, message: "Skipped" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh }),
 }));
 vi.mock("@/server/actions/quickbooks-sync-center", () => ({
   resolveQuickBooksExceptionAction: (...args: [unknown, FormData]) => resolveAction(...args),
-  skipQuickBooksExceptionAction: vi.fn(async () => ({ ok: true, message: "Skipped" })),
+  skipQuickBooksExceptionAction: (...args: [unknown, FormData]) => skipAction(...args),
   undoLastQuickBooksExceptionAction: vi.fn(async () => ({ ok: true, message: "Undone" })),
   flagQuickBooksMergeReviewAction: vi.fn(async () => ({ ok: true, message: "Flagged" })),
 }));
@@ -74,10 +75,11 @@ describe("QuickBooks exception reviewer", () => {
     cleanup();
     refresh.mockClear();
     resolveAction.mockClear();
+    skipAction.mockClear();
   });
 
   it("shows the blocker, all properties, and side-by-side differences", () => {
-    render(<ExceptionReviewer current={current} canManage canUndo={false} />);
+    render(<ExceptionReviewer current={current} canManage canUndo={false} globalRemaining={413} />);
     expect(screen.getByText("Possible duplicate requires judgment")).toBeTruthy();
     expect(screen.getByText(/123 Main St, Knoxville/)).toBeTruthy();
     expect(screen.getByText("MATCHING PROPERTY")).toBeTruthy();
@@ -86,7 +88,7 @@ describe("QuickBooks exception reviewer", () => {
   });
 
   it("uses safe visible shortcuts and auto-advances by refreshing after save", async () => {
-    render(<ExceptionReviewer current={current} canManage canUndo={false} />);
+    render(<ExceptionReviewer current={current} canManage canUndo={false} globalRemaining={413} />);
     fireEvent.keyDown(window, { key: "1" });
     await waitFor(() => expect(resolveAction).toHaveBeenCalledTimes(1));
     const formData = resolveAction.mock.calls[0]![1];
@@ -94,5 +96,20 @@ describe("QuickBooks exception reviewer", () => {
     expect(formData.get("targetCustomerId")).toBe("customer-1");
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     expect(document.querySelector('[data-review-shortcut="merge"]')).toBeNull();
+  });
+
+  it("processes skip after a prior decision result without stale action state blocking refresh", async () => {
+    render(<ExceptionReviewer current={current} canManage canUndo={false} globalRemaining={413} />);
+    fireEvent.keyDown(window, { key: "1" });
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Skip for Later" }));
+    await waitFor(() => expect(skipAction).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not claim Stage 1 is ready when only the active filter is empty", () => {
+    render(<ExceptionReviewer current={null} canManage canUndo={false} globalRemaining={413} />);
+    expect(screen.getByText("No unresolved exceptions match this filter.")).toBeTruthy();
+    expect(screen.queryByText("All customer exceptions are resolved.")).toBeNull();
   });
 });

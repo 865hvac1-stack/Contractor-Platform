@@ -254,7 +254,7 @@ export default async function QuickBooksManagePage({
       </details>
 
       {exceptions ? (
-        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+        <section id="exception-review" className="scroll-mt-4 rounded-2xl border border-[var(--border)] bg-white p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Stage 1 exceptions</p>
@@ -269,37 +269,56 @@ export default async function QuickBooksManagePage({
               </div>
             </div>
           </div>
-          <form method="get" className="mt-5 flex flex-wrap items-end gap-2">
-            <input type="hidden" name="view" value="exceptions" />
-            <label className="text-xs text-[var(--muted-foreground)]">
-              Review by reason
-              <select name="exceptionReason" defaultValue={exceptionReason || "ALL"} className="mt-1 block h-9 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
-                <option value="ALL">All exceptions ({exceptions.remaining.toLocaleString()})</option>
-                {EXCEPTION_REASONS.map((blocker) => (
-                  <option key={blocker} value={blocker}>
-                    {blockerLabel(blocker)} ({(exceptions.blockerCounts[blocker] || 0).toLocaleString()})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-sm">
-              <input type="checkbox" name="skipped" value="1" defaultChecked={skipped === "1"} />
-              Skipped only
-            </label>
-            <Button type="submit" size="sm" variant="outline">Apply</Button>
-            {(exceptionReason || skipped) ? (
-              <Link href="/settings/quickbooks/manage?view=exceptions" className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}>Clear</Link>
-            ) : null}
-          </form>
+          <div className="mt-5">
+            <p className="text-xs font-medium text-[var(--muted-foreground)]">Review by reason</p>
+            <nav className="mt-2 flex flex-wrap gap-2" aria-label="Exception reason filters">
+              <ExceptionFilterLink
+                href="/settings/quickbooks/manage?view=exceptions#exception-review"
+                active={!exceptions.activeReason && skipped !== "1"}
+                label="All Exceptions"
+                count={exceptions.remaining}
+              />
+              {EXCEPTION_REASONS.map((blocker) => (
+                <ExceptionFilterLink
+                  key={blocker}
+                  href={`/settings/quickbooks/manage?view=exceptions&exceptionReason=${blocker}#exception-review`}
+                  active={exceptions.activeReason === blocker && skipped !== "1"}
+                  label={exceptionReasonShortLabel(blocker)}
+                  count={exceptions.blockerCounts[blocker] || 0}
+                />
+              ))}
+              <ExceptionFilterLink
+                href="/settings/quickbooks/manage?view=exceptions&skipped=1#exception-review"
+                active={skipped === "1"}
+                label="Skipped"
+                count={exceptions.skippedRemaining}
+              />
+            </nav>
+          </div>
           <p className="mt-3 text-xs text-[var(--muted-foreground)]">
             Default order: address conflicts, name conflicts, missing phone, insufficient identity, multiple candidates, then possible duplicates; highest confidence first.
           </p>
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-800">Reviewing</p>
+            <p className="mt-1 font-semibold text-sky-950">
+              {skipped === "1"
+                ? "Skipped Exceptions"
+                : exceptions.activeReason
+                  ? exceptionReasonShortLabel(exceptions.activeReason)
+                  : "All Exceptions"}
+              {" · "}{exceptions.filteredRemaining.toLocaleString()} remaining
+            </p>
+            {exceptions.filteredRemaining > 0 ? (
+              <p className="text-sm text-sky-800">Customer 1 of {exceptions.filteredRemaining.toLocaleString()}</p>
+            ) : null}
+          </div>
           <ExceptionReviewer
             current={exceptions.current}
             canManage={canManage}
             canUndo={Boolean(exceptions.latestDecision)}
-            reason={exceptionReason}
+            reason={exceptions.activeReason || undefined}
             skipped={skipped === "1"}
+            globalRemaining={exceptions.remaining}
           />
         </section>
       ) : null}
@@ -796,6 +815,43 @@ function reviewPageHref(input: Record<string, string | number | undefined>) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return `/settings/quickbooks/manage?${params.toString()}`;
+}
+
+function ExceptionFilterLink({
+  href,
+  active,
+  label,
+  count,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count: number;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        buttonVariants({ size: "sm", variant: active ? "default" : "outline" }),
+        "h-auto min-h-8 whitespace-normal py-1.5"
+      )}
+    >
+      {label} ({count.toLocaleString()})
+    </Link>
+  );
+}
+
+function exceptionReasonShortLabel(reason: string) {
+  const labels: Record<string, string> = {
+    ADDRESS_CONFLICT: "Address Conflicts",
+    NAME_CONFLICT: "Name Conflicts",
+    PHONE_MISSING: "Phone Missing",
+    OTHER: "Insufficient Identity",
+    MULTIPLE_CANDIDATES: "Multiple Candidates",
+    POSSIBLE_DUPLICATE: "Possible Duplicates",
+  };
+  return labels[reason] || blockerLabel(reason);
 }
 
 function CustomerReconciliation({

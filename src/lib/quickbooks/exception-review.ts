@@ -192,8 +192,11 @@ export async function loadQuickBooksExceptionReview(
     status: { in: UNRESOLVED },
     safeAutoApprove: false,
   } satisfies Prisma.QuickBooksImportReviewWhereInput;
-  const categoryWhere = input.reason && input.reason !== "ALL"
-    ? { autoApprovalBlocker: input.reason }
+  const activeReason = input.reason && (EXCEPTION_REASONS as readonly string[]).includes(input.reason)
+    ? input.reason
+    : null;
+  const categoryWhere = activeReason
+    ? { autoApprovalBlocker: activeReason }
     : {};
   const queueWhere = {
     ...unresolvedWhere,
@@ -201,9 +204,11 @@ export async function loadQuickBooksExceptionReview(
     ...(input.skipped ? { skippedAt: { not: null } } : {}),
   } satisfies Prisma.QuickBooksImportReviewWhereInput;
 
-  const [queue, unresolved, resolvedExceptions, blockers, latestDecision] = await Promise.all([
+  const [queue, filteredRemaining, unresolved, skippedRemaining, resolvedExceptions, blockers, latestDecision] = await Promise.all([
     prisma.quickBooksImportReview.findMany({ where: queueWhere, take: 5_000 }),
+    prisma.quickBooksImportReview.count({ where: queueWhere }),
     prisma.quickBooksImportReview.count({ where: unresolvedWhere }),
+    prisma.quickBooksImportReview.count({ where: { ...unresolvedWhere, skippedAt: { not: null } } }),
     prisma.quickBooksImportReview.count({ where: { ...base, status: { in: RESOLVED }, resolutionType: { not: null } } }),
     prisma.quickBooksImportReview.groupBy({
       by: ["autoApprovalBlocker"],
@@ -219,6 +224,7 @@ export async function loadQuickBooksExceptionReview(
   queue.sort((a, b) =>
     Number(Boolean(a.skippedAt)) - Number(Boolean(b.skippedAt)) ||
     exceptionPriority(a.autoApprovalBlocker) - exceptionPriority(b.autoApprovalBlocker) ||
+    (a.skippedAt?.getTime() ?? 0) - (b.skippedAt?.getTime() ?? 0) ||
     b.confidenceScore - a.confidenceScore ||
     a.displayName.localeCompare(b.displayName)
   );
@@ -268,6 +274,9 @@ export async function loadQuickBooksExceptionReview(
     total,
     resolved: resolvedExceptions,
     remaining: unresolved,
+    filteredRemaining,
+    skippedRemaining,
+    activeReason,
     percent: total ? Math.round((resolvedExceptions / total) * 100) : 100,
     blockerCounts: Object.fromEntries(blockers.map((row) => [row.autoApprovalBlocker || "OTHER", row._count._all])),
     latestDecision,

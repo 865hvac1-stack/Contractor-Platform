@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,12 +70,14 @@ export function ExceptionReviewer({
   canUndo,
   reason,
   skipped,
+  globalRemaining,
 }: {
   current: ExceptionItem | null;
   canManage: boolean;
   canUndo: boolean;
   reason?: string;
   skipped?: boolean;
+  globalRemaining: number;
 }) {
   const router = useRouter();
   const [decisionState, decisionAction, deciding] = useActionState(
@@ -90,13 +92,16 @@ export function ExceptionReviewer({
     undoLastQuickBooksExceptionAction,
     null as ActionResult | null
   );
-  const handled = useRef<ActionResult | null>(null);
-  const state = decisionState || skipState || undoState;
+  const previousStates = useRef<Array<ActionResult | null>>([null, null, null]);
+  const [state, setState] = useState<ActionResult | null>(null);
   useEffect(() => {
-    if (!state?.ok || handled.current === state) return;
-    handled.current = state;
-    router.refresh();
-  }, [state, router]);
+    const nextStates = [decisionState, skipState, undoState];
+    const changed = nextStates.find((result, index) => result && previousStates.current[index] !== result);
+    previousStates.current = nextStates;
+    if (!changed) return;
+    setState(changed);
+    if (changed.ok) router.refresh();
+  }, [decisionState, skipState, undoState, router]);
   useEffect(() => {
     if (!canManage || !current) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -117,11 +122,18 @@ export function ExceptionReviewer({
   }, [canManage, current]);
 
   if (!current) {
+    const filteredEmpty = globalRemaining > 0;
     return (
-      <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
-        <p className="font-semibold text-emerald-900">All customer exceptions are resolved.</p>
-        <p className="mt-1 text-sm text-emerald-800">Stage 1 is ready for final review. Nothing has been imported.</p>
-        {canUndo && canManage ? (
+      <div className={`mt-5 rounded-2xl border p-6 text-center ${filteredEmpty ? "border-slate-200 bg-slate-50" : "border-emerald-200 bg-emerald-50"}`}>
+        <p className={`font-semibold ${filteredEmpty ? "text-slate-900" : "text-emerald-900"}`}>
+          {filteredEmpty ? "No unresolved exceptions match this filter." : "All customer exceptions are resolved."}
+        </p>
+        <p className={`mt-1 text-sm ${filteredEmpty ? "text-slate-700" : "text-emerald-800"}`}>
+          {filteredEmpty
+            ? "Choose another reason or All Exceptions."
+            : "Stage 1 is ready for final review. Nothing has been imported."}
+        </p>
+        {!filteredEmpty && canUndo && canManage ? (
           <form action={undoAction} className="mt-4">
             <Button type="submit" variant="outline" disabled={undoing}>Undo Last</Button>
           </form>
@@ -312,6 +324,18 @@ function CandidateCard({
             <p className="text-xs"><span className="text-[var(--muted-foreground)]">ContractorYou:</span> {row.contractorYou || "—"}</p>
           </div>
         ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        {candidate.matchedFields.length ? (
+          <span className="rounded-full bg-emerald-100 px-2 py-1 font-medium text-emerald-800">
+            Matched: {candidate.matchedFields.join(", ")}
+          </span>
+        ) : null}
+        {candidate.differentFields.length ? (
+          <span className="rounded-full bg-amber-100 px-2 py-1 font-medium text-amber-900">
+            Different: {candidate.differentFields.join(", ")}
+          </span>
+        ) : null}
       </div>
       <div className="mt-4">
         <p className="text-xs font-semibold uppercase tracking-[0.12em]">Properties</p>
