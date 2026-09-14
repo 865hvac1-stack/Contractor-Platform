@@ -100,8 +100,13 @@ export function ExceptionReviewer({
   useEffect(() => {
     if (!canManage || !current) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, button") || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        (target instanceof HTMLElement && target.matches("input, textarea, select, button")) ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      ) return;
       const button = document.querySelector<HTMLButtonElement>(`[data-review-shortcut="${event.key.toLowerCase()}"]`);
       if (!button || button.disabled) return;
       event.preventDefault();
