@@ -13,12 +13,15 @@ import { isRunningLate, TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/money";
-import { mapsUrl } from "@/lib/tech/access";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 
 function formatWhen(value: Date | string | null) {
   if (!value) return "Not scheduled";
   return formatDateTime(value) || "Not scheduled";
+}
+
+function mapsUrl(address: string) {
+  return `https://maps.google.com/?q=${encodeURIComponent(address)}`;
 }
 
 const STATUS_OPTIONS: JobStatus[] = ["SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELED"];
