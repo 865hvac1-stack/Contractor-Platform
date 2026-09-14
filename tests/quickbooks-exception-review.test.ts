@@ -192,24 +192,62 @@ describe("QuickBooks exception review", () => {
   });
 
   it("builds a final plan whose totals reconcile", async () => {
-    const count = vi.fn()
-      .mockResolvedValueOnce(3_017)
-      .mockResolvedValueOnce(2_741)
-      .mockResolvedValueOnce(201)
-      .mockResolvedValueOnce(54)
-      .mockResolvedValueOnce(0);
+    const planRow = (index: number, status: string, proposedAction: string, proposedInternalId: string | null = null) => ({
+      id: `review-${index}`,
+      quickbooksId: `QB-${index}`,
+      status,
+      proposedAction,
+      proposedInternalId,
+      resolutionType: null,
+      payload: { Id: `QB-${index}` },
+      sourceFingerprint: null,
+      candidateFingerprint: null,
+    });
+    const reviews = [
+      ...Array.from({ length: 2_741 }, (_, index) => planRow(index, "APPROVED", "LINK", "customer-1")),
+      ...Array.from({ length: 201 }, (_, index) => planRow(2_741 + index, "APPROVED", "CREATE")),
+      ...Array.from({ length: 54 }, (_, index) => planRow(2_942 + index, "IGNORED", "IGNORE")),
+      ...Array.from({ length: 21 }, (_, index) => planRow(2_996 + index, "RESOLVED", "OTHER")),
+    ];
     const preview = await loadStageOneImportPreview(
-      { quickBooksImportReview: { count } } as never,
+      {
+        quickBooksSyncRun: {
+          findFirst: vi.fn().mockResolvedValue({
+            status: "COMPLETE",
+            writeBackAttempted: false,
+            categories: [{ availableInQbo: 3_017 }],
+          }),
+        },
+        quickBooksImportReview: { findMany: vi.fn().mockResolvedValue(reviews) },
+        quickBooksMapping: { findMany: vi.fn().mockResolvedValue([]) },
+        quickBooksReviewDecision: { findMany: vi.fn().mockResolvedValue([]) },
+        customer: {
+          findMany: vi.fn()
+            .mockResolvedValueOnce([{
+              id: "customer-1",
+              firstName: "Ada",
+              lastName: "West",
+              businessName: null,
+              phone: null,
+              email: null,
+              properties: [],
+            }])
+            .mockResolvedValueOnce([]),
+        },
+      } as never,
       scope
     );
     expect(preview).toEqual({
       total: 3_017,
+      expectedTotal: 3_017,
       link: 2_741,
       create: 201,
       ignore: 54,
       otherResolved: 21,
+      totalResolved: 3_017,
       unresolved: 0,
-      reconciles: true,
+      ready: true,
+      issues: [],
     });
   });
 
@@ -228,5 +266,39 @@ describe("QuickBooks exception review", () => {
         proposedAction: { in: ["LINK", "CREATE"] },
       }),
     });
+  });
+
+  it("blocks Stage 1 when a zero-exception plan has a missing link target", async () => {
+    const preview = await loadStageOneImportPreview({
+      quickBooksSyncRun: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: "COMPLETE",
+          writeBackAttempted: false,
+          categories: [{ availableInQbo: 1 }],
+        }),
+      },
+      quickBooksImportReview: {
+        findMany: vi.fn().mockResolvedValue([{
+          id: "review-1",
+          quickbooksId: "QB-1",
+          status: "APPROVED",
+          proposedAction: "LINK",
+          proposedInternalId: "missing-customer",
+          resolutionType: "LINK",
+          payload: { Id: "QB-1" },
+          sourceFingerprint: null,
+          candidateFingerprint: null,
+        }]),
+      },
+      quickBooksMapping: { findMany: vi.fn().mockResolvedValue([]) },
+      quickBooksReviewDecision: { findMany: vi.fn().mockResolvedValue([{ reviewId: "review-1" }]) },
+      customer: { findMany: vi.fn().mockResolvedValue([]) },
+    } as never, scope);
+    expect(preview.unresolved).toBe(0);
+    expect(preview.ready).toBe(false);
+    expect(preview.issues).toEqual(expect.arrayContaining([
+      expect.stringContaining("missing ContractorYou customer"),
+      expect.stringContaining("stale QuickBooks fingerprints"),
+    ]));
   });
 });

@@ -18,12 +18,17 @@ function db(input: {
       findFirst: vi.fn().mockResolvedValue({
         status: input.analysisStatus ?? "COMPLETE",
         writeBackAttempted: false,
+        categories: [{ availableInQbo: 0 }],
       }),
       findMany: vi.fn().mockResolvedValue((input.completed ?? []).map((objectType) => ({ objectType }))),
     },
     quickBooksImportReview: {
       groupBy: vi.fn().mockResolvedValue(input.reviews ?? []),
+      findMany: vi.fn().mockResolvedValue([]),
     },
+    quickBooksMapping: { findMany: vi.fn().mockResolvedValue([]) },
+    quickBooksReviewDecision: { findMany: vi.fn().mockResolvedValue([]) },
+    customer: { findMany: vi.fn().mockResolvedValue([]) },
   };
 }
 

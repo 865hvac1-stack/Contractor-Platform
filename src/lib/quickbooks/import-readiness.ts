@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { QuickBooksScope } from "@/lib/quickbooks/ownership";
+import { validateStageOneImportPlan } from "@/lib/quickbooks/exception-review";
 
 export type ImportStageReadiness = {
   stage: number;
@@ -60,14 +61,36 @@ export async function quickBooksImportReadiness(
   const payments = count(["PAYMENT"]);
   const purchases = count(["PURCHASE"]);
 
-  const stage1Ready = analysisReady && customers === 0;
+  let stageOneIntegrity: Awaited<ReturnType<typeof validateStageOneImportPlan>> | null = null;
+  let stageOneIntegrityError = false;
+  if (analysisReady && customers === 0) {
+    try {
+      stageOneIntegrity = await validateStageOneImportPlan(prisma, scope);
+    } catch (error) {
+      stageOneIntegrityError = true;
+      console.error("[quickbooks-stage-one-integrity] validation failed", error);
+    }
+  }
+  const stage1Ready = analysisReady && customers === 0 && stageOneIntegrity?.ready === true;
   const stage2Ready = analysisReady && completed.has("STAGE_1") && mappings === 0;
   const stage3Ready = analysisReady && completed.has("STAGE_2") && invoices === 0;
   const stage4Ready = analysisReady && completed.has("STAGE_3") && payments === 0;
   const stage5Ready = analysisReady && completed.has("STAGE_4") && purchases === 0;
 
   return [
-    readiness(1, "Customers", stage1Ready, analysisReady, customers, "possible customer matches require review"),
+    stage1Ready
+      ? readiness(1, "Customers", true, analysisReady, customers, "")
+      : {
+          ...readiness(1, "Customers", false, analysisReady, customers, "possible customer matches require review"),
+          ...(analysisReady && customers === 0
+            ? {
+                status: "NOT_READY" as const,
+                reason: stageOneIntegrityError
+                  ? "Stage 1 plan integrity could not be verified. Import remains blocked."
+                  : stageOneIntegrity?.issues.join(" ") || "Stage 1 plan integrity is incomplete.",
+              }
+            : {}),
+        },
     readiness(
       2,
       "Accounting mappings",

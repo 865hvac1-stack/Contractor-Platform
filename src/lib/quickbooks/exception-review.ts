@@ -596,27 +596,235 @@ export async function flagQuickBooksMergeReview(input: {
   return { ok: true as const, message: "Flagged for separate merge review. No customers were merged." };
 }
 
-export async function loadStageOneImportPreview(prisma: PrismaClient, scope: QuickBooksScope) {
+export type StageOnePlanIntegrity = {
+  total: number;
+  expectedTotal: number | null;
+  link: number;
+  create: number;
+  ignore: number;
+  otherResolved: number;
+  totalResolved: number;
+  unresolved: number;
+  ready: boolean;
+  issues: string[];
+};
+
+export async function validateStageOneImportPlan(
+  prisma: PrismaClient,
+  scope: QuickBooksScope
+): Promise<StageOnePlanIntegrity> {
   const base = {
     companyId: scope.companyId,
     environment: scope.environment,
     realmId: scope.realmId,
     objectType: "CUSTOMER",
   };
-  const [total, link, create, ignore, unresolved] = await Promise.all([
-    prisma.quickBooksImportReview.count({ where: base }),
-    prisma.quickBooksImportReview.count({ where: { ...base, status: "APPROVED", proposedAction: "LINK" } }),
-    prisma.quickBooksImportReview.count({ where: { ...base, status: "APPROVED", proposedAction: "CREATE" } }),
-    prisma.quickBooksImportReview.count({ where: { ...base, status: "IGNORED", proposedAction: { in: ["IGNORE", "MARK_INACTIVE"] } } }),
-    prisma.quickBooksImportReview.count({ where: { ...base, status: { in: UNRESOLVED } } }),
+  const [analysis, reviews, mappings, activeDecisions] = await Promise.all([
+    prisma.quickBooksSyncRun.findFirst({
+      where: {
+        companyId: scope.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        type: "ANALYSIS",
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        status: true,
+        writeBackAttempted: true,
+        categories: {
+          where: { objectType: "CUSTOMER" },
+          select: { availableInQbo: true },
+          take: 1,
+        },
+      },
+    }),
+    prisma.quickBooksImportReview.findMany({
+      where: base,
+      select: {
+        id: true,
+        quickbooksId: true,
+        status: true,
+        proposedAction: true,
+        proposedInternalId: true,
+        resolutionType: true,
+        payload: true,
+        sourceFingerprint: true,
+        candidateFingerprint: true,
+      },
+    }),
+    prisma.quickBooksMapping.findMany({
+      where: {
+        companyId: scope.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        entityType: "CUSTOMER",
+      },
+      select: { quickbooksId: true, internalId: true },
+    }),
+    prisma.quickBooksReviewDecision.findMany({
+      where: {
+        companyId: scope.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        undoneAt: null,
+      },
+      select: { reviewId: true },
+    }),
   ]);
+
+  const expectedTotal = analysis?.categories[0]?.availableInQbo ?? null;
+  const unresolved = reviews.filter((row) => UNRESOLVED.includes(row.status)).length;
+  const linkRows = reviews.filter((row) => row.status === "APPROVED" && row.proposedAction === "LINK");
+  const createRows = reviews.filter((row) => row.status === "APPROVED" && row.proposedAction === "CREATE");
+  const ignoreRows = reviews.filter(
+    (row) => row.status === "IGNORED" && ["IGNORE", "MARK_INACTIVE"].includes(row.proposedAction)
+  );
+  const link = linkRows.length;
+  const create = createRows.length;
+  const ignore = ignoreRows.length;
+  const total = reviews.length;
+  const classifiedIds = new Set([...linkRows, ...createRows, ...ignoreRows].map((row) => row.id));
+  const otherResolved = reviews.filter(
+    (row) => !UNRESOLVED.includes(row.status) && !classifiedIds.has(row.id)
+  ).length;
+  const totalResolved = link + create + ignore + otherResolved;
+  const issues: string[] = [];
+
+  if (!analysis || analysis.status !== "COMPLETE" || analysis.writeBackAttempted) {
+    issues.push("The latest read-only QuickBooks analysis is not complete and clean.");
+  }
+  if (expectedTotal == null) {
+    issues.push("The latest analysis does not contain a QuickBooks customer total.");
+  } else if (total !== expectedTotal) {
+    issues.push(`${expectedTotal.toLocaleString()} QuickBooks customers were analyzed, but ${total.toLocaleString()} unique customer plans exist.`);
+  }
+  const quickBooksIdCounts = new Map<string, number>();
+  for (const review of reviews) {
+    quickBooksIdCounts.set(review.quickbooksId, (quickBooksIdCounts.get(review.quickbooksId) ?? 0) + 1);
+  }
+  const duplicateQuickBooksIds = [...quickBooksIdCounts.values()].filter((count) => count > 1).length;
+  if (duplicateQuickBooksIds) {
+    issues.push(`${duplicateQuickBooksIds.toLocaleString()} QuickBooks customer IDs have duplicate active plans.`);
+  }
+  if (unresolved) issues.push(`${unresolved.toLocaleString()} customer plans remain unresolved.`);
+  if (totalResolved + unresolved !== total) {
+    issues.push("Resolved and unresolved plan totals do not reconcile.");
+  }
+
+  const targetIds = [...new Set(linkRows.map((row) => row.proposedInternalId).filter((id): id is string => Boolean(id)))];
+  const createQuickBooksIds = createRows.map((row) => row.quickbooksId);
+  const [targets, directlyLinkedCreates] = await Promise.all([
+    targetIds.length
+      ? prisma.customer.findMany({
+        where: { companyId: scope.companyId, id: { in: targetIds } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          businessName: true,
+          phone: true,
+          email: true,
+          properties: { select: { address: true, city: true, state: true, zip: true } },
+        },
+        })
+      : Promise.resolve([]),
+    createQuickBooksIds.length
+      ? prisma.customer.findMany({
+          where: {
+            companyId: scope.companyId,
+            OR: [
+              { quickbooksCustomerId: { in: createQuickBooksIds } },
+              {
+                sourceSystem: "quickbooks_online",
+                externalId: { in: createQuickBooksIds },
+              },
+            ],
+          },
+          select: { quickbooksCustomerId: true, externalId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const targetById = new Map(targets.map((customer) => [customer.id, customer]));
+  const invalidTargets = linkRows.filter(
+    (row) => !row.proposedInternalId || !targetById.has(row.proposedInternalId)
+  );
+  if (invalidTargets.length) {
+    issues.push(`${invalidTargets.length.toLocaleString()} link plans reference a missing ContractorYou customer.`);
+  }
+
+  let staleSources = 0;
+  let staleCandidates = 0;
+  for (const row of reviews) {
+    if (
+      row.resolutionType &&
+      (!row.sourceFingerprint || row.sourceFingerprint !== quickBooksReviewFingerprint(row.payload))
+    ) {
+      staleSources += 1;
+    }
+    if (row.resolutionType === "LINK" && row.candidateFingerprint && row.proposedInternalId) {
+      const target = targetById.get(row.proposedInternalId);
+      if (!target || customerFingerprint({
+        ...target,
+        properties: target.properties.map((property, index) => ({
+          id: `${index}`,
+          isPrimary: false,
+          ...property,
+        })),
+      }) !== row.candidateFingerprint) {
+        staleCandidates += 1;
+      }
+    }
+  }
+  if (staleSources) issues.push(`${staleSources.toLocaleString()} decisions have stale QuickBooks fingerprints.`);
+  if (staleCandidates) issues.push(`${staleCandidates.toLocaleString()} selected customers changed and require re-review.`);
+
+  const decisionsByReview = new Map<string, number>();
+  for (const decision of activeDecisions) {
+    decisionsByReview.set(decision.reviewId, (decisionsByReview.get(decision.reviewId) ?? 0) + 1);
+  }
+  const duplicateDecisions = [...decisionsByReview.values()].filter((count) => count > 1).length;
+  if (duplicateDecisions) {
+    issues.push(`${duplicateDecisions.toLocaleString()} reviews have multiple active human decisions.`);
+  }
+
+  const mappedQuickBooksIds = new Set(mappings.map((mapping) => mapping.quickbooksId));
+  const directlyLinkedQuickBooksIds = new Set(
+    directlyLinkedCreates.flatMap((customer) => [customer.quickbooksCustomerId, customer.externalId]).filter((id): id is string => Boolean(id))
+  );
+  const createCollisions = createRows.filter(
+    (row) => mappedQuickBooksIds.has(row.quickbooksId) || directlyLinkedQuickBooksIds.has(row.quickbooksId)
+  );
+  if (createCollisions.length) {
+    issues.push(`${createCollisions.length.toLocaleString()} create-new plans already have an approved customer mapping.`);
+  }
+
   return {
     total,
+    expectedTotal,
     link,
     create,
     ignore,
-    otherResolved: Math.max(0, total - link - create - ignore - unresolved),
+    otherResolved,
+    totalResolved,
     unresolved,
-    reconciles: link + create + ignore + Math.max(0, total - link - create - ignore - unresolved) + unresolved === total,
+    ready: issues.length === 0,
+    issues,
   };
+}
+
+export const loadStageOneImportPreview = validateStageOneImportPlan;
+
+export async function loadStageOneImportPreviewSafe(
+  prisma: PrismaClient,
+  scope: QuickBooksScope
+) {
+  try {
+    return { ok: true as const, plan: await validateStageOneImportPlan(prisma, scope) };
+  } catch (error) {
+    console.error("[quickbooks-stage-one-preview] load failed", error);
+    return {
+      ok: false as const,
+      error: "Unable to verify the final Stage 1 plan. Import remains blocked. Retry the page; no review decisions were changed.",
+    };
+  }
 }

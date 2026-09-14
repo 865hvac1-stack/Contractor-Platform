@@ -33,7 +33,7 @@ import {
 import {
   EXCEPTION_REASONS,
   loadQuickBooksExceptionReview,
-  loadStageOneImportPreview,
+  loadStageOneImportPreviewSafe,
 } from "@/lib/quickbooks/exception-review";
 import { ExceptionReviewer } from "@/components/quickbooks/exception-reviewer";
 
@@ -91,9 +91,12 @@ export default async function QuickBooksManagePage({
         customerSearch,
       })
     : null;
-  const stageOnePreview = inbound.readiness[0]?.ready
-    ? await loadStageOneImportPreview(prisma, active.scope)
+  const stageOnePreview = (exceptions?.remaining === 0 || inbound.readiness[0]?.ready)
+    ? await loadStageOneImportPreviewSafe(prisma, active.scope)
     : null;
+  const stageOnePlan = stageOnePreview?.ok ? stageOnePreview.plan : null;
+  const analyzedCustomerTotal =
+    inbound.categories.find((category) => category.objectType === "CUSTOMER")?.available ?? null;
   const connectionHealth =
     inbound.connection?.status === "CONNECTED"
       ? inbound.settings.inboundSyncHealth || "Connected"
@@ -255,6 +258,19 @@ export default async function QuickBooksManagePage({
 
       {exceptions ? (
         <section id="exception-review" className="scroll-mt-4 rounded-2xl border border-[var(--border)] bg-white p-5">
+          {exceptions.remaining === 0 ? (
+            <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Stage 1 customer review</p>
+              <h2 className="mt-1 text-2xl font-semibold text-emerald-950">Complete</h2>
+              <p className="mt-2 text-sm text-emerald-900">
+                {(stageOnePlan?.expectedTotal ?? analyzedCustomerTotal ?? stageOnePlan?.total ?? 0).toLocaleString()} QuickBooks customers reviewed/reconciled
+              </p>
+              <p className="text-sm text-emerald-900">0 exceptions remaining · 100% complete</p>
+              <p className={`mt-3 font-semibold ${stageOnePlan?.ready ? "text-emerald-950" : "text-amber-900"}`}>
+                Stage 1 · {stageOnePlan?.ready ? "READY TO IMPORT" : "BLOCKED — PLAN INTEGRITY CHECK REQUIRED"}
+              </p>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Stage 1 exceptions</p>
@@ -324,23 +340,53 @@ export default async function QuickBooksManagePage({
       ) : null}
 
       {stageOnePreview ? (
-        <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Stage 1 customer import plan</p>
-          <h2 className="mt-1 text-xl font-semibold text-emerald-950">Ready for Stage 1 Import</h2>
+        <section className={`rounded-2xl border p-5 ${stageOnePlan?.ready ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
+          <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${stageOnePlan?.ready ? "text-emerald-800" : "text-amber-800"}`}>Final Stage 1 customer import plan</p>
+          <h2 className={`mt-1 text-xl font-semibold ${stageOnePlan?.ready ? "text-emerald-950" : "text-amber-950"}`}>
+            {stageOnePlan?.ready ? "Ready for Stage 1 Import" : "Stage 1 Import Blocked"}
+          </h2>
+          {!stageOnePreview.ok ? (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-white/70 p-4 text-sm text-amber-950">
+              <p>{stageOnePreview.error}</p>
+              <Link href="/settings/quickbooks/manage?view=exceptions#exception-review" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-3")}>
+                Retry
+              </Link>
+            </div>
+          ) : stageOnePlan ? (
+            <>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <Fact label="QuickBooks customers" value={stageOnePreview.total.toLocaleString()} />
-            <Fact label="Link to existing" value={stageOnePreview.link.toLocaleString()} />
-            <Fact label="Create new" value={stageOnePreview.create.toLocaleString()} />
-            <Fact label="Ignore" value={stageOnePreview.ignore.toLocaleString()} />
-            <Fact label="Other resolved actions" value={stageOnePreview.otherResolved.toLocaleString()} />
-            <Fact label="Unresolved" value={stageOnePreview.unresolved.toLocaleString()} />
+            <Fact label="Total QuickBooks customers" value={(stageOnePlan.expectedTotal ?? stageOnePlan.total).toLocaleString()} />
+            <Fact label="Link to existing" value={stageOnePlan.link.toLocaleString()} />
+            <Fact label="Create new" value={stageOnePlan.create.toLocaleString()} />
+            <Fact label="Ignore / do not import" value={stageOnePlan.ignore.toLocaleString()} />
+            <Fact label="Other resolved actions" value={stageOnePlan.otherResolved.toLocaleString()} />
+            <Fact label="Total resolved" value={stageOnePlan.totalResolved.toLocaleString()} />
+            <Fact label="Unresolved" value={stageOnePlan.unresolved.toLocaleString()} />
           </dl>
-          <p className="mt-4 text-sm font-medium text-emerald-900">
-            Existing ContractorYou customers modified during review: 0 · QuickBooks records modified: 0
-          </p>
-          <p className="mt-1 text-xs text-emerald-800">
-            Totals {stageOnePreview.reconciles ? "reconcile" : "do not reconcile"} to {stageOnePreview.total.toLocaleString()}. Return to the Sync Center import controls for explicit approval; import does not start automatically.
-          </p>
+              {stageOnePlan.issues.length ? (
+                <div className="mt-4 rounded-xl border border-amber-300 bg-white/70 p-4">
+                  <p className="text-sm font-semibold text-amber-950">Integrity check failed</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                    {stageOnePlan.issues.map((issue) => <li key={issue}>{issue}</li>)}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm font-semibold text-emerald-900">
+                  Integrity check passed · Every QuickBooks customer appears exactly once in the persisted plan.
+                </p>
+              )}
+              <div className="mt-4 grid gap-2 rounded-xl border border-[var(--border)] bg-white/70 p-4 text-sm sm:grid-cols-2">
+                <Fact label="QuickBooks write-back" value="Disabled" />
+                <Fact label="Customer review" value={stageOnePlan.unresolved === 0 ? "Complete" : "Incomplete"} />
+                <Fact label="Unresolved matches" value={stageOnePlan.unresolved.toLocaleString()} />
+                <Fact label="Automatic customer merges" value="None" />
+                <Fact label="Stage 1 import" value="Not yet executed" />
+              </div>
+              <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+                Completing review does not execute import. Return to the Sync Center import controls and enter the existing confirmation phrase when you are ready.
+              </p>
+            </>
+          ) : null}
         </section>
       ) : null}
 

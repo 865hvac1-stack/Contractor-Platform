@@ -112,4 +112,11 @@ describe("QuickBooks exception reviewer", () => {
     expect(screen.getByText("No unresolved exceptions match this filter.")).toBeTruthy();
     expect(screen.queryByText("All customer exceptions are resolved.")).toBeNull();
   });
+
+  it("renders zero unresolved exceptions as successful completion without Retry", () => {
+    render(<ExceptionReviewer current={null} canManage canUndo={false} globalRemaining={0} />);
+    expect(screen.getByText("All customer exceptions are resolved.")).toBeTruthy();
+    expect(screen.getByText(/Stage 1 is ready for final review/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
 });
