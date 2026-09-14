@@ -224,12 +224,14 @@ export async function loadQuickBooksExceptionReview(
   );
   const current = queue[0] ?? null;
   const ids = current ? candidateIds(current) : [];
+  const payload = current ? current.payload as QboCustomer : null;
   const search = input.customerSearch?.trim();
-  const [storedCandidates, searchedCandidates] = await Promise.all([
+  const [storedCandidates, discoveredCandidates, searchedCandidates] = await Promise.all([
     ids.length ? prisma.customer.findMany({
       where: { companyId: scope.companyId, id: { in: ids } },
       select: customerSelect,
     }) : Promise.resolve([]),
+    payload ? discoverCandidates(prisma, scope.companyId, payload) : Promise.resolve([]),
     search ? prisma.customer.findMany({
       where: {
         companyId: scope.companyId,
@@ -246,15 +248,18 @@ export async function loadQuickBooksExceptionReview(
       take: 10,
     }) : Promise.resolve([]),
   ]);
-  const payload = current ? current.payload as QboCustomer : null;
-  const candidateById = new Map(storedCandidates.map((candidate) => [candidate.id, candidate]));
-  const orderedCandidates = ids
+  const allCandidates = [...storedCandidates, ...discoveredCandidates];
+  const candidateById = new Map(allCandidates.map((candidate) => [candidate.id, candidate]));
+  const orderedIds = [...ids, ...discoveredCandidates.map((candidate) => candidate.id)];
+  const orderedCandidates = [...new Set(orderedIds)]
     .map((id) => candidateById.get(id))
     .filter((candidate): candidate is Candidate => Boolean(candidate))
     .map((candidate) => compareCandidate(payload!, candidate))
-    .sort((a, b) => b.confidence - a.confidence);
+    .filter((candidate) => ids.includes(candidate.id) || candidate.confidence >= 20)
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 10);
   const searched = searchedCandidates
-    .filter((candidate) => !ids.includes(candidate.id))
+    .filter((candidate) => !candidateById.has(candidate.id))
     .map((candidate) => compareCandidate(payload!, candidate))
     .sort((a, b) => b.confidence - a.confidence);
   const total = unresolved + resolvedExceptions;
@@ -289,6 +294,40 @@ export async function loadQuickBooksExceptionReview(
       searchedCandidates: searched,
     } : null,
   };
+}
+
+async function discoverCandidates(
+  prisma: PrismaClient,
+  companyId: string,
+  payload: QboCustomer
+): Promise<Candidate[]> {
+  const split = splitFullName(payload.DisplayName || `${payload.GivenName || ""} ${payload.FamilyName || ""}`);
+  const firstName = payload.GivenName || split.firstName;
+  const lastName = payload.FamilyName || split.lastName;
+  const email = payload.PrimaryEmailAddr?.Address;
+  const phoneDigits = phoneKey(payload.PrimaryPhone?.FreeFormNumber);
+  const phoneSuffix = phoneDigits.slice(-7);
+  const addressLine = payload.ShipAddr?.Line1 || payload.BillAddr?.Line1;
+  const addressStem = addressLine
+    ? normalizeText(addressLine).split(/\s+/).slice(0, 2).join(" ")
+    : "";
+  const or: Prisma.CustomerWhereInput[] = [
+    ...(firstName && lastName ? [{
+      firstName: { equals: firstName, mode: "insensitive" as const },
+      lastName: { equals: lastName, mode: "insensitive" as const },
+    }] : []),
+    ...(lastName && lastName.length > 2 ? [{ lastName: { equals: lastName, mode: "insensitive" as const } }] : []),
+    ...(payload.CompanyName ? [{ businessName: { equals: payload.CompanyName, mode: "insensitive" as const } }] : []),
+    ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+    ...(phoneSuffix ? [{ phone: { contains: phoneSuffix } }] : []),
+    ...(addressStem ? [{ properties: { some: { address: { contains: addressStem, mode: "insensitive" as const } } } }] : []),
+  ];
+  if (!or.length) return [];
+  return prisma.customer.findMany({
+    where: { companyId, OR: or },
+    select: customerSelect,
+    take: 50,
+  });
 }
 
 const customerSelect = {
