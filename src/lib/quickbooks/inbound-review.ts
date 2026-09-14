@@ -7,6 +7,7 @@ import {
   buildAutoApprovalUniverse,
   evaluateCustomerAutoApproval,
 } from "@/lib/quickbooks/customer-review-automation";
+import { resolveQuickBooksException, type ExceptionResolution } from "@/lib/quickbooks/exception-review";
 
 export type ReviewDecision =
   | "APPROVE"
@@ -39,6 +40,33 @@ export async function applyQuickBooksReviewDecision(input: {
     },
   });
   if (!review) return { ok: false as const, error: "Review item not found for this QuickBooks company." };
+  const exceptionResolution: Partial<Record<ReviewDecision, ExceptionResolution>> = {
+    APPROVE: "LINK",
+    APPROVE_NEW: "CREATE",
+    LINK: "LINK",
+    CREATE: "CREATE",
+    IGNORE: "IGNORE",
+    NOT_DUPLICATE: "NOT_DUPLICATE",
+  };
+  const mappedResolution = exceptionResolution[input.action];
+  if (
+    review.objectType === "CUSTOMER" &&
+    review.safeAutoApprove === false &&
+    ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED"].includes(review.status) &&
+    mappedResolution
+  ) {
+    return resolveQuickBooksException({
+      prisma: input.prisma,
+      scope: input.scope,
+      reviewId: review.id,
+      resolution: mappedResolution,
+      actorId: input.actorId,
+      targetCustomerId:
+        mappedResolution === "LINK"
+          ? input.targetCustomerId || review.proposedInternalId
+          : null,
+    });
+  }
   const reviewed = { reviewedAt: new Date(), reviewedById: input.actorId };
 
   if (input.action === "APPROVE") {
