@@ -30,6 +30,12 @@ import {
   linkQuickBooksCustomerAction,
   unlinkQuickBooksCustomerAction,
 } from "@/server/actions/quickbooks";
+import {
+  EXCEPTION_REASONS,
+  loadQuickBooksExceptionReview,
+  loadStageOneImportPreview,
+} from "@/lib/quickbooks/exception-review";
+import { ExceptionReviewer } from "@/components/quickbooks/exception-reviewer";
 
 export const dynamic = "force-dynamic";
 
@@ -48,13 +54,19 @@ export default async function QuickBooksManagePage({
     reviewed?: string;
     selection?: string;
     automation?: string;
+    exceptionReason?: string;
+    skipped?: string;
+    customerSearch?: string;
   }>;
 }) {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
   const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
   if (!active.ok) redirect("/settings/quickbooks");
-  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection, automation } = await searchParams;
+  const {
+    view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection, automation,
+    exceptionReason, skipped, customerSearch,
+  } = await searchParams;
   const inbound = await loadInboundSyncCenter(prisma, active.scope);
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
@@ -72,6 +84,16 @@ export default async function QuickBooksManagePage({
           automation,
         })
       : null;
+  const exceptions = view === "exceptions"
+    ? await loadQuickBooksExceptionReview(prisma, active.scope, {
+        reason: exceptionReason,
+        skipped: skipped === "1",
+        customerSearch,
+      })
+    : null;
+  const stageOnePreview = inbound.readiness[0]?.ready
+    ? await loadStageOneImportPreview(prisma, active.scope)
+    : null;
   const connectionHealth =
     inbound.connection?.status === "CONNECTED"
       ? inbound.settings.inboundSyncHealth || "Connected"
@@ -137,6 +159,9 @@ export default async function QuickBooksManagePage({
         ) : null}
         <Link href="/settings/quickbooks/manage?view=review" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           Review Matches
+        </Link>
+        <Link href="/settings/quickbooks/manage?view=exceptions" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+          Review Exceptions
         </Link>
         <Link href="/settings/quickbooks/manage?view=duplicates" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           Review Duplicates
@@ -227,6 +252,78 @@ export default async function QuickBooksManagePage({
           ))}
         </dl>
       </details>
+
+      {exceptions ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Stage 1 exceptions</p>
+              <h2 className="mt-1 text-2xl font-semibold">{exceptions.remaining.toLocaleString()} remaining</h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Customer Review · {exceptions.resolved.toLocaleString()} / {exceptions.total.toLocaleString()} resolved · {exceptions.percent}% complete
+              </p>
+            </div>
+            <div className="w-full max-w-sm">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`${exceptions.percent}% complete`}>
+                <div className="h-full bg-emerald-500" style={{ width: `${exceptions.percent}%` }} />
+              </div>
+            </div>
+          </div>
+          <form method="get" className="mt-5 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="view" value="exceptions" />
+            <label className="text-xs text-[var(--muted-foreground)]">
+              Review by reason
+              <select name="exceptionReason" defaultValue={exceptionReason || "ALL"} className="mt-1 block h-9 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+                <option value="ALL">All exceptions ({exceptions.remaining.toLocaleString()})</option>
+                {EXCEPTION_REASONS.map((blocker) => (
+                  <option key={blocker} value={blocker}>
+                    {blockerLabel(blocker)} ({(exceptions.blockerCounts[blocker] || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-sm">
+              <input type="checkbox" name="skipped" value="1" defaultChecked={skipped === "1"} />
+              Skipped only
+            </label>
+            <Button type="submit" size="sm" variant="outline">Apply</Button>
+            {(exceptionReason || skipped) ? (
+              <Link href="/settings/quickbooks/manage?view=exceptions" className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}>Clear</Link>
+            ) : null}
+          </form>
+          <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+            Default order: address conflicts, name conflicts, missing phone, insufficient identity, multiple candidates, then possible duplicates; highest confidence first.
+          </p>
+          <ExceptionReviewer
+            current={exceptions.current}
+            canManage={canManage}
+            canUndo={Boolean(exceptions.latestDecision)}
+            reason={exceptionReason}
+            skipped={skipped === "1"}
+          />
+        </section>
+      ) : null}
+
+      {stageOnePreview ? (
+        <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Stage 1 customer import plan</p>
+          <h2 className="mt-1 text-xl font-semibold text-emerald-950">Ready for Stage 1 Import</h2>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <Fact label="QuickBooks customers" value={stageOnePreview.total.toLocaleString()} />
+            <Fact label="Link to existing" value={stageOnePreview.link.toLocaleString()} />
+            <Fact label="Create new" value={stageOnePreview.create.toLocaleString()} />
+            <Fact label="Ignore" value={stageOnePreview.ignore.toLocaleString()} />
+            <Fact label="Other resolved actions" value={stageOnePreview.otherResolved.toLocaleString()} />
+            <Fact label="Unresolved" value={stageOnePreview.unresolved.toLocaleString()} />
+          </dl>
+          <p className="mt-4 text-sm font-medium text-emerald-900">
+            Existing ContractorYou customers modified during review: 0 · QuickBooks records modified: 0
+          </p>
+          <p className="mt-1 text-xs text-emerald-800">
+            Totals {stageOnePreview.reconciles ? "reconcile" : "do not reconcile"} to {stageOnePreview.total.toLocaleString()}. Return to the Sync Center import controls for explicit approval; import does not start automatically.
+          </p>
+        </section>
+      ) : null}
 
       {inbound.plan ? (
         <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
@@ -514,7 +611,6 @@ export default async function QuickBooksManagePage({
                             <Button type="submit" size="sm" variant="outline">Link Existing Customer</Button>
                           </ActionForm>
                           <ReviewButton reviewId={row.id} decision="CREATE" label="Create New Customer" />
-                          <MergeReviewForm reviewId={row.id} />
                           <ReviewButton reviewId={row.id} decision="IGNORE" label="Ignore" />
                           <ReviewButton reviewId={row.id} decision="NOT_DUPLICATE" label="Not a Duplicate" />
                         </>
@@ -675,7 +771,6 @@ export default async function QuickBooksManagePage({
     </div>
   );
 }
-
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -859,18 +954,6 @@ function ReviewButton({
       <Button type="submit" size="sm" variant="outline">
         {label}
       </Button>
-    </ActionForm>
-  );
-}
-
-function MergeReviewForm({ reviewId }: { reviewId: string }) {
-  return (
-    <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2 rounded-lg border border-amber-200 p-2">
-      <input type="hidden" name="reviewId" value={reviewId} />
-      <input type="hidden" name="decision" value="MERGE" />
-      <Input name="targetCustomerId" placeholder="Surviving customer ID" className="w-48" />
-      <Input name="confirmation" placeholder="REVIEW MERGE MAPPING" className="w-52" />
-      <Button type="submit" size="sm" variant="outline">Confirm Proposed Merge</Button>
     </ActionForm>
   );
 }

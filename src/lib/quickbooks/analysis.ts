@@ -195,6 +195,7 @@ async function upsertReview(
       proposedAction: input.proposedAction,
       matchSignals: input.matchSignals ?? null,
     });
+  const sourceFingerprint = quickBooksReviewFingerprint(input.payload);
   const existing = await prisma.quickBooksImportReview.findUnique({
     where: {
       companyId_environment_realmId_objectType_quickbooksId: {
@@ -206,7 +207,48 @@ async function upsertReview(
       },
     },
   });
-  const persistence = reviewPersistence(existing, fingerprint, input.proposedAction);
+  let persistence = reviewPersistence(existing, fingerprint, input.proposedAction);
+  if (
+    persistence.keepReviewer &&
+    existing?.resolutionType === "LINK" &&
+    existing.proposedInternalId &&
+    existing.candidateFingerprint
+  ) {
+    const selected = await prisma.customer.findFirst({
+      where: { id: existing.proposedInternalId, companyId: input.companyId },
+      select: {
+        firstName: true,
+        lastName: true,
+        businessName: true,
+        email: true,
+        phone: true,
+        properties: { select: { address: true, city: true, state: true, zip: true } },
+      },
+    });
+    const selectedFingerprint = selected
+      ? quickBooksReviewFingerprint({
+          firstName: selected.firstName,
+          lastName: selected.lastName,
+          businessName: selected.businessName,
+          phone: selected.phone,
+          email: selected.email,
+          properties: selected.properties
+            .slice()
+            .sort((a, b) =>
+              `${a.address}|${a.city}|${a.state}|${a.zip}`.localeCompare(
+                `${b.address}|${b.city}|${b.state}|${b.zip}`
+              )
+            ),
+        })
+      : null;
+    if (selectedFingerprint !== existing.candidateFingerprint) {
+      persistence = {
+        status: "RE_REVIEW_REQUIRED",
+        proposedAction: "REVIEW",
+        keepReviewer: false,
+      };
+    }
+  }
   await prisma.quickBooksImportReview.upsert({
     where: {
       companyId_environment_realmId_objectType_quickbooksId: {
@@ -234,6 +276,7 @@ async function upsertReview(
       matchSignals: input.matchSignals as Prisma.InputJsonValue,
       searchText: input.searchText ?? input.displayName,
       reviewFingerprint: fingerprint,
+      sourceFingerprint,
       safeAutoApprove:
         persistence.status === "RE_REVIEW_REQUIRED" ? false : input.safeAutoApprove ?? false,
       confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
@@ -242,14 +285,18 @@ async function upsertReview(
         persistence.status === "RE_REVIEW_REQUIRED" ? null : input.autoApprovalTier ?? null,
       autoApprovalBlocker:
         persistence.status === "RE_REVIEW_REQUIRED"
-          ? "STALE_FINGERPRINT"
+          ? existing?.candidateFingerprint && !persistence.keepReviewer
+            ? "CANDIDATE_CHANGED"
+            : "STALE_FINGERPRINT"
           : input.autoApprovalBlocker ?? null,
     },
     update: {
       runId: input.runId,
       displayName: input.displayName,
       confidence: input.confidence,
-      proposedInternalId: input.proposedInternalId ?? null,
+      proposedInternalId: persistence.keepReviewer
+        ? existing?.proposedInternalId ?? null
+        : input.proposedInternalId ?? null,
       proposedAction: persistence.proposedAction,
       reason: input.reason,
       payload: input.payload as Prisma.InputJsonValue,
@@ -257,6 +304,7 @@ async function upsertReview(
       status: persistence.status,
       searchText: input.searchText ?? input.displayName,
       reviewFingerprint: fingerprint,
+      sourceFingerprint,
       safeAutoApprove:
         persistence.status === "RE_REVIEW_REQUIRED" ? false : input.safeAutoApprove ?? false,
       confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
@@ -265,10 +313,15 @@ async function upsertReview(
         persistence.status === "RE_REVIEW_REQUIRED" ? null : input.autoApprovalTier ?? null,
       autoApprovalBlocker:
         persistence.status === "RE_REVIEW_REQUIRED"
-          ? "STALE_FINGERPRINT"
+          ? existing?.candidateFingerprint && !persistence.keepReviewer
+            ? "CANDIDATE_CHANGED"
+            : "STALE_FINGERPRINT"
           : input.autoApprovalBlocker ?? null,
       reviewedAt: persistence.keepReviewer ? existing?.reviewedAt : null,
       reviewedById: persistence.keepReviewer ? existing?.reviewedById : null,
+      resolutionType: persistence.keepReviewer ? existing?.resolutionType : null,
+      candidateFingerprint: persistence.keepReviewer ? existing?.candidateFingerprint : null,
+      skippedAt: persistence.keepReviewer || !existing?.reviewedAt ? existing?.skippedAt : null,
       errorMessage: null,
     },
   });

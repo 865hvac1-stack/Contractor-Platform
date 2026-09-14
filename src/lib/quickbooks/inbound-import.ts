@@ -5,7 +5,6 @@ import { splitFullName } from "@/lib/imports/normalize";
 import { loadQuickBooksTransport } from "@/lib/quickbooks/connection";
 import { mappingScopeWhere, type QuickBooksScope } from "@/lib/quickbooks/ownership";
 import {
-  addressesLookTheSame,
   dollarsToCents,
   parseQboDate,
   qboPage,
@@ -261,14 +260,14 @@ type LoopCtx = {
   runId?: string;
 };
 
-async function approvedMap(prisma: PrismaClient, companyId: string, scope: QuickBooksScope, objectType: InboundObjectType) {
+export async function approvedMap(prisma: PrismaClient, companyId: string, scope: QuickBooksScope, objectType: InboundObjectType) {
   const rows = await prisma.quickBooksImportReview.findMany({
     where: {
       companyId,
       environment: scope.environment,
       realmId: scope.realmId,
       objectType,
-      status: { in: ["READY", "APPROVED"] },
+      status: "APPROVED",
       proposedAction: { in: ["LINK", "CREATE"] },
       confidence: { in: ["EXACT", "HIGH", "NONE"] },
     },
@@ -352,33 +351,19 @@ async function importCustomers(ctx: LoopCtx) {
           });
           const ship = usableServiceAddress(row.ShipAddr);
           const bill = usableServiceAddress(row.BillAddr);
-          if (ship && !addressesLookTheSame(row.ShipAddr, row.BillAddr)) {
+          const approvedProperty = ship || bill;
+          if (approvedProperty) {
             await ctx.prisma.property.create({
               data: {
                 companyId: ctx.companyId,
                 customerId: created.id,
-                address: ship.address,
-                city: ship.city,
-                state: ship.state,
-                zip: ship.zip,
+                address: approvedProperty.address,
+                city: approvedProperty.city,
+                state: approvedProperty.state,
+                zip: approvedProperty.zip,
                 isPrimary: true,
                 sourceSystem: QUICKBOOKS_SOURCE,
-                externalId: `${row.Id}:ship`,
-                importMode: IMPORT_MODE_HISTORICAL,
-              },
-            });
-          } else if (ship && !bill) {
-            await ctx.prisma.property.create({
-              data: {
-                companyId: ctx.companyId,
-                customerId: created.id,
-                address: ship.address,
-                city: ship.city,
-                state: ship.state,
-                zip: ship.zip,
-                isPrimary: true,
-                sourceSystem: QUICKBOOKS_SOURCE,
-                externalId: `${row.Id}:ship`,
+                externalId: `${row.Id}:${ship ? "ship" : "bill"}`,
                 importMode: IMPORT_MODE_HISTORICAL,
               },
             });
@@ -419,8 +404,6 @@ async function stampCustomer(ctx: LoopCtx, customerId: string, row: QboCustomer)
     data: {
       quickbooksCustomerId: row.Id,
       quickbooksRealmId: ctx.scope.realmId,
-      sourceSystem: QUICKBOOKS_SOURCE,
-      externalId: row.Id,
       lastSyncedAt: new Date(),
       syncStatus: "SYNCED",
       quickbooksLastModifiedAt: parseQboDate(row.MetaData?.LastUpdatedTime),

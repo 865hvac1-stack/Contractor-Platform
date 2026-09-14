@@ -1618,6 +1618,11 @@ model QuickBooksImportReview {
   safeAutoApprove    Boolean  @default(false)
   autoApprovalTier   String?
   autoApprovalBlocker String?
+  resolutionType     String?
+  sourceFingerprint  String?
+  candidateFingerprint String?
+  skippedAt          DateTime?
+  skipCount          Int      @default(0)
   confidenceScore    Int      @default(0)
   differenceCount    Int      @default(0)
   reviewedAt         DateTime?
@@ -1634,7 +1639,52 @@ model QuickBooksImportReview {
   @@index([companyId, confidence, status])
   @@index([companyId, objectType, confidence, status])
   @@index([companyId, objectType, autoApprovalBlocker])
+  @@index([companyId, environment, realmId, objectType, status, skippedAt])
   @@index([runId])
+}
+
+model QuickBooksReviewDecision {
+  id                   String   @id @default(cuid())
+  companyId            String
+  environment          String
+  realmId              String
+  analysisRunId        String?
+  reviewId             String
+  quickbooksId         String
+  resolutionType       String
+  selectedCustomerId   String?
+  sourceFingerprint    String
+  candidateFingerprint String?
+  previousState        Json
+  resultingState       Json
+  actorId              String
+  undoneAt             DateTime?
+  undoneById           String?
+  createdAt            DateTime @default(now())
+
+  @@index([companyId, environment, realmId, createdAt])
+  @@index([reviewId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model QuickBooksMergeReview {
+  id                 String   @id @default(cuid())
+  companyId          String
+  environment        String
+  realmId            String
+  analysisRunId      String?
+  sourceReviewId     String
+  customerAId        String
+  customerBId        String
+  status             String   @default("OPEN")
+  flaggedById        String
+  sourceFingerprint  String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([companyId, environment, realmId, customerAId, customerBId])
+  @@index([companyId, status, createdAt])
+  @@index([sourceReviewId])
 }
 
 model Vendor {

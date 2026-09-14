@@ -13,7 +13,6 @@ export type ReviewDecision =
   | "APPROVE_NEW"
   | "LINK"
   | "CREATE"
-  | "MERGE"
   | "IGNORE"
   | "NOT_DUPLICATE"
   | "NOT_SAME"
@@ -102,29 +101,6 @@ export async function applyQuickBooksReviewDecision(input: {
       },
     });
     return { ok: true as const, message: "Queued to create on the next approved import." };
-  }
-
-  if (input.action === "MERGE") {
-    if (!input.targetCustomerId) return { ok: false as const, error: "Choose the surviving ContractorYou customer." };
-    if (input.confirmation !== "REVIEW MERGE MAPPING") {
-      return { ok: false as const, error: "Type REVIEW MERGE MAPPING to confirm this proposed mapping. No records will be merged yet." };
-    }
-    const target = await input.prisma.customer.findFirst({
-      where: { id: input.targetCustomerId, companyId: input.companyId },
-      select: { id: true },
-    });
-    if (!target) return { ok: false as const, error: "The surviving customer is not in this company." };
-    await input.prisma.quickBooksImportReview.update({
-      where: { id: review.id },
-      data: {
-        proposedAction: "LINK",
-        proposedInternalId: input.targetCustomerId,
-        status: "APPROVED",
-        reason: "Owner approved a merge onto the selected customer. Duplicate QuickBooks identity will link, not clone.",
-        ...reviewed,
-      },
-    });
-    return { ok: true as const, message: "Merge queued as a link. Records are not deleted." };
   }
 
   if (input.action === "IGNORE") {

@@ -19,6 +19,13 @@ import { QUICKBOOKS_WRITEBACK_DISABLED_MESSAGE } from "@/lib/quickbooks/writebac
 import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
 import type { AnalysisProgress } from "@/lib/quickbooks/analysis";
 import { assertQuickBooksImportStageReady } from "@/lib/quickbooks/import-readiness";
+import {
+  flagQuickBooksMergeReview,
+  resolveQuickBooksException,
+  skipQuickBooksException,
+  undoLastQuickBooksExceptionDecision,
+  type ExceptionResolution,
+} from "@/lib/quickbooks/exception-review";
 
 export type AnalyzeQuickBooksState =
   | {
@@ -220,6 +227,135 @@ export async function bulkQuickBooksReviewAction(
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: "Could not save bulk review decisions. No customer data was changed." };
+  }
+}
+
+export async function resolveQuickBooksExceptionAction(
+  _prev?: ActionResult | null,
+  formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const resolution = String(formData?.get("resolution") || "") as ExceptionResolution;
+    if (!["LINK", "CREATE", "NOT_DUPLICATE", "IGNORE"].includes(resolution)) {
+      return { ok: false, error: "Choose a valid exception resolution." };
+    }
+    const result = await resolveQuickBooksException({
+      prisma,
+      scope: active.scope,
+      reviewId: String(formData?.get("reviewId") || ""),
+      resolution,
+      actorId: ctx.user.id,
+      targetCustomerId: String(formData?.get("targetCustomerId") || "") || null,
+    });
+    if (!result.ok) return result;
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.exception_resolved",
+      entityType: "QuickBooksImportReview",
+      entityId: String(formData?.get("reviewId") || ""),
+      metadata: {
+        decisionId: result.decisionId,
+        resolution,
+        selectedCustomerId: String(formData?.get("targetCustomerId") || "") || null,
+        imported: false,
+        quickBooksWrite: false,
+      },
+    });
+    revalidatePath("/settings/quickbooks/manage");
+    return result;
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not save this exception decision. No records were changed." };
+  }
+}
+
+export async function skipQuickBooksExceptionAction(
+  _prev?: ActionResult | null,
+  formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const result = await skipQuickBooksException({
+      prisma,
+      scope: active.scope,
+      reviewId: String(formData?.get("reviewId") || ""),
+    });
+    revalidatePath("/settings/quickbooks/manage");
+    return result;
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not skip this exception." };
+  }
+}
+
+export async function undoLastQuickBooksExceptionAction(
+  _prev?: ActionResult | null,
+  _formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const result = await undoLastQuickBooksExceptionDecision({
+      prisma,
+      scope: active.scope,
+      actorId: ctx.user.id,
+    });
+    if (!result.ok) return result;
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.exception_undo",
+      entityType: "QuickBooksImportReview",
+      metadata: { imported: false, quickBooksWrite: false },
+    });
+    revalidatePath("/settings/quickbooks/manage");
+    return result;
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not undo the last decision." };
+  }
+}
+
+export async function flagQuickBooksMergeReviewAction(
+  _prev?: ActionResult | null,
+  formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const result = await flagQuickBooksMergeReview({
+      prisma,
+      scope: active.scope,
+      reviewId: String(formData?.get("reviewId") || ""),
+      actorId: ctx.user.id,
+      customerAId: String(formData?.get("customerAId") || ""),
+      customerBId: String(formData?.get("customerBId") || ""),
+    });
+    if (!result.ok) return result;
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.merge_review_flagged",
+      entityType: "QuickBooksMergeReview",
+      metadata: {
+        customerAId: String(formData?.get("customerAId") || ""),
+        customerBId: String(formData?.get("customerBId") || ""),
+        merged: false,
+      },
+    });
+    revalidatePath("/settings/quickbooks/manage");
+    return result;
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not flag this customer pair. No customers were merged." };
   }
 }
 
