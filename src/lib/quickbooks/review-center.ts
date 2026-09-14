@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { QuickBooksScope } from "@/lib/quickbooks/ownership";
 import { customerFieldComparison } from "@/lib/quickbooks/analysis-classification";
 
@@ -38,7 +38,17 @@ function addressText(address?: Address | null) {
 export async function loadQuickBooksReviewRows(
   prisma: PrismaClient,
   scope: QuickBooksScope,
-  input: { view: ReviewView; filter?: string | null; search?: string | null }
+  input: {
+    view: ReviewView;
+    filter?: string | null;
+    search?: string | null;
+    page?: number;
+    pageSize?: number;
+    sort?: string | null;
+    reason?: string | null;
+    differences?: string | null;
+    reviewed?: string | null;
+  }
 ) {
   const filterMap: Record<string, string> = {
     exact: "EXACT",
@@ -47,23 +57,78 @@ export async function loadQuickBooksReviewRows(
     new: "NONE",
     conflict: "CONFLICT",
   };
-  const rows = await prisma.quickBooksImportReview.findMany({
-    where: {
+  const pageSize = [25, 50, 100].includes(input.pageSize ?? 25) ? input.pageSize ?? 25 : 25;
+  const page = Math.max(1, input.page ?? 1);
+  const currentStatuses = ["OPEN", "READY", "APPROVED", "IGNORED", "NOT_SAME", "RESOLVED", "RE_REVIEW_REQUIRED", "FAILED"];
+  const reviewedStatuses = ["APPROVED", "IGNORED", "NOT_SAME", "RESOLVED"];
+  const where: Prisma.QuickBooksImportReviewWhereInput = {
       companyId: scope.companyId,
       environment: scope.environment,
       realmId: scope.realmId,
-      status: { in: ["OPEN", "READY", "APPROVED", "FAILED"] },
+      status: { in: input.reviewed === "reviewed" ? reviewedStatuses : input.reviewed === "unreviewed" ? ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED"] : currentStatuses },
       ...(input.view === "review" ? { objectType: "CUSTOMER" } : {}),
       ...(input.view === "duplicates" ? { objectType: "CUSTOMER", confidence: "POSSIBLE" } : {}),
       ...(input.view === "conflicts"
         ? { OR: [{ confidence: "CONFLICT" }, { status: "FAILED" }] }
         : {}),
       ...(input.filter && filterMap[input.filter] ? { confidence: filterMap[input.filter] } : {}),
-    },
-    orderBy: [{ objectType: "asc" }, { updatedAt: "desc" }],
-    take: input.search ? 4_000 : 150,
+      ...(input.filter === "reviewed" ? { status: { in: reviewedStatuses } } : {}),
+      ...(input.search ? { searchText: { contains: input.search.trim(), mode: "insensitive" } } : {}),
+      ...(input.reason ? { reason: { contains: input.reason.trim(), mode: "insensitive" } } : {}),
+      ...(input.differences === "yes" ? { differenceCount: { gt: 0 } } : {}),
+      ...(input.differences === "no" ? { differenceCount: 0 } : {}),
+  };
+  const orderBy: Prisma.QuickBooksImportReviewOrderByWithRelationInput[] =
+    input.sort === "lowest"
+      ? [{ confidenceScore: "asc" }, { displayName: "asc" }]
+      : input.sort === "name"
+        ? [{ displayName: "asc" }]
+        : input.sort === "differences"
+          ? [{ differenceCount: "desc" }, { confidenceScore: "desc" }]
+          : [{ confidenceScore: "desc" }, { displayName: "asc" }];
+  const customerScope = {
+    companyId: scope.companyId,
+    environment: scope.environment,
+    realmId: scope.realmId,
+    objectType: "CUSTOMER",
+    status: { in: currentStatuses },
+  } satisfies Prisma.QuickBooksImportReviewWhereInput;
+  const [total, rows, all, exact, high, fresh, possible, reviewed, approvedExact, approvedHigh, approvedNew, resolvedPossible, safeExact, unsafeExact, safeNew] =
+    await Promise.all([
+      prisma.quickBooksImportReview.count({ where }),
+      prisma.quickBooksImportReview.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.quickBooksImportReview.count({ where: customerScope }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "HIGH" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "POSSIBLE" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, status: { in: reviewedStatuses } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", status: "APPROVED" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "HIGH", status: "APPROVED" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE", status: "APPROVED" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "POSSIBLE", status: { in: reviewedStatuses } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", safeAutoApprove: true, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", safeAutoApprove: false, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE", safeAutoApprove: true, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
+    ]);
+  const candidateIds = rows.flatMap((row) => {
+    const signals =
+      row.matchSignals && typeof row.matchSignals === "object" && !Array.isArray(row.matchSignals)
+        ? (row.matchSignals as { candidateIds?: unknown })
+        : null;
+    return Array.isArray(signals?.candidateIds) ? signals.candidateIds.map(String) : [];
   });
-  const customerIds = rows.map((row) => row.proposedInternalId).filter((id): id is string => Boolean(id));
+  const customerIds = [
+    ...new Set([
+      ...rows.map((row) => row.proposedInternalId).filter((id): id is string => Boolean(id)),
+      ...candidateIds,
+    ]),
+  ];
   const customers = customerIds.length
     ? await prisma.customer.findMany({
         where: { companyId: scope.companyId, id: { in: customerIds } },
@@ -127,6 +192,22 @@ export async function loadQuickBooksReviewRows(
       ...row,
       qbo,
       contractorYou,
+      candidates:
+        Array.isArray((storedSignals as { candidateIds?: unknown } | null)?.candidateIds)
+          ? ((storedSignals as { candidateIds: unknown[] }).candidateIds)
+              .map((id) => customerById.get(String(id)))
+              .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+              .map((candidate) => ({
+                id: candidate.id,
+                name: candidate.businessName || `${candidate.firstName} ${candidate.lastName}`.trim(),
+                phone: candidate.phone,
+                email: candidate.email,
+                address:
+                  candidate.properties
+                    .map((property) => `${property.address}, ${property.city}, ${property.state} ${property.zip}`)
+                    .join(" · ") || null,
+              }))
+          : [],
       matchedFields: Array.isArray(storedSignals?.matched)
         ? storedSignals.matched.map(String)
         : comparison.matched,
@@ -140,27 +221,21 @@ export async function loadQuickBooksReviewRows(
           : [],
     };
   });
-  const search = input.search?.trim().toLowerCase();
-  if (!search) return presented;
-  return presented
-    .filter((row) =>
-      [
-        row.qbo.name,
-        row.qbo.company,
-        row.qbo.phone,
-        row.qbo.email,
-        row.qbo.billingAddress,
-        row.qbo.serviceAddress,
-        row.contractorYou?.name,
-        row.contractorYou?.company,
-        row.contractorYou?.phone,
-        row.contractorYou?.email,
-        row.contractorYou?.serviceAddress,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(search)
-    )
-    .slice(0, 150);
+  return {
+    rows: presented,
+    total,
+    page: Math.min(page, Math.max(1, Math.ceil(total / pageSize))),
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    from: total ? (page - 1) * pageSize + 1 : 0,
+    to: Math.min(page * pageSize, total),
+    counts: { all, exact, high, new: fresh, possible, reviewed },
+    progress: {
+      exact: { total: exact, approved: approvedExact, remaining: exact - approvedExact },
+      high: { total: high, approved: approvedHigh, remaining: high - approvedHigh },
+      new: { total: fresh, approved: approvedNew, remaining: fresh - approvedNew },
+      possible: { total: possible, resolved: resolvedPossible, remaining: possible - resolvedPossible },
+    },
+    safeBulk: { exact: safeExact, unsafeExact, new: safeNew },
+  };
 }

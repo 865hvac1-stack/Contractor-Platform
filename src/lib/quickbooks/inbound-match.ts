@@ -32,6 +32,7 @@ export type InboundCustomerMatch = {
   reason: string;
   proposedAction: "LINK" | "CREATE" | "REVIEW";
   signals: string[];
+  candidateIds?: string[];
 };
 
 function last10(phone?: string | null) {
@@ -99,6 +100,7 @@ export function classifyInboundCustomer(
       reason: "More than one ContractorYou customer shares this email or phone. Manual review required.",
       proposedAction: "REVIEW",
       signals: [...(emailHits.length ? ["email"] : []), ...(phoneHits.length ? ["phone"] : [])],
+      candidateIds: uniqueIds([...emailHits, ...phoneHits]),
     };
   }
 
@@ -106,6 +108,19 @@ export function classifyInboundCustomer(
   const phoneId = phoneHits[0] ?? null;
 
   if (emailId && phoneId && emailId === phoneId) {
+    const target = index.customers.get(emailId);
+    const targetLast = normalizeText(target?.lastName).toLowerCase();
+    const probeLast = normalizeText(lastName).toLowerCase();
+    if (targetLast && probeLast && targetLast !== probeLast) {
+      return {
+        confidence: "POSSIBLE",
+        customerId: emailId,
+        reason: "Email and phone match, but the customer name conflicts. Manual review required.",
+        proposedAction: "REVIEW",
+        signals: ["email", "phone"],
+        candidateIds: [emailId],
+      };
+    }
     return {
       confidence: "EXACT",
       customerId: emailId,
@@ -116,6 +131,17 @@ export function classifyInboundCustomer(
   }
   if (emailId) {
     const nameConfirms = nameHits.includes(emailId) || addressHits.includes(emailId);
+    const targetPhone = last10(index.customers.get(emailId)?.phone);
+    if (phone && targetPhone && phone !== targetPhone) {
+      return {
+        confidence: "POSSIBLE",
+        customerId: emailId,
+        reason: "Email matches, but phone conflicts. Manual review required.",
+        proposedAction: "REVIEW",
+        signals: ["email"],
+        candidateIds: [emailId],
+      };
+    }
     return {
       confidence: nameConfirms ? "EXACT" : "HIGH",
       customerId: emailId,
@@ -144,6 +170,7 @@ export function classifyInboundCustomer(
       reason: "Phone matches, but name and address did not confirm it. Do not merge silently.",
       proposedAction: "REVIEW",
       signals: ["phone"],
+      candidateIds: [phoneId],
     };
   }
   if (addressHits.length === 1 && nameHits.includes(addressHits[0]!)) {
@@ -153,6 +180,7 @@ export function classifyInboundCustomer(
       reason: "Same name and address — possible duplicate. Manual review required.",
       proposedAction: "REVIEW",
       signals: ["name", "address"],
+      candidateIds: [addressHits[0]!],
     };
   }
   if (nameHits.length === 1 && normalizeText(lastName).length > 2) {
@@ -162,6 +190,7 @@ export function classifyInboundCustomer(
       reason: "Name-only match. Never auto-linked.",
       proposedAction: "REVIEW",
       signals: ["name"],
+      candidateIds: [nameHits[0]!],
     };
   }
   if (nameHits.length > 1) {
@@ -171,6 +200,7 @@ export function classifyInboundCustomer(
       reason: "More than one customer has that name.",
       proposedAction: "REVIEW",
       signals: ["name"],
+      candidateIds: nameHits,
     };
   }
   return {

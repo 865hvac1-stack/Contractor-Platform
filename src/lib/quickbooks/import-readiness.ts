@@ -29,7 +29,7 @@ export async function quickBooksImportReadiness(
         companyId: scope.companyId,
         environment: scope.environment,
         realmId: scope.realmId,
-        status: { in: ["OPEN", "FAILED"] },
+        status: { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED"] },
       },
       _count: { _all: true },
     }),
@@ -54,11 +54,11 @@ export async function quickBooksImportReadiness(
       )
       .reduce((sum, row) => sum + row._count._all, 0);
   const analysisReady = analysis?.status === "COMPLETE" && analysis.writeBackAttempted === false;
-  const customers = count(["CUSTOMER"], ["POSSIBLE", "CONFLICT"]);
-  const mappings = count(["VENDOR", "ITEM", "ACCOUNT"], ["POSSIBLE", "CONFLICT", "FAILED"]);
-  const invoices = count(["INVOICE"], ["POSSIBLE", "CONFLICT", "FAILED"]);
-  const payments = count(["PAYMENT"], ["CONFLICT", "FAILED"]);
-  const purchases = count(["PURCHASE"], ["CONFLICT", "FAILED"]);
+  const customers = count(["CUSTOMER"]);
+  const mappings = count(["VENDOR", "ITEM", "ACCOUNT"]);
+  const invoices = count(["INVOICE"]);
+  const payments = count(["PAYMENT"]);
+  const purchases = count(["PURCHASE"]);
 
   const stage1Ready = analysisReady && customers === 0;
   const stage2Ready = analysisReady && completed.has("STAGE_1") && mappings === 0;

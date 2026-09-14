@@ -1613,6 +1613,13 @@ model QuickBooksImportReview {
   reason             String
   payload            Json
   matchSignals       Json?
+  searchText         String?
+  reviewFingerprint  String?
+  safeAutoApprove    Boolean  @default(false)
+  confidenceScore    Int      @default(0)
+  differenceCount    Int      @default(0)
+  reviewedAt         DateTime?
+  reviewedById       String?
   errorMessage       String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -1623,6 +1630,7 @@ model QuickBooksImportReview {
   @@unique([companyId, environment, realmId, objectType, quickbooksId])
   @@index([companyId, status, objectType])
   @@index([companyId, confidence, status])
+  @@index([companyId, objectType, confidence, status])
   @@index([runId])
 }
 

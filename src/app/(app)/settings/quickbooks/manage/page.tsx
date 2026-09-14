@@ -17,6 +17,7 @@ import {
 import { AnalyzeImportControl } from "@/components/quickbooks/analyze-import-control";
 import { loadQuickBooksReviewRows } from "@/lib/quickbooks/review-center";
 import { ANALYSIS_STATUS_DEFINITIONS } from "@/lib/quickbooks/analysis-classification";
+import { ReviewCheckbox, ReviewSelection } from "@/components/quickbooks/review-selection";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -34,13 +35,23 @@ export const dynamic = "force-dynamic";
 export default async function QuickBooksManagePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; filter?: string; q?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    filter?: string;
+    q?: string;
+    page?: string;
+    pageSize?: string;
+    sort?: string;
+    reason?: string;
+    differences?: string;
+    reviewed?: string;
+  }>;
 }) {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
   const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
   if (!active.ok) redirect("/settings/quickbooks");
-  const { view, filter, q } = await searchParams;
+  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed } = await searchParams;
   const inbound = await loadInboundSyncCenter(prisma, active.scope);
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
@@ -49,8 +60,14 @@ export default async function QuickBooksManagePage({
           view,
           filter,
           search: q,
+          page: Number(page || "1"),
+          pageSize: Number(pageSize || "25"),
+          sort,
+          reason,
+          differences,
+          reviewed,
         })
-      : [];
+      : null;
   const connectionHealth =
     inbound.connection?.status === "CONNECTED"
       ? inbound.settings.inboundSyncHealth || "Connected"
@@ -270,18 +287,47 @@ export default async function QuickBooksManagePage({
               placeholder="Search name, phone, email, or address"
               className="w-full sm:w-80"
             />
+            <select name="reason" defaultValue={reason || ""} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="">All match reasons</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone</option>
+              <option value="name">Name</option>
+              <option value="address">Address</option>
+              <option value="external ID">External ID</option>
+            </select>
+            <select name="differences" defaultValue={differences || ""} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="">Any differences</option>
+              <option value="yes">Has differences</option>
+              <option value="no">No differences</option>
+            </select>
+            <select name="reviewed" defaultValue={reviewed || ""} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="">Reviewed + unreviewed</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="unreviewed">Unreviewed</option>
+            </select>
+            <select name="sort" defaultValue={sort || "highest"} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="highest">Highest confidence</option>
+              <option value="lowest">Lowest confidence</option>
+              <option value="name">Customer name</option>
+              <option value="differences">Most differences</option>
+            </select>
+            <select name="pageSize" defaultValue={String(reviews?.pageSize || 25)} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="25">25 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+            </select>
             <Button type="submit" size="sm" variant="outline">Search</Button>
           </form>
-          {view === "review" ? (
+          {view === "review" && reviews ? (
             <nav className="mt-3 flex flex-wrap gap-2 text-xs">
               {[
-                ["", "All"],
-                ["exact", "Exact Match"],
-                ["high", "High Confidence"],
-                ["possible", "Possible Match"],
-                ["new", "New"],
-                ["conflict", "Conflict"],
-              ].map(([value, label]) => (
+                ["", "All", reviews.counts.all],
+                ["exact", "Exact Matches", reviews.counts.exact],
+                ["high", "High Confidence", reviews.counts.high],
+                ["new", "New Customers", reviews.counts.new],
+                ["possible", "Possible Duplicates", reviews.counts.possible],
+                ["reviewed", "Reviewed", reviews.counts.reviewed],
+              ].map(([value, label, count]) => (
                 <Link
                   key={label}
                   href={`/settings/quickbooks/manage?view=review${value ? `&filter=${value}` : ""}`}
@@ -290,16 +336,33 @@ export default async function QuickBooksManagePage({
                     (filter || "") === value ? "border-[var(--cy-orange)] text-[var(--cy-orange)]" : "border-[var(--border)]"
                   )}
                 >
-                  {label}
+                  {label} ({Number(count).toLocaleString()})
                 </Link>
               ))}
             </nav>
           ) : null}
-          {reviews.length === 0 ? (
+          {reviews && view === "review" ? (
+            <ReviewProgress progress={reviews.progress} readiness={inbound.readiness[0]} />
+          ) : null}
+          {!reviews || reviews.rows.length === 0 ? (
             <p className="mt-3 text-sm text-[var(--muted-foreground)]">Nothing in this queue.</p>
           ) : (
+            <ReviewSelection
+              pageIds={reviews.rows.map((row) => row.id)}
+              confidenceFilter={filter}
+              safeExact={reviews.safeBulk.exact}
+              unsafeExact={reviews.safeBulk.unsafeExact}
+              safeNew={reviews.safeBulk.new}
+              exactTotal={reviews.progress.exact.total}
+              search={q}
+              reason={reason}
+              differences={differences}
+            >
             <div className="mt-4 space-y-6">
-              {Object.entries(groupReviews(reviews)).map(([objectType, grouped]) => (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Showing {reviews.from.toLocaleString()}–{reviews.to.toLocaleString()} of {reviews.total.toLocaleString()}
+              </p>
+              {Object.entries(groupReviews(reviews.rows)).map(([objectType, grouped]) => (
                 <div key={objectType}>
                   {view === "conflicts" ? (
                     <h3 className="border-b border-[var(--border)] pb-2 text-sm font-semibold">
@@ -309,7 +372,9 @@ export default async function QuickBooksManagePage({
                   <ul className="divide-y divide-[var(--border)]">
                     {grouped.map((row) => (
                 <li key={row.id} className="py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <ReviewCheckbox id={row.id} />
+                    <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">
                         {row.displayName} · {row.objectType}
@@ -334,7 +399,14 @@ export default async function QuickBooksManagePage({
                         QuickBooks {row.quickbooksId} · {row.confidence} · {row.status}
                       </p>
                     </div>
-                    <StatusBadge status={row.confidence === "POSSIBLE" ? "NEEDS_REVIEW" : row.status} />
+                    <div className="text-right">
+                      <StatusBadge status={row.confidence === "POSSIBLE" || row.confidence === "CONFLICT" ? "NEEDS_REVIEW" : row.status} />
+                      <p className="mt-1 text-xs font-medium text-[var(--muted-foreground)]">
+                        {row.confidence.replaceAll("_", " ")}
+                        {row.confidenceScore > 0 ? ` · ${row.confidenceScore}%` : ""}
+                      </p>
+                    </div>
+                    </div>
                   </div>
                   {row.objectType === "CUSTOMER" ? (
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -352,20 +424,52 @@ export default async function QuickBooksManagePage({
                       />
                     </div>
                   ) : null}
+                  {row.objectType === "CUSTOMER" && row.confidence === "POSSIBLE" && row.candidates.length ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                      <p className="font-semibold">Plausible ContractorYou candidates</p>
+                      <ul className="mt-2 space-y-1">
+                        {row.candidates.map((candidate) => (
+                          <li key={candidate.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <span>{candidate.name} · {candidate.phone || "no phone"} · {candidate.email || "no email"} · {candidate.address || "no property address"}</span>
+                            <ActionForm action={applyQuickBooksReviewAction}>
+                              <input type="hidden" name="reviewId" value={row.id} />
+                              <input type="hidden" name="decision" value="LINK" />
+                              <input type="hidden" name="targetCustomerId" value={candidate.id} />
+                              <Button type="submit" size="sm" variant="outline">Link this customer</Button>
+                            </ActionForm>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {canManage && row.objectType === "CUSTOMER" ? (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2">
-                        <input type="hidden" name="reviewId" value={row.id} />
-                        <input type="hidden" name="decision" value="LINK" />
-                        <Input name="targetCustomerId" placeholder="ContractorYou customer ID" className="w-56" />
-                        <Button type="submit" size="sm" variant="outline">
-                          Link to Existing Customer
-                        </Button>
-                      </ActionForm>
-                      <ReviewButton reviewId={row.id} decision="CREATE" label="Create New Customer" />
-                      <ReviewButton reviewId={row.id} decision="MERGE" label="Merge Records" extra />
-                      <ReviewButton reviewId={row.id} decision="IGNORE" label="Ignore QuickBooks Record" />
-                      <ReviewButton reviewId={row.id} decision="NOT_DUPLICATE" label="Mark Not Duplicate" />
+                      {row.confidence === "EXACT" || row.confidence === "HIGH" ? (
+                        <>
+                          <ReviewButton reviewId={row.id} decision="APPROVE" label="Approve Match" />
+                          <ReviewButton reviewId={row.id} decision="NOT_SAME" label="Not Same Customer" />
+                          <ReviewButton reviewId={row.id} decision="MANUAL_REVIEW" label="Review Details" />
+                        </>
+                      ) : row.confidence === "NONE" ? (
+                        <>
+                          <ReviewButton reviewId={row.id} decision="APPROVE_NEW" label="Approve as New Customer" />
+                          <ReviewButton reviewId={row.id} decision="MOVE_DUPLICATE" label="Move to Possible Duplicate" />
+                          <ReviewButton reviewId={row.id} decision="IGNORE" label="Ignore" />
+                        </>
+                      ) : (
+                        <>
+                          <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2">
+                            <input type="hidden" name="reviewId" value={row.id} />
+                            <input type="hidden" name="decision" value="LINK" />
+                            <Input name="targetCustomerId" placeholder="ContractorYou customer ID" className="w-56" />
+                            <Button type="submit" size="sm" variant="outline">Link Existing Customer</Button>
+                          </ActionForm>
+                          <ReviewButton reviewId={row.id} decision="CREATE" label="Create New Customer" />
+                          <MergeReviewForm reviewId={row.id} />
+                          <ReviewButton reviewId={row.id} decision="IGNORE" label="Ignore" />
+                          <ReviewButton reviewId={row.id} decision="NOT_DUPLICATE" label="Not a Duplicate" />
+                        </>
+                      )}
                     </div>
                   ) : null}
                   {canManage && row.objectType === "ITEM" ? (
@@ -388,7 +492,21 @@ export default async function QuickBooksManagePage({
                   </ul>
                 </div>
               ))}
+              <nav className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-sm">
+                {reviews.page > 1 ? (
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page - 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed })} className="text-[var(--cy-orange)]">
+                    ← Previous
+                  </Link>
+                ) : <span />}
+                <span>Page {reviews.page} of {reviews.totalPages}</span>
+                {reviews.page < reviews.totalPages ? (
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page + 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed })} className="text-[var(--cy-orange)]">
+                    Next →
+                  </Link>
+                ) : <span />}
+              </nav>
             </div>
+            </ReviewSelection>
           )}
         </section>
       ) : null}
@@ -518,13 +636,64 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-type ReviewRow = Awaited<ReturnType<typeof loadQuickBooksReviewRows>>[number];
+type ReviewResult = Awaited<ReturnType<typeof loadQuickBooksReviewRows>>;
+type ReviewRow = ReviewResult["rows"][number];
 
 function groupReviews(rows: ReviewRow[]) {
   return rows.reduce<Record<string, ReviewRow[]>>((groups, row) => {
     (groups[row.objectType] ??= []).push(row);
     return groups;
   }, {});
+}
+
+function reviewPageHref(input: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  return `/settings/quickbooks/manage?${params.toString()}`;
+}
+
+function ReviewProgress({
+  progress,
+  readiness,
+}: {
+  progress: ReviewResult["progress"];
+  readiness: { ready: boolean; status: string; reason: string };
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--cy-gray)]/40 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em]">Stage 1 review progress</p>
+      <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <ReviewProgressItem label="Exact Matches" total={progress.exact.total} done={progress.exact.approved} remaining={progress.exact.remaining} />
+        <ReviewProgressItem label="High Confidence" total={progress.high.total} done={progress.high.approved} remaining={progress.high.remaining} />
+        <ReviewProgressItem label="New Customers" total={progress.new.total} done={progress.new.approved} remaining={progress.new.remaining} />
+        <ReviewProgressItem label="Possible Duplicates" total={progress.possible.total} done={progress.possible.resolved} remaining={progress.possible.remaining} />
+      </dl>
+      <p className={`mt-3 text-sm font-medium ${readiness.ready ? "text-emerald-700" : "text-amber-700"}`}>
+        Stage 1 readiness: {readiness.ready ? "READY TO IMPORT" : "NOT READY"} · {readiness.reason}
+      </p>
+    </div>
+  );
+}
+
+function ReviewProgressItem({
+  label,
+  total,
+  done,
+  remaining,
+}: {
+  label: string;
+  total: number;
+  done: number;
+  remaining: number;
+}) {
+  return (
+    <div>
+      <dt className="font-medium">{label}</dt>
+      <dd>{total.toLocaleString()} total · {done.toLocaleString()} approved/resolved · {remaining.toLocaleString()} remaining</dd>
+    </div>
+  );
 }
 
 function CustomerSide({
@@ -570,21 +739,30 @@ function ReviewButton({
   reviewId,
   decision,
   label,
-  extra,
 }: {
   reviewId: string;
   decision: string;
   label: string;
-  extra?: boolean;
 }) {
   return (
     <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="reviewId" value={reviewId} />
       <input type="hidden" name="decision" value={decision} />
-      {extra ? <Input name="targetCustomerId" placeholder="Surviving customer ID" className="w-56" /> : null}
       <Button type="submit" size="sm" variant="outline">
         {label}
       </Button>
+    </ActionForm>
+  );
+}
+
+function MergeReviewForm({ reviewId }: { reviewId: string }) {
+  return (
+    <ActionForm action={applyQuickBooksReviewAction} className="flex flex-wrap items-end gap-2 rounded-lg border border-amber-200 p-2">
+      <input type="hidden" name="reviewId" value={reviewId} />
+      <input type="hidden" name="decision" value="MERGE" />
+      <Input name="targetCustomerId" placeholder="Surviving customer ID" className="w-48" />
+      <Input name="confirmation" placeholder="REVIEW MERGE MAPPING" className="w-52" />
+      <Button type="submit" size="sm" variant="outline">Confirm Proposed Merge</Button>
     </ActionForm>
   );
 }

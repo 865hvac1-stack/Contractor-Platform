@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { createHash } from "crypto";
 import { QUICKBOOKS_PROVIDER_KEY } from "@/lib/quickbooks/config";
 import { loadQuickBooksTransport } from "@/lib/quickbooks/connection";
 import { mappingScopeWhere, type QuickBooksScope } from "@/lib/quickbooks/ownership";
@@ -176,8 +177,30 @@ async function upsertReview(
     reason: string;
     payload: object;
     matchSignals?: unknown;
+    searchText?: string;
+    safeAutoApprove?: boolean;
+    confidenceScore?: number;
+    differenceCount?: number;
   }
 ) {
+  const fingerprint = quickBooksReviewFingerprint({
+      payload: input.payload,
+      proposedInternalId: input.proposedInternalId ?? null,
+      proposedAction: input.proposedAction,
+      matchSignals: input.matchSignals ?? null,
+    });
+  const existing = await prisma.quickBooksImportReview.findUnique({
+    where: {
+      companyId_environment_realmId_objectType_quickbooksId: {
+        companyId: input.companyId,
+        environment: input.scope.environment,
+        realmId: input.scope.realmId,
+        objectType: input.objectType,
+        quickbooksId: input.quickbooksId,
+      },
+    },
+  });
+  const persistence = reviewPersistence(existing, fingerprint, input.proposedAction);
   await prisma.quickBooksImportReview.upsert({
     where: {
       companyId_environment_realmId_objectType_quickbooksId: {
@@ -197,26 +220,83 @@ async function upsertReview(
       quickbooksId: input.quickbooksId,
       displayName: input.displayName,
       confidence: input.confidence,
-      status: input.proposedAction === "REVIEW" ? "OPEN" : "READY",
+      status: persistence.status,
       proposedInternalId: input.proposedInternalId ?? null,
       proposedAction: input.proposedAction,
       reason: input.reason,
       payload: input.payload as Prisma.InputJsonValue,
       matchSignals: input.matchSignals as Prisma.InputJsonValue,
+      searchText: input.searchText ?? input.displayName,
+      reviewFingerprint: fingerprint,
+      safeAutoApprove: input.safeAutoApprove ?? false,
+      confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
+      differenceCount: input.differenceCount ?? 0,
     },
     update: {
       runId: input.runId,
       displayName: input.displayName,
       confidence: input.confidence,
       proposedInternalId: input.proposedInternalId ?? null,
-      proposedAction: input.proposedAction,
+      proposedAction: persistence.proposedAction,
       reason: input.reason,
       payload: input.payload as Prisma.InputJsonValue,
       matchSignals: input.matchSignals as Prisma.InputJsonValue,
-      status: input.proposedAction === "REVIEW" ? "OPEN" : "READY",
+      status: persistence.status,
+      searchText: input.searchText ?? input.displayName,
+      reviewFingerprint: fingerprint,
+      safeAutoApprove: input.safeAutoApprove ?? false,
+      confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
+      differenceCount: input.differenceCount ?? 0,
+      reviewedAt: persistence.keepReviewer ? existing?.reviewedAt : null,
+      reviewedById: persistence.keepReviewer ? existing?.reviewedById : null,
       errorMessage: null,
     },
   });
+}
+
+export function quickBooksReviewFingerprint(value: unknown) {
+  return createHash("sha256").update(stableJson(value)).digest("hex");
+}
+
+export function reviewPersistence(
+  existing: {
+    status: string;
+    proposedAction: string;
+    reviewFingerprint: string | null;
+  } | null,
+  fingerprint: string,
+  proposedAction: string
+) {
+  const reviewed = Boolean(existing && ["APPROVED", "IGNORED", "NOT_SAME", "RESOLVED"].includes(existing.status));
+  const unchangedApproval = Boolean(reviewed && existing?.reviewFingerprint === fingerprint);
+  return {
+    status: unchangedApproval
+      ? existing!.status
+      : reviewed
+        ? "RE_REVIEW_REQUIRED"
+        : proposedAction === "REVIEW"
+          ? "OPEN"
+          : "READY",
+    proposedAction: unchangedApproval ? existing!.proposedAction : reviewed ? "REVIEW" : proposedAction,
+    keepReviewer: unchangedApproval,
+  };
+}
+
+function confidenceScore(confidence: string) {
+  if (confidence === "EXACT") return 100;
+  if (confidence === "HIGH") return 92;
+  if (confidence === "POSSIBLE") return 65;
+  return 0;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+    .join(",")}}`;
 }
 
 export async function runQuickBooksImportAnalysis(input: {
@@ -262,7 +342,7 @@ export async function runQuickBooksImportAnalysis(input: {
         companyId: input.companyId,
         environment: scope.environment,
         realmId: scope.realmId,
-        status: { in: ["OPEN", "READY", "FAILED"] },
+        status: { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED"] },
       },
       data: { status: "STALE" },
     });
@@ -501,7 +581,48 @@ export async function runQuickBooksImportAnalysis(input: {
             matchSignals: {
               matched: [...new Set([...match.signals, ...comparison.matched])],
               differing: comparison.differing,
+              candidateIds: match.candidateIds ?? (match.customerId ? [match.customerId] : []),
+              contractorYouSnapshot: candidate
+                ? {
+                    firstName: candidate.firstName,
+                    lastName: candidate.lastName,
+                    businessName: candidate.businessName,
+                    email: candidate.email,
+                    phone: candidate.phone,
+                    properties: candidate.properties,
+                  }
+                : null,
             },
+            searchText: [
+              row.DisplayName,
+              row.CompanyName,
+              row.PrimaryEmailAddr?.Address,
+              row.PrimaryPhone?.FreeFormNumber,
+              formatQboAddress(row.BillAddr),
+              formatQboAddress(row.ShipAddr),
+              candidate?.firstName,
+              candidate?.lastName,
+              candidate?.businessName,
+              candidate?.email,
+              candidate?.phone,
+              ...(candidate?.properties.map((property) => `${property.address} ${property.city} ${property.zip}`) ?? []),
+            ]
+              .filter(Boolean)
+              .join(" "),
+            safeAutoApprove:
+              !linkedCustomerId &&
+              (match.confidence === "EXACT" &&
+                !comparison.differing.some((field) => ["email", "phone", "last name"].includes(field)) ||
+                match.confidence === "NONE"),
+            confidenceScore:
+              match.confidence === "EXACT"
+                ? 100
+                : match.confidence === "HIGH"
+                  ? Math.min(99, 90 + comparison.matched.length)
+                  : match.confidence === "POSSIBLE"
+                    ? Math.min(89, 60 + comparison.matched.length * 5)
+                    : 0,
+            differenceCount: comparison.differing.length,
           });
         }
         if (page.rows.length) checkpoint.customerStart += page.rows.length;
@@ -844,6 +965,23 @@ export async function runQuickBooksImportAnalysis(input: {
     },
   });
   if (finished) {
+    await prisma.quickBooksImportReview.updateMany({
+      where: {
+        companyId: input.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        objectType: "CUSTOMER",
+        status: { in: ["APPROVED", "RESOLVED"] },
+        OR: [{ runId: { not: run.id } }, { runId: null }],
+      },
+      data: {
+        status: "RE_REVIEW_REQUIRED",
+        proposedAction: "REVIEW",
+        reviewedAt: null,
+        reviewedById: null,
+        reason: "The prior approved QuickBooks customer was not present in the latest analysis. Re-review required.",
+      },
+    });
     await prisma.quickBooksSettings.update({
       where: { companyId: input.companyId },
       data: { lastSuccessfulInboundSyncAt: new Date(), inboundSyncHealth: "READY" },

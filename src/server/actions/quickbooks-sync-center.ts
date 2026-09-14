@@ -9,7 +9,12 @@ import type { ActionResult } from "@/server/actions/auth";
 import { getActiveQuickBooksScope } from "@/lib/quickbooks/ownership";
 import { runQuickBooksImportAnalysis } from "@/lib/quickbooks/analysis";
 import { importApprovedQuickBooksRecords } from "@/lib/quickbooks/inbound-import";
-import { applyQuickBooksReviewDecision, type ReviewDecision } from "@/lib/quickbooks/inbound-review";
+import {
+  applyQuickBooksReviewDecision,
+  bulkQuickBooksReviewDecision,
+  type BulkReviewAction,
+  type ReviewDecision,
+} from "@/lib/quickbooks/inbound-review";
 import { QUICKBOOKS_WRITEBACK_DISABLED_MESSAGE } from "@/lib/quickbooks/writeback";
 import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
 import type { AnalysisProgress } from "@/lib/quickbooks/analysis";
@@ -152,12 +157,60 @@ export async function applyQuickBooksReviewAction(
       reviewId: String(formData?.get("reviewId") || ""),
       action,
       targetCustomerId: String(formData?.get("targetCustomerId") || "") || null,
+      actorId: ctx.user.id,
+      confirmation: String(formData?.get("confirmation") || "") || null,
     });
     paths();
     return result;
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
     return { ok: false, error: "Could not save that review decision." };
+  }
+}
+
+export async function bulkQuickBooksReviewAction(
+  _prev?: ActionResult | null,
+  formData?: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("accounting:manage");
+    const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
+    if (!active.ok) return active;
+    const selectedIds = String(formData?.get("selectedIds") || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const result = await bulkQuickBooksReviewDecision({
+      prisma,
+      companyId: ctx.company.id,
+      scope: active.scope,
+      actorId: ctx.user.id,
+      action: String(formData?.get("bulkAction") || "") as BulkReviewAction,
+      selectedIds,
+      allFiltered: formData?.get("allFiltered") === "true",
+      confidenceFilter: String(formData?.get("confidenceFilter") || "") || null,
+      search: String(formData?.get("search") || "") || null,
+      reason: String(formData?.get("reason") || "") || null,
+      differences: String(formData?.get("differences") || "") || null,
+    });
+    if (!result.ok) return result;
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "quickbooks.review_bulk_decision",
+      entityType: "QuickBooksImportReview",
+      metadata: {
+        bulkAction: String(formData?.get("bulkAction") || ""),
+        count: result.count,
+        imported: false,
+        quickBooksWrite: false,
+      },
+    });
+    revalidatePath("/settings/quickbooks/manage");
+    return { ok: true, message: result.message };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not save bulk review decisions. No customer data was changed." };
   }
 }
 

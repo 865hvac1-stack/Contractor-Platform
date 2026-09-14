@@ -5,7 +5,12 @@ import { isQuickBooksWriteMethod, QUICKBOOKS_WRITEBACK_ENABLED } from "@/lib/qui
 import { assertImportConfirmation } from "@/lib/quickbooks/inbound-import";
 import { IMPORT_CONFIRMATION } from "@/lib/quickbooks/inbound-types";
 import type { QboTransport } from "@/lib/quickbooks/client";
-import { analysisProgress, type AnalysisCheckpoint } from "@/lib/quickbooks/analysis";
+import {
+  analysisProgress,
+  quickBooksReviewFingerprint,
+  reviewPersistence,
+  type AnalysisCheckpoint,
+} from "@/lib/quickbooks/analysis";
 import type { InboundObjectType } from "@/lib/quickbooks/inbound-types";
 import {
   customerFieldComparison,
@@ -65,6 +70,30 @@ describe("QuickBooks inbound matching", () => {
     });
     expect(possible.confidence).toBe("POSSIBLE");
     expect(possible.proposedAction).toBe("REVIEW");
+  });
+
+  it("downgrades contradictory strong identity data from exact to manual review", () => {
+    const contradictoryIndex = buildInboundCustomerIndex(
+      [{
+        id: "c1",
+        firstName: "Ada",
+        lastName: "West",
+        businessName: null,
+        email: "shared@example.com",
+        phone: "8655550100",
+      }],
+      []
+    );
+    const match = classifyInboundCustomer(contradictoryIndex, {
+      quickbooksId: "QB-conflict",
+      displayName: "Different Person",
+      givenName: "Different",
+      familyName: "Person",
+      email: "shared@example.com",
+      phone: "8655550100",
+    });
+    expect(match.confidence).toBe("POSSIBLE");
+    expect(match.proposedAction).toBe("REVIEW");
   });
 
   it("does not treat a new customer as a duplicate", () => {
@@ -211,6 +240,27 @@ describe("QuickBooks inbound safety", () => {
     expect(paymentConflictReasons({ invoiceResolved: true, customerResolved: false })).toEqual([
       "Payment customer not found",
     ]);
+  });
+
+  it("preserves approvals only while the source and candidate fingerprint is unchanged", () => {
+    const fingerprint = quickBooksReviewFingerprint({
+      payload: { Id: "QB-1", DisplayName: "Ada West" },
+      proposedInternalId: "c1",
+    });
+    expect(
+      reviewPersistence(
+        { status: "APPROVED", proposedAction: "LINK", reviewFingerprint: fingerprint },
+        fingerprint,
+        "LINK"
+      )
+    ).toEqual({ status: "APPROVED", proposedAction: "LINK", keepReviewer: true });
+    expect(
+      reviewPersistence(
+        { status: "APPROVED", proposedAction: "LINK", reviewFingerprint: fingerprint },
+        quickBooksReviewFingerprint({ changed: true }),
+        "LINK"
+      )
+    ).toEqual({ status: "RE_REVIEW_REQUIRED", proposedAction: "REVIEW", keepReviewer: false });
   });
 });
 
