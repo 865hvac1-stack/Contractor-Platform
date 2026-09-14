@@ -1616,6 +1616,8 @@ model QuickBooksImportReview {
   searchText         String?
   reviewFingerprint  String?
   safeAutoApprove    Boolean  @default(false)
+  autoApprovalTier   String?
+  autoApprovalBlocker String?
   confidenceScore    Int      @default(0)
   differenceCount    Int      @default(0)
   reviewedAt         DateTime?
@@ -1631,6 +1633,7 @@ model QuickBooksImportReview {
   @@index([companyId, status, objectType])
   @@index([companyId, confidence, status])
   @@index([companyId, objectType, confidence, status])
+  @@index([companyId, objectType, autoApprovalBlocker])
   @@index([runId])
 }
 

@@ -48,6 +48,7 @@ export async function loadQuickBooksReviewRows(
     reason?: string | null;
     differences?: string | null;
     reviewed?: string | null;
+    automation?: string | null;
   }
 ) {
   const filterMap: Record<string, string> = {
@@ -77,6 +78,20 @@ export async function loadQuickBooksReviewRows(
       ...(input.reason ? { reason: { contains: input.reason.trim(), mode: "insensitive" } } : {}),
       ...(input.differences === "yes" ? { differenceCount: { gt: 0 } } : {}),
       ...(input.differences === "no" ? { differenceCount: 0 } : {}),
+      ...(input.automation === "eligible" ? { safeAutoApprove: true, status: "READY" } : {}),
+      ...(input.automation === "blocked"
+        ? { safeAutoApprove: false, status: { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED"] } }
+        : {}),
+      ...(input.automation === "missing_email" ? { autoApprovalBlocker: "EMAIL_MISSING" } : {}),
+      ...(input.automation === "missing_phone" ? { autoApprovalBlocker: "PHONE_MISSING" } : {}),
+      ...(input.automation === "shared_identifier"
+        ? { autoApprovalBlocker: { in: ["PHONE_NOT_UNIQUE", "EMAIL_NOT_UNIQUE"] } }
+        : {}),
+      ...(input.automation === "identity_conflict"
+        ? { autoApprovalBlocker: { in: ["IDENTITY_CONFLICT", "PHONE_EMAIL_RESOLVE_DIFFERENT_CUSTOMERS", "NAME_CONFLICT", "ADDRESS_CONFLICT"] } }
+        : {}),
+      ...(input.automation === "multiple" ? { autoApprovalBlocker: "MULTIPLE_CANDIDATES" } : {}),
+      ...(input.automation === "possible" ? { confidence: "POSSIBLE" } : {}),
   };
   const orderBy: Prisma.QuickBooksImportReviewOrderByWithRelationInput[] =
     input.sort === "lowest"
@@ -93,7 +108,7 @@ export async function loadQuickBooksReviewRows(
     objectType: "CUSTOMER",
     status: { in: currentStatuses },
   } satisfies Prisma.QuickBooksImportReviewWhereInput;
-  const [total, rows, all, exact, high, fresh, possible, reviewed, approvedExact, approvedHigh, approvedNew, resolvedPossible, safeExact, unsafeExact, safeNew] =
+  const [total, rows, all, exact, high, fresh, possible, reviewed, approvedExact, approvedHigh, approvedNew, resolvedPossible, safeExact, unsafeExact, safeHigh, safeNew] =
     await Promise.all([
       prisma.quickBooksImportReview.count({ where }),
       prisma.quickBooksImportReview.findMany({
@@ -112,10 +127,38 @@ export async function loadQuickBooksReviewRows(
       prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "HIGH", status: "APPROVED" } }),
       prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE", status: "APPROVED" } }),
       prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "POSSIBLE", status: { in: reviewedStatuses } } }),
-      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", safeAutoApprove: true, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", safeAutoApprove: true, status: "READY" } }),
       prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "EXACT", safeAutoApprove: false, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
-      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE", safeAutoApprove: true, status: { in: ["READY", "RE_REVIEW_REQUIRED"] } } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "HIGH", safeAutoApprove: true, status: "READY" } }),
+      prisma.quickBooksImportReview.count({ where: { ...customerScope, confidence: "NONE", safeAutoApprove: true, status: "READY" } }),
     ]);
+  const [tierRows, blockerRows, manualRequired] = await Promise.all([
+    prisma.quickBooksImportReview.groupBy({
+      by: ["autoApprovalTier", "confidence"],
+      where: {
+        ...customerScope,
+        status: "READY",
+        safeAutoApprove: true,
+      },
+      _count: { _all: true },
+    }),
+    prisma.quickBooksImportReview.groupBy({
+      by: ["autoApprovalBlocker", "confidence"],
+      where: {
+        ...customerScope,
+        status: { in: ["READY", "OPEN", "RE_REVIEW_REQUIRED"] },
+        safeAutoApprove: false,
+      },
+      _count: { _all: true },
+    }),
+    prisma.quickBooksImportReview.count({
+      where: {
+        ...customerScope,
+        status: { in: ["READY", "OPEN", "RE_REVIEW_REQUIRED"] },
+        safeAutoApprove: false,
+      },
+    }),
+  ]);
   const candidateIds = rows.flatMap((row) => {
     const signals =
       row.matchSignals && typeof row.matchSignals === "object" && !Array.isArray(row.matchSignals)
@@ -236,6 +279,33 @@ export async function loadQuickBooksReviewRows(
       new: { total: fresh, approved: approvedNew, remaining: fresh - approvedNew },
       possible: { total: possible, resolved: resolvedPossible, remaining: possible - resolvedPossible },
     },
-    safeBulk: { exact: safeExact, unsafeExact, new: safeNew },
+    safeBulk: { exact: safeExact, unsafeExact, high: safeHigh, new: safeNew },
+    automation: {
+      tiers: Object.fromEntries(
+        tierRows.map((row) => [
+          `${row.confidence}:${row.autoApprovalTier || "NONE"}`,
+          row._count._all,
+        ])
+      ),
+      blockers: sumGroups(blockerRows, (row) => row.autoApprovalBlocker || "OTHER"),
+      blockersByConfidence: sumGroups(
+        blockerRows,
+        (row) => `${row.confidence}:${row.autoApprovalBlocker || "OTHER"}`
+      ),
+      manualRequired,
+      autoResolved: approvedExact + approvedHigh,
+      safeNewApproved: approvedNew,
+    },
   };
+}
+
+function sumGroups<T extends { _count: { _all: number } }>(
+  rows: T[],
+  key: (row: T) => string
+) {
+  return rows.reduce<Record<string, number>>((totals, row) => {
+    const group = key(row);
+    totals[group] = (totals[group] ?? 0) + row._count._all;
+    return totals;
+  }, {});
 }

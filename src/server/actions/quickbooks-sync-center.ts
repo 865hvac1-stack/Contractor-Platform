@@ -198,6 +198,7 @@ export async function bulkQuickBooksReviewAction(
       reason: String(formData?.get("reason") || "") || null,
       differences: String(formData?.get("differences") || "") || null,
       reviewed: String(formData?.get("reviewed") || "") || null,
+      automation: String(formData?.get("automation") || "") || null,
     });
     if (!result.ok) return result;
     await writeAudit({

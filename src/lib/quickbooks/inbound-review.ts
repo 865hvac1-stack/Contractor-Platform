@@ -2,8 +2,11 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { QuickBooksScope } from "@/lib/quickbooks/ownership";
 import { mappingScopeWhere } from "@/lib/quickbooks/ownership";
 import { buildInboundCustomerIndex, classifyInboundCustomer } from "@/lib/quickbooks/inbound-match";
-import { customerFieldComparison } from "@/lib/quickbooks/analysis-classification";
 import { quickBooksReviewFingerprint } from "@/lib/quickbooks/analysis";
+import {
+  buildAutoApprovalUniverse,
+  evaluateCustomerAutoApproval,
+} from "@/lib/quickbooks/customer-review-automation";
 
 export type ReviewDecision =
   | "APPROVE"
@@ -194,6 +197,7 @@ export type BulkReviewAction =
   | "NOT_SAME_SELECTED"
   | "MANUAL_SELECTED"
   | "APPROVE_SAFE_EXACT"
+  | "APPROVE_SAFE_HIGH"
   | "APPROVE_SAFE_NEW";
 
 type CustomerReviewRow = Awaited<
@@ -236,15 +240,25 @@ async function revalidateCustomerPlans(
       quickbooksId: mapping.quickbooksId,
     }))
   );
+  const universe = buildAutoApprovalUniverse(
+    customers,
+    mappings.map((mapping) => ({
+      customerId: mapping.internalId,
+      quickbooksId: mapping.quickbooksId,
+    }))
+  );
   const customerById = new Map(customers.map((customer) => [customer.id, customer]));
   const mappingByQbo = new Map(mappings.map((mapping) => [mapping.quickbooksId, mapping.internalId]));
   const safeExact: string[] = [];
+  const safeHigh: string[] = [];
   const safeNew: string[] = [];
   const excluded: string[] = [];
+  const blockers = new Map<string, string>();
 
   for (const row of rows) {
     if (row.status !== "READY" || !row.reviewFingerprint || row.runId == null || !row.quickbooksId) {
       excluded.push(row.id);
+      blockers.set(row.id, !row.reviewFingerprint ? "STALE_FINGERPRINT" : "OTHER");
       continue;
     }
     const payload = row.payload as {
@@ -272,11 +286,6 @@ async function revalidateCustomerPlans(
       },
       mappingByQbo.get(row.quickbooksId)
     );
-    if (row.confidence === "NONE") {
-      if (match.confidence === "NONE" && !row.proposedInternalId) safeNew.push(row.id);
-      else excluded.push(row.id);
-      continue;
-    }
     const candidate = row.proposedInternalId ? customerById.get(row.proposedInternalId) : null;
     const storedSignals =
       row.matchSignals && typeof row.matchSignals === "object" && !Array.isArray(row.matchSignals)
@@ -293,37 +302,43 @@ async function revalidateCustomerPlans(
         }
       : null;
     const candidateUnchanged =
-      Boolean(storedSignals?.contractorYouSnapshot) &&
-      quickBooksReviewFingerprint(storedSignals?.contractorYouSnapshot) ===
-        quickBooksReviewFingerprint(currentSnapshot);
-    const comparison = customerFieldComparison(
-      {
+      row.confidence === "NONE"
+        ? true
+        : Boolean(storedSignals?.contractorYouSnapshot) &&
+          quickBooksReviewFingerprint(storedSignals?.contractorYouSnapshot) ===
+            quickBooksReviewFingerprint(currentSnapshot);
+    const automation = evaluateCustomerAutoApproval({
+      probe: {
+        quickbooksId: row.quickbooksId,
         displayName: payload.DisplayName,
         givenName: payload.GivenName,
         familyName: payload.FamilyName,
         companyName: payload.CompanyName,
         email: payload.PrimaryEmailAddr?.Address,
         phone: payload.PrimaryPhone?.FreeFormNumber,
+        billAddr: payload.BillAddr,
+        shipAddr: payload.ShipAddr,
       },
-      candidate
-    );
-    const strongConflict = comparison.differing.some((field) =>
-      ["email", "phone", "last name"].includes(field)
-    );
+      match,
+      universe,
+      fingerprintFresh: true,
+      candidateUnchanged,
+    });
     if (
-      row.confidence === "EXACT" &&
+      automation.eligible &&
       row.safeAutoApprove &&
-      match.confidence === "EXACT" &&
-      match.customerId === row.proposedInternalId &&
-      candidateUnchanged &&
-      !strongConflict
+      match.customerId === row.proposedInternalId
     ) {
-      safeExact.push(row.id);
+      if (row.confidence === "EXACT") safeExact.push(row.id);
+      else if (row.confidence === "HIGH") safeHigh.push(row.id);
+      else if (row.confidence === "NONE") safeNew.push(row.id);
+      else excluded.push(row.id);
     } else {
       excluded.push(row.id);
+      blockers.set(row.id, automation.blocker || "OTHER");
     }
   }
-  return { safeExact, safeNew, excluded };
+  return { safeExact, safeHigh, safeNew, excluded, blockers };
 }
 
 export async function bulkQuickBooksReviewDecision(input: {
@@ -340,12 +355,14 @@ export async function bulkQuickBooksReviewDecision(input: {
   reason?: string | null;
   differences?: string | null;
   reviewed?: string | null;
+  automation?: string | null;
 }) {
   const allowedActions: BulkReviewAction[] = [
     "APPROVE_SELECTED",
     "NOT_SAME_SELECTED",
     "MANUAL_SELECTED",
     "APPROVE_SAFE_EXACT",
+    "APPROVE_SAFE_HIGH",
     "APPROVE_SAFE_NEW",
   ];
   if (!allowedActions.includes(input.action)) {
@@ -408,6 +425,20 @@ export async function bulkQuickBooksReviewDecision(input: {
         ...(input.reason ? { reason: { contains: input.reason, mode: "insensitive" as const } } : {}),
         ...(input.differences === "yes" ? { differenceCount: { gt: 0 } } : {}),
         ...(input.differences === "no" ? { differenceCount: 0 } : {}),
+        ...(input.automation === "eligible" ? { safeAutoApprove: true, status: "READY" } : {}),
+        ...(input.automation === "blocked"
+          ? { safeAutoApprove: false, status: { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED"] } }
+          : {}),
+        ...(input.automation === "missing_email" ? { autoApprovalBlocker: "EMAIL_MISSING" } : {}),
+        ...(input.automation === "missing_phone" ? { autoApprovalBlocker: "PHONE_MISSING" } : {}),
+        ...(input.automation === "shared_identifier"
+          ? { autoApprovalBlocker: { in: ["PHONE_NOT_UNIQUE", "EMAIL_NOT_UNIQUE"] } }
+          : {}),
+        ...(input.automation === "identity_conflict"
+          ? { autoApprovalBlocker: { in: ["IDENTITY_CONFLICT", "PHONE_EMAIL_RESOLVE_DIFFERENT_CUSTOMERS", "NAME_CONFLICT", "ADDRESS_CONFLICT"] } }
+          : {}),
+        ...(input.automation === "multiple" ? { autoApprovalBlocker: "MULTIPLE_CANDIDATES" } : {}),
+        ...(input.automation === "possible" ? { confidence: "POSSIBLE" } : {}),
       }
     : { ...selectionBase, id: { in: input.selectedIds } };
   if (input.selectionMode !== "ALL_FILTERED" && input.selectedIds.length === 0) {
@@ -415,33 +446,56 @@ export async function bulkQuickBooksReviewDecision(input: {
   }
   const reviewed = { reviewedAt: new Date(), reviewedById: input.actorId };
 
-  if (input.action === "APPROVE_SAFE_EXACT" || input.action === "APPROVE_SAFE_NEW") {
-    const confidence = input.action === "APPROVE_SAFE_EXACT" ? "EXACT" : "NONE";
+  if (
+    input.action === "APPROVE_SAFE_EXACT" ||
+    input.action === "APPROVE_SAFE_HIGH" ||
+    input.action === "APPROVE_SAFE_NEW"
+  ) {
+    const confidence =
+      input.action === "APPROVE_SAFE_EXACT"
+        ? "EXACT"
+        : input.action === "APPROVE_SAFE_HIGH"
+          ? "HIGH"
+          : "NONE";
     const candidates = await input.prisma.quickBooksImportReview.findMany({
       where: { ...eligibleBase, confidence, safeAutoApprove: true, status: "READY" },
     });
     const validated = await revalidateCustomerPlans(input.prisma, input.scope, candidates);
-    const approvedIds = confidence === "EXACT" ? validated.safeExact : validated.safeNew;
+    const approvedIds =
+      confidence === "EXACT"
+        ? validated.safeExact
+        : confidence === "HIGH"
+          ? validated.safeHigh
+          : validated.safeNew;
     const result = await input.prisma.quickBooksImportReview.updateMany({
       where: { ...eligibleBase, id: { in: approvedIds }, status: "READY" },
       data: {
         status: "APPROVED",
-        proposedAction: confidence === "EXACT" ? "LINK" : "CREATE",
+        proposedAction: confidence === "NONE" ? "CREATE" : "LINK",
         ...reviewed,
       },
     });
     if (validated.excluded.length) {
-      await input.prisma.quickBooksImportReview.updateMany({
-        where: { ...eligibleBase, id: { in: validated.excluded } },
-        data: {
-          status: "RE_REVIEW_REQUIRED",
-          safeAutoApprove: false,
-          proposedAction: "REVIEW",
-          reviewedAt: null,
-          reviewedById: null,
-          reason: "Safe-match revalidation failed because identity, candidate, or fingerprint data changed.",
-        },
-      });
+      const grouped = new Map<string, string[]>();
+      for (const id of validated.excluded) {
+        const blocker = validated.blockers.get(id) || "OTHER";
+        grouped.set(blocker, [...(grouped.get(blocker) ?? []), id]);
+      }
+      for (const [blocker, ids] of grouped) {
+        await input.prisma.quickBooksImportReview.updateMany({
+          where: { ...eligibleBase, id: { in: ids } },
+          data: {
+            status: "RE_REVIEW_REQUIRED",
+            safeAutoApprove: false,
+            autoApprovalTier: null,
+            autoApprovalBlocker: blocker,
+            proposedAction: "REVIEW",
+            reviewedAt: null,
+            reviewedById: null,
+            reason: "Safe-match revalidation failed because identity, candidate, or fingerprint data changed.",
+          },
+        });
+      }
     }
     return {
       ok: true as const,
@@ -461,7 +515,7 @@ export async function bulkQuickBooksReviewDecision(input: {
           Boolean(row.proposedInternalId)
       )
       .map((row) => row.id);
-    const linkIds = [...new Set([...validated.safeExact, ...highIds])];
+    const linkIds = [...new Set([...validated.safeExact, ...validated.safeHigh, ...highIds])];
     const [links, creates] = await input.prisma.$transaction([
       input.prisma.quickBooksImportReview.updateMany({
         where: {

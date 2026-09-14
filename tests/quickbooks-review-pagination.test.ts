@@ -15,6 +15,7 @@ describe("QuickBooks review pagination", () => {
       quickBooksImportReview: {
         count: vi.fn().mockResolvedValue(2_294),
         findMany,
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       customer: { findMany: vi.fn().mockResolvedValue([]) },
     };
@@ -47,6 +48,7 @@ describe("QuickBooks review pagination", () => {
       quickBooksImportReview: {
         count: vi.fn().mockResolvedValue(0),
         findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       customer: { findMany: vi.fn().mockResolvedValue([]) },
     };

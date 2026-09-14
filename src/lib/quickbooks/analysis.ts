@@ -23,6 +23,10 @@ import {
   isLinkedCustomerChanged,
   paymentConflictReasons,
 } from "@/lib/quickbooks/analysis-classification";
+import {
+  buildAutoApprovalUniverse,
+  evaluateCustomerAutoApproval,
+} from "@/lib/quickbooks/customer-review-automation";
 
 const PAGE = 50;
 const BUDGET_MS = 8_000;
@@ -181,6 +185,8 @@ async function upsertReview(
     safeAutoApprove?: boolean;
     confidenceScore?: number;
     differenceCount?: number;
+    autoApprovalTier?: string | null;
+    autoApprovalBlocker?: string | null;
   }
 ) {
   const fingerprint = quickBooksReviewFingerprint({
@@ -228,9 +234,16 @@ async function upsertReview(
       matchSignals: input.matchSignals as Prisma.InputJsonValue,
       searchText: input.searchText ?? input.displayName,
       reviewFingerprint: fingerprint,
-      safeAutoApprove: input.safeAutoApprove ?? false,
+      safeAutoApprove:
+        persistence.status === "RE_REVIEW_REQUIRED" ? false : input.safeAutoApprove ?? false,
       confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
       differenceCount: input.differenceCount ?? 0,
+      autoApprovalTier:
+        persistence.status === "RE_REVIEW_REQUIRED" ? null : input.autoApprovalTier ?? null,
+      autoApprovalBlocker:
+        persistence.status === "RE_REVIEW_REQUIRED"
+          ? "STALE_FINGERPRINT"
+          : input.autoApprovalBlocker ?? null,
     },
     update: {
       runId: input.runId,
@@ -244,9 +257,16 @@ async function upsertReview(
       status: persistence.status,
       searchText: input.searchText ?? input.displayName,
       reviewFingerprint: fingerprint,
-      safeAutoApprove: input.safeAutoApprove ?? false,
+      safeAutoApprove:
+        persistence.status === "RE_REVIEW_REQUIRED" ? false : input.safeAutoApprove ?? false,
       confidenceScore: input.confidenceScore ?? confidenceScore(input.confidence),
       differenceCount: input.differenceCount ?? 0,
+      autoApprovalTier:
+        persistence.status === "RE_REVIEW_REQUIRED" ? null : input.autoApprovalTier ?? null,
+      autoApprovalBlocker:
+        persistence.status === "RE_REVIEW_REQUIRED"
+          ? "STALE_FINGERPRINT"
+          : input.autoApprovalBlocker ?? null,
       reviewedAt: persistence.keepReviewer ? existing?.reviewedAt : null,
       reviewedById: persistence.keepReviewer ? existing?.reviewedById : null,
       errorMessage: null,
@@ -431,6 +451,10 @@ export async function runQuickBooksImportAnalysis(input: {
     })),
     customerMaps.map((row) => ({ customerId: row.internalId, quickbooksId: row.quickbooksId }))
   );
+  const autoApprovalUniverse = buildAutoApprovalUniverse(
+    existingCustomers,
+    customerMaps.map((row) => ({ customerId: row.internalId, quickbooksId: row.quickbooksId }))
+  );
   const mappedCustomerByQbo = new Map(customerMaps.map((row) => [row.quickbooksId, row.internalId]));
   const customerById = new Map(existingCustomers.map((row) => [row.id, row]));
   const priorCustomerReviews = await prisma.quickBooksImportReview.findMany({
@@ -566,6 +590,23 @@ export async function runQuickBooksImportAnalysis(input: {
             customerId: match.customerId,
             reason: match.confidence,
           });
+          const automation = evaluateCustomerAutoApproval({
+            probe: {
+              quickbooksId: row.Id,
+              displayName: row.DisplayName,
+              givenName: row.GivenName,
+              familyName: row.FamilyName,
+              companyName: row.CompanyName,
+              email: row.PrimaryEmailAddr?.Address,
+              phone: row.PrimaryPhone?.FreeFormNumber,
+              billAddr: row.BillAddr,
+              shipAddr: row.ShipAddr,
+            },
+            match,
+            universe: autoApprovalUniverse,
+            fingerprintFresh: true,
+            candidateUnchanged: true,
+          });
           await upsertReview(prisma, {
             companyId: input.companyId,
             scope,
@@ -609,11 +650,9 @@ export async function runQuickBooksImportAnalysis(input: {
             ]
               .filter(Boolean)
               .join(" "),
-            safeAutoApprove:
-              !linkedCustomerId &&
-              (match.confidence === "EXACT" &&
-                !comparison.differing.some((field) => ["email", "phone", "last name"].includes(field)) ||
-                match.confidence === "NONE"),
+            safeAutoApprove: !linkedCustomerId && automation.eligible,
+            autoApprovalTier: automation.tier,
+            autoApprovalBlocker: automation.blocker,
             confidenceScore:
               match.confidence === "EXACT"
                 ? 100

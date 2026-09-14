@@ -19,10 +19,17 @@ export function ReviewSelection({
   unsafeExact,
   safeNew,
   exactTotal,
+  approvedExact = 0,
+  highTotal = 0,
+  approvedHigh = 0,
+  newTotal = 0,
+  approvedNew = 0,
   search,
   reason,
   differences,
   reviewed,
+  automation,
+  safeHigh = 0,
   filteredTotal,
   analysisRunId,
   initialSelectionMode,
@@ -35,10 +42,17 @@ export function ReviewSelection({
   unsafeExact: number;
   safeNew: number;
   exactTotal: number;
+  approvedExact?: number;
+  highTotal?: number;
+  approvedHigh?: number;
+  newTotal?: number;
+  approvedNew?: number;
   search?: string | null;
   reason?: string | null;
   differences?: string | null;
   reviewed?: string | null;
+  automation?: string | null;
+  safeHigh?: number;
   filteredTotal: number;
   analysisRunId: string;
   initialSelectionMode?: "ALL_FILTERED" | "NONE";
@@ -52,7 +66,7 @@ export function ReviewSelection({
   const [selectionMode, setSelectionMode] = useState<"NONE" | "PAGE" | "ALL_FILTERED">(
     initialSelectionMode ?? "NONE"
   );
-  const [confirm, setConfirm] = useState<"exact" | "new" | null>(null);
+  const [confirm, setConfirm] = useState<"exact" | "high" | "new" | null>(null);
   const [state, formAction, pending] = useActionState(
     bulkQuickBooksReviewAction,
     null as ActionResult | null
@@ -143,6 +157,7 @@ export function ReviewSelection({
           <input type="hidden" name="reason" value={reason || ""} />
           <input type="hidden" name="differences" value={differences || ""} />
           <input type="hidden" name="reviewed" value={reviewed || ""} />
+          <input type="hidden" name="automation" value={automation || ""} />
           <Button type="submit" size="sm" name="bulkAction" value="APPROVE_SELECTED" disabled={pending || !selectedCount}>
             Approve Selected
           </Button>
@@ -164,6 +179,11 @@ export function ReviewSelection({
               Approve All Safe New Customers
             </Button>
           ) : null}
+          {safeHigh > 0 ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setConfirm("high")}>
+              Approve Safe High-Confidence Matches
+            </Button>
+          ) : null}
         </div>
         {state ? (
           <p className={`mt-2 text-sm ${state.ok ? "text-emerald-700" : "text-rose-700"}`} role={state.ok ? "status" : "alert"}>
@@ -178,18 +198,33 @@ export function ReviewSelection({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-label="Confirm bulk approval">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="font-semibold text-[var(--cy-navy)]">
-              {confirm === "exact" ? "Approve Safe Exact Matches" : "Approve All Safe New Customers"}
+              {confirm === "exact"
+                ? "Approve Safe Exact Matches"
+                : confirm === "high"
+                  ? "Approve Safe High-Confidence Matches"
+                  : "Approve All Safe New Customers"}
             </h3>
             {confirm === "exact" ? (
               <div className="mt-3 space-y-1 text-sm">
                 <p>{exactTotal.toLocaleString()} proposed exact matches</p>
+                <p>{approvedExact.toLocaleString()} already approved</p>
                 <p className="text-emerald-700">{safeExact.toLocaleString()} qualify for safe approval</p>
                 <p className="text-amber-700">{unsafeExact.toLocaleString()} contain conflicting information and remain in review</p>
               </div>
+            ) : confirm === "high" ? (
+              <div className="mt-3 space-y-1 text-sm">
+                <p>{highTotal.toLocaleString()} high-confidence proposals</p>
+                <p>{approvedHigh.toLocaleString()} already approved</p>
+                <p className="text-emerald-700">{safeHigh.toLocaleString()} qualify under deterministic Tier B or Tier C</p>
+                <p className="text-amber-700">{Math.max(0, highTotal - approvedHigh - safeHigh).toLocaleString()} require review</p>
+              </div>
             ) : (
-              <p className="mt-3 text-sm">
-                {safeNew.toLocaleString()} records have no external-ID, exact email, exact phone, or strong duplicate collision.
-              </p>
+              <div className="mt-3 space-y-1 text-sm">
+                <p>{newTotal.toLocaleString()} proposed new customers</p>
+                <p>{approvedNew.toLocaleString()} already approved</p>
+                <p className="text-emerald-700">{safeNew.toLocaleString()} qualify as safely new</p>
+                <p className="text-amber-700">{Math.max(0, newTotal - approvedNew - safeNew).toLocaleString()} require review</p>
+              </div>
             )}
             <p className="mt-3 text-sm font-medium">
               This approves the Stage 1 plan only. It does not create, merge, overwrite, or import customers.
@@ -199,13 +234,19 @@ export function ReviewSelection({
               <input
                 type="hidden"
                 name="bulkAction"
-                value={confirm === "exact" ? "APPROVE_SAFE_EXACT" : "APPROVE_SAFE_NEW"}
+                value={
+                  confirm === "exact"
+                    ? "APPROVE_SAFE_EXACT"
+                    : confirm === "high"
+                      ? "APPROVE_SAFE_HIGH"
+                      : "APPROVE_SAFE_NEW"
+                }
               />
               <Button type="button" variant="outline" onClick={() => setConfirm(null)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={pending}>
-                Approve Plan
+                Approve {confirm === "exact" ? safeExact : confirm === "high" ? safeHigh : safeNew} Safe Plans
               </Button>
             </form>
           </div>

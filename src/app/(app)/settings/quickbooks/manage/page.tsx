@@ -18,6 +18,7 @@ import { AnalyzeImportControl } from "@/components/quickbooks/analyze-import-con
 import { loadQuickBooksReviewRows } from "@/lib/quickbooks/review-center";
 import { ANALYSIS_STATUS_DEFINITIONS } from "@/lib/quickbooks/analysis-classification";
 import { ReviewCheckbox, ReviewSelection } from "@/components/quickbooks/review-selection";
+import { blockerLabel } from "@/lib/quickbooks/customer-review-automation";
 import { ActionForm } from "@/components/action-form";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -46,13 +47,14 @@ export default async function QuickBooksManagePage({
     differences?: string;
     reviewed?: string;
     selection?: string;
+    automation?: string;
   }>;
 }) {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
   const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
   if (!active.ok) redirect("/settings/quickbooks");
-  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection } = await searchParams;
+  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection, automation } = await searchParams;
   const inbound = await loadInboundSyncCenter(prisma, active.scope);
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
@@ -67,6 +69,7 @@ export default async function QuickBooksManagePage({
           reason,
           differences,
           reviewed,
+          automation,
         })
       : null;
   const connectionHealth =
@@ -306,6 +309,17 @@ export default async function QuickBooksManagePage({
               <option value="reviewed">Reviewed</option>
               <option value="unreviewed">Unreviewed</option>
             </select>
+            <select name="automation" defaultValue={automation || ""} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
+              <option value="">Any auto-approval status</option>
+              <option value="eligible">Safe Auto-Approval Eligible</option>
+              <option value="blocked">Blocked Auto-Approval</option>
+              <option value="missing_email">Missing Email</option>
+              <option value="missing_phone">Missing Phone</option>
+              <option value="shared_identifier">Shared Identifier</option>
+              <option value="identity_conflict">Identity Conflict</option>
+              <option value="multiple">Multiple Candidates</option>
+              <option value="possible">Possible Duplicate</option>
+            </select>
             <select name="sort" defaultValue={sort || "highest"} className="h-8 rounded-lg border border-[var(--border)] bg-white px-2 text-sm">
               <option value="highest">Highest confidence</option>
               <option value="lowest">Lowest confidence</option>
@@ -343,7 +357,14 @@ export default async function QuickBooksManagePage({
             </nav>
           ) : null}
           {reviews && view === "review" ? (
-            <ReviewProgress progress={reviews.progress} readiness={inbound.readiness[0]} />
+            <>
+              <CustomerReconciliation
+                total={reviews.counts.all}
+                automation={reviews.automation}
+                confidenceFilter={filter}
+              />
+              <ReviewProgress progress={reviews.progress} readiness={inbound.readiness[0]} />
+            </>
           ) : null}
           {!reviews || reviews.rows.length === 0 ? (
             <p className="mt-3 text-sm text-[var(--muted-foreground)]">Nothing in this queue.</p>
@@ -353,16 +374,23 @@ export default async function QuickBooksManagePage({
               confidenceFilter={filter}
               safeExact={reviews.safeBulk.exact}
               unsafeExact={reviews.safeBulk.unsafeExact}
+              safeHigh={reviews.safeBulk.high}
               safeNew={reviews.safeBulk.new}
               exactTotal={reviews.progress.exact.total}
+              approvedExact={reviews.progress.exact.approved}
+              highTotal={reviews.progress.high.total}
+              approvedHigh={reviews.progress.high.approved}
+              newTotal={reviews.progress.new.total}
+              approvedNew={reviews.progress.new.approved}
               search={q}
               reason={reason}
               differences={differences}
               reviewed={reviewed}
+              automation={automation}
               filteredTotal={reviews.total}
               analysisRunId={inbound.latestAnalysis?.id || ""}
               initialSelectionMode={selection === "all" ? "ALL_FILTERED" : "NONE"}
-              filterKey={[view, filter, q, pageSize, sort, reason, differences, reviewed].join("|")}
+              filterKey={[view, filter, q, pageSize, sort, reason, differences, reviewed, automation].join("|")}
             >
             <div className="mt-4 space-y-6">
               <p className="text-sm text-[var(--muted-foreground)]">
@@ -394,6 +422,16 @@ export default async function QuickBooksManagePage({
                         <p className="mt-1 text-xs text-amber-700">
                           Different: {row.differingFields.join(", ")}
                         </p>
+                      ) : null}
+                      {["EXACT", "HIGH", "NONE"].includes(row.confidence) && row.status !== "APPROVED" ? (
+                        <div className={`mt-2 rounded-lg px-2 py-1 text-xs ${row.safeAutoApprove ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
+                          <span className="font-semibold">Auto approval: {row.safeAutoApprove ? "ELIGIBLE" : "BLOCKED"}</span>
+                          <span>
+                            {" "}· {row.safeAutoApprove
+                              ? `${row.autoApprovalTier?.replaceAll("_", " ") || "safe deterministic tier"}`
+                              : blockerLabel(row.autoApprovalBlocker)}
+                          </span>
+                        </div>
                       ) : null}
                       {row.conflictReasons.length ? (
                         <ul className="mt-2 list-disc pl-4 text-xs text-rose-700">
@@ -500,13 +538,13 @@ export default async function QuickBooksManagePage({
               ))}
               <nav className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-sm">
                 {reviews.page > 1 ? (
-                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page - 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, selection })} className="text-[var(--cy-orange)]">
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page - 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, automation, selection })} className="text-[var(--cy-orange)]">
                     ← Previous
                   </Link>
                 ) : <span />}
                 <span>Page {reviews.page} of {reviews.totalPages}</span>
                 {reviews.page < reviews.totalPages ? (
-                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page + 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, selection })} className="text-[var(--cy-orange)]">
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page + 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, automation, selection })} className="text-[var(--cy-orange)]">
                     Next →
                   </Link>
                 ) : <span />}
@@ -658,6 +696,65 @@ function reviewPageHref(input: Record<string, string | number | undefined>) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   return `/settings/quickbooks/manage?${params.toString()}`;
+}
+
+function CustomerReconciliation({
+  total,
+  automation,
+  confidenceFilter,
+}: {
+  total: number;
+  automation: {
+    tiers: Record<string, number>;
+    blockers: Record<string, number>;
+    blockersByConfidence: Record<string, number>;
+    manualRequired: number;
+    autoResolved: number;
+    safeNewApproved: number;
+  };
+  confidenceFilter?: string;
+}) {
+  const eligible = Object.values(automation.tiers).reduce((sum, count) => sum + count, 0);
+  const safeNew = automation.safeNewApproved + (automation.tiers["NONE:SAFE_NEW"] || 0);
+  const confidence = confidenceFilter === "exact"
+    ? "EXACT"
+    : confidenceFilter === "high"
+      ? "HIGH"
+      : confidenceFilter === "new"
+        ? "NONE"
+        : confidenceFilter === "possible"
+          ? "POSSIBLE"
+          : null;
+  const blockerSource = confidence
+    ? Object.fromEntries(
+        Object.entries(automation.blockersByConfidence)
+          .filter(([key]) => key.startsWith(`${confidence}:`))
+          .map(([key, count]) => [key.slice(confidence.length + 1), count])
+      )
+    : automation.blockers;
+  const blockers = Object.entries(blockerSource).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--border)] bg-white p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em]">Customer reconciliation</p>
+      <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-5">
+        <Fact label="QuickBooks customers" value={total.toLocaleString()} />
+        <Fact label="Auto resolved" value={automation.autoResolved.toLocaleString()} />
+        <Fact label="Safe new" value={safeNew.toLocaleString()} />
+        <Fact label="Safe approval eligible" value={eligible.toLocaleString()} />
+        <Fact label="Manual review required" value={automation.manualRequired.toLocaleString()} />
+      </dl>
+      {blockers.length ? (
+        <div className="mt-3">
+          <p className="text-xs font-medium">Why not auto-approved?</p>
+          <ul className="mt-1 grid gap-1 text-xs text-[var(--muted-foreground)] sm:grid-cols-2">
+            {blockers.map(([blocker, count]) => (
+              <li key={blocker}>{count.toLocaleString()} — {blockerLabel(blocker)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ReviewProgress({
