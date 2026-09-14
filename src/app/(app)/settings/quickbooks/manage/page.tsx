@@ -45,13 +45,14 @@ export default async function QuickBooksManagePage({
     reason?: string;
     differences?: string;
     reviewed?: string;
+    selection?: string;
   }>;
 }) {
   const ctx = await requirePermission("accounting:view");
   const canManage = can(ctx.role, "accounting:manage");
   const active = await getActiveQuickBooksScope(prisma, ctx.company.id);
   if (!active.ok) redirect("/settings/quickbooks");
-  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed } = await searchParams;
+  const { view, filter, q, page, pageSize, sort, reason, differences, reviewed, selection } = await searchParams;
   const inbound = await loadInboundSyncCenter(prisma, active.scope);
   const reconciliation = view === "reconcile" ? await buildQuickBooksReconciliation(prisma, ctx.company.id, active.scope) : null;
   const reviews =
@@ -357,6 +358,11 @@ export default async function QuickBooksManagePage({
               search={q}
               reason={reason}
               differences={differences}
+              reviewed={reviewed}
+              filteredTotal={reviews.total}
+              analysisRunId={inbound.latestAnalysis?.id || ""}
+              initialSelectionMode={selection === "all" ? "ALL_FILTERED" : "NONE"}
+              filterKey={[view, filter, q, pageSize, sort, reason, differences, reviewed].join("|")}
             >
             <div className="mt-4 space-y-6">
               <p className="text-sm text-[var(--muted-foreground)]">
@@ -494,13 +500,13 @@ export default async function QuickBooksManagePage({
               ))}
               <nav className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4 text-sm">
                 {reviews.page > 1 ? (
-                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page - 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed })} className="text-[var(--cy-orange)]">
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page - 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, selection })} className="text-[var(--cy-orange)]">
                     ← Previous
                   </Link>
                 ) : <span />}
                 <span>Page {reviews.page} of {reviews.totalPages}</span>
                 {reviews.page < reviews.totalPages ? (
-                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page + 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed })} className="text-[var(--cy-orange)]">
+                  <Link href={reviewPageHref({ view, filter, q, page: reviews.page + 1, pageSize: reviews.pageSize, sort, reason, differences, reviewed, selection })} className="text-[var(--cy-orange)]">
                     Next →
                   </Link>
                 ) : <span />}

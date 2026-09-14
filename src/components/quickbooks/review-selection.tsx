@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, useActionState, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { bulkQuickBooksReviewAction } from "@/server/actions/quickbooks-sync-center";
 import type { ActionResult } from "@/server/actions/auth";
 
 const SelectionContext = createContext<{
   selected: Set<string>;
+  allFiltered: boolean;
   toggle: (id: string) => void;
 } | null>(null);
 
@@ -21,6 +22,11 @@ export function ReviewSelection({
   search,
   reason,
   differences,
+  reviewed,
+  filteredTotal,
+  analysisRunId,
+  initialSelectionMode,
+  filterKey,
   children,
 }: {
   pageIds: string[];
@@ -32,11 +38,20 @@ export function ReviewSelection({
   search?: string | null;
   reason?: string | null;
   differences?: string | null;
+  reviewed?: string | null;
+  filteredTotal: number;
+  analysisRunId: string;
+  initialSelectionMode?: "ALL_FILTERED" | "NONE";
+  filterKey: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [allFiltered, setAllFiltered] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<"NONE" | "PAGE" | "ALL_FILTERED">(
+    initialSelectionMode ?? "NONE"
+  );
   const [confirm, setConfirm] = useState<"exact" | "new" | null>(null);
   const [state, formAction, pending] = useActionState(
     bulkQuickBooksReviewAction,
@@ -45,57 +60,96 @@ export function ReviewSelection({
   useEffect(() => {
     if (!state?.ok) return;
     setSelected(new Set());
-    setAllFiltered(false);
+    setSelectionMode("NONE");
     setConfirm(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("selection");
+    router.replace(`${pathname}?${params.toString()}`);
     router.refresh();
-  }, [state, router]);
-  const toggle = (id: string) =>
+  }, [state, router, pathname, searchParams]);
+  useEffect(() => {
+    setSelected(new Set());
+    setSelectionMode(initialSelectionMode ?? "NONE");
+  }, [filterKey, initialSelectionMode]);
+  useEffect(() => {
+    setSelected((current) => (current.size ? new Set() : current));
+  }, [pageIds]); // Page IDs are stable server props; ALL_FILTERED uses no browser ID set.
+  const setUrlSelection = (mode: "ALL_FILTERED" | "NONE") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (mode === "ALL_FILTERED") params.set("selection", "all");
+    else params.delete("selection");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  const toggle = (id: string) => {
+    if (selectionMode === "ALL_FILTERED") {
+      setSelectionMode("PAGE");
+      setUrlSelection("NONE");
+      setSelected(new Set(pageIds.filter((pageId) => pageId !== id)));
+      return;
+    }
+    setSelectionMode("PAGE");
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
   const selectPage = () => {
-    setAllFiltered(false);
+    setUrlSelection("NONE");
+    setSelectionMode("PAGE");
     setSelected((current) =>
-      pageIds.every((id) => current.has(id)) ? new Set() : new Set(pageIds)
+      selectionMode === "PAGE" && pageIds.every((id) => current.has(id)) ? new Set() : new Set(pageIds)
     );
   };
+  const selectAllFiltered = () => {
+    setSelected(new Set());
+    setSelectionMode("ALL_FILTERED");
+    setUrlSelection("ALL_FILTERED");
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setSelectionMode("NONE");
+    setUrlSelection("NONE");
+  };
+  const selectedCount = selectionMode === "ALL_FILTERED" ? filteredTotal : selected.size;
+  const allFiltered = selectionMode === "ALL_FILTERED";
 
   return (
-    <SelectionContext.Provider value={{ selected, toggle }}>
+    <SelectionContext.Provider value={{ selected, allFiltered, toggle }}>
       <div className="mt-4 rounded-xl border border-[var(--border)] bg-white p-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={selectPage}>
-            {pageIds.every((id) => selected.has(id)) ? "Clear Page" : "Select Page"}
+            Select Page
           </Button>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={allFiltered}
-              onChange={(event) => setAllFiltered(event.target.checked)}
-            />
+          <Button type="button" size="sm" variant="outline" onClick={selectAllFiltered}>
             Select All Filtered Results
-          </label>
+          </Button>
+          {selectedCount ? (
+            <Button type="button" size="sm" variant="ghost" onClick={clearSelection}>Clear Selection</Button>
+          ) : null}
           <span className="text-xs text-[var(--muted-foreground)]">
-            {allFiltered ? "All filtered results selected" : `${selected.size} selected`}
+            {allFiltered
+              ? `${filteredTotal.toLocaleString()} filtered results selected`
+              : `${selected.size.toLocaleString()} selected`}
           </span>
         </div>
         <form action={formAction} className="mt-3 flex flex-wrap gap-2">
           <input type="hidden" name="selectedIds" value={[...selected].join(",")} />
-          <input type="hidden" name="allFiltered" value={String(allFiltered)} />
+          <input type="hidden" name="selectionMode" value={selectionMode} />
+          <input type="hidden" name="analysisRunId" value={analysisRunId} />
           <input type="hidden" name="confidenceFilter" value={confidenceFilter || ""} />
           <input type="hidden" name="search" value={search || ""} />
           <input type="hidden" name="reason" value={reason || ""} />
           <input type="hidden" name="differences" value={differences || ""} />
-          <Button type="submit" size="sm" name="bulkAction" value="APPROVE_SELECTED" disabled={pending || (!allFiltered && !selected.size)}>
+          <input type="hidden" name="reviewed" value={reviewed || ""} />
+          <Button type="submit" size="sm" name="bulkAction" value="APPROVE_SELECTED" disabled={pending || !selectedCount}>
             Approve Selected
           </Button>
-          <Button type="submit" size="sm" variant="outline" name="bulkAction" value="NOT_SAME_SELECTED" disabled={pending || (!allFiltered && !selected.size)}>
+          <Button type="submit" size="sm" variant="outline" name="bulkAction" value="NOT_SAME_SELECTED" disabled={pending || !selectedCount}>
             Mark Not Same Customer
           </Button>
-          <Button type="submit" size="sm" variant="outline" name="bulkAction" value="MANUAL_SELECTED" disabled={pending || (!allFiltered && !selected.size)}>
+          <Button type="submit" size="sm" variant="outline" name="bulkAction" value="MANUAL_SELECTED" disabled={pending || !selectedCount}>
             Move to Manual Review
           </Button>
         </form>
@@ -141,6 +195,7 @@ export function ReviewSelection({
               This approves the Stage 1 plan only. It does not create, merge, overwrite, or import customers.
             </p>
             <form action={formAction} className="mt-4 flex justify-end gap-2">
+              <input type="hidden" name="analysisRunId" value={analysisRunId} />
               <input
                 type="hidden"
                 name="bulkAction"
@@ -166,7 +221,7 @@ export function ReviewCheckbox({ id }: { id: string }) {
   return (
     <input
       type="checkbox"
-      checked={context.selected.has(id)}
+      checked={context.allFiltered || context.selected.has(id)}
       onChange={() => context.toggle(id)}
       aria-label="Select review record"
       className="mt-1 size-4"

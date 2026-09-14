@@ -1,5 +1,9 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { QuickBooksScope } from "@/lib/quickbooks/ownership";
+import { mappingScopeWhere } from "@/lib/quickbooks/ownership";
+import { buildInboundCustomerIndex, classifyInboundCustomer } from "@/lib/quickbooks/inbound-match";
+import { customerFieldComparison } from "@/lib/quickbooks/analysis-classification";
+import { quickBooksReviewFingerprint } from "@/lib/quickbooks/analysis";
 
 export type ReviewDecision =
   | "APPROVE"
@@ -192,6 +196,136 @@ export type BulkReviewAction =
   | "APPROVE_SAFE_EXACT"
   | "APPROVE_SAFE_NEW";
 
+type CustomerReviewRow = Awaited<
+  ReturnType<PrismaClient["quickBooksImportReview"]["findMany"]>
+>[number];
+
+async function revalidateCustomerPlans(
+  prisma: PrismaClient,
+  scope: QuickBooksScope,
+  rows: CustomerReviewRow[]
+) {
+  const [customers, mappings] = await Promise.all([
+    prisma.customer.findMany({
+      where: { companyId: scope.companyId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        businessName: true,
+        email: true,
+        phone: true,
+        sourceSystem: true,
+        externalId: true,
+        quickbooksCustomerId: true,
+        properties: { select: { address: true, city: true, zip: true } },
+      },
+    }),
+    prisma.quickBooksMapping.findMany({
+      where: { ...mappingScopeWhere(scope), entityType: "CUSTOMER" },
+      select: { internalId: true, quickbooksId: true },
+    }),
+  ]);
+  const index = buildInboundCustomerIndex(
+    customers.map((customer) => ({
+      ...customer,
+      externalId: customer.quickbooksCustomerId || customer.externalId,
+    })),
+    mappings.map((mapping) => ({
+      customerId: mapping.internalId,
+      quickbooksId: mapping.quickbooksId,
+    }))
+  );
+  const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+  const mappingByQbo = new Map(mappings.map((mapping) => [mapping.quickbooksId, mapping.internalId]));
+  const safeExact: string[] = [];
+  const safeNew: string[] = [];
+  const excluded: string[] = [];
+
+  for (const row of rows) {
+    if (row.status !== "READY" || !row.reviewFingerprint || row.runId == null || !row.quickbooksId) {
+      excluded.push(row.id);
+      continue;
+    }
+    const payload = row.payload as {
+      DisplayName?: string;
+      GivenName?: string;
+      FamilyName?: string;
+      CompanyName?: string;
+      PrimaryEmailAddr?: { Address?: string };
+      PrimaryPhone?: { FreeFormNumber?: string };
+      BillAddr?: { Line1?: string; Line2?: string; City?: string; CountrySubDivisionCode?: string; PostalCode?: string };
+      ShipAddr?: { Line1?: string; Line2?: string; City?: string; CountrySubDivisionCode?: string; PostalCode?: string };
+    };
+    const match = classifyInboundCustomer(
+      index,
+      {
+        quickbooksId: row.quickbooksId,
+        displayName: payload.DisplayName,
+        givenName: payload.GivenName,
+        familyName: payload.FamilyName,
+        companyName: payload.CompanyName,
+        email: payload.PrimaryEmailAddr?.Address,
+        phone: payload.PrimaryPhone?.FreeFormNumber,
+        billAddr: payload.BillAddr,
+        shipAddr: payload.ShipAddr,
+      },
+      mappingByQbo.get(row.quickbooksId)
+    );
+    if (row.confidence === "NONE") {
+      if (match.confidence === "NONE" && !row.proposedInternalId) safeNew.push(row.id);
+      else excluded.push(row.id);
+      continue;
+    }
+    const candidate = row.proposedInternalId ? customerById.get(row.proposedInternalId) : null;
+    const storedSignals =
+      row.matchSignals && typeof row.matchSignals === "object" && !Array.isArray(row.matchSignals)
+        ? (row.matchSignals as { contractorYouSnapshot?: unknown })
+        : null;
+    const currentSnapshot = candidate
+      ? {
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          businessName: candidate.businessName,
+          email: candidate.email,
+          phone: candidate.phone,
+          properties: candidate.properties,
+        }
+      : null;
+    const candidateUnchanged =
+      Boolean(storedSignals?.contractorYouSnapshot) &&
+      quickBooksReviewFingerprint(storedSignals?.contractorYouSnapshot) ===
+        quickBooksReviewFingerprint(currentSnapshot);
+    const comparison = customerFieldComparison(
+      {
+        displayName: payload.DisplayName,
+        givenName: payload.GivenName,
+        familyName: payload.FamilyName,
+        companyName: payload.CompanyName,
+        email: payload.PrimaryEmailAddr?.Address,
+        phone: payload.PrimaryPhone?.FreeFormNumber,
+      },
+      candidate
+    );
+    const strongConflict = comparison.differing.some((field) =>
+      ["email", "phone", "last name"].includes(field)
+    );
+    if (
+      row.confidence === "EXACT" &&
+      row.safeAutoApprove &&
+      match.confidence === "EXACT" &&
+      match.customerId === row.proposedInternalId &&
+      candidateUnchanged &&
+      !strongConflict
+    ) {
+      safeExact.push(row.id);
+    } else {
+      excluded.push(row.id);
+    }
+  }
+  return { safeExact, safeNew, excluded };
+}
+
 export async function bulkQuickBooksReviewDecision(input: {
   prisma: PrismaClient;
   companyId: string;
@@ -199,18 +333,64 @@ export async function bulkQuickBooksReviewDecision(input: {
   actorId: string;
   action: BulkReviewAction;
   selectedIds: string[];
-  allFiltered: boolean;
+  selectionMode: "NONE" | "PAGE" | "ALL_FILTERED";
+  analysisRunId: string;
   confidenceFilter?: string | null;
   search?: string | null;
   reason?: string | null;
   differences?: string | null;
+  reviewed?: string | null;
 }) {
-  const base: Prisma.QuickBooksImportReviewWhereInput = {
+  const allowedActions: BulkReviewAction[] = [
+    "APPROVE_SELECTED",
+    "NOT_SAME_SELECTED",
+    "MANUAL_SELECTED",
+    "APPROVE_SAFE_EXACT",
+    "APPROVE_SAFE_NEW",
+  ];
+  if (!allowedActions.includes(input.action)) {
+    return { ok: false as const, error: "Choose a valid bulk review action." };
+  }
+  const latestAnalysis = await input.prisma.quickBooksSyncRun.findFirst({
+    where: {
+      companyId: input.companyId,
+      environment: input.scope.environment,
+      realmId: input.scope.realmId,
+      type: "ANALYSIS",
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, writeBackAttempted: true },
+  });
+  if (
+    !latestAnalysis ||
+    latestAnalysis.id !== input.analysisRunId ||
+    latestAnalysis.status !== "COMPLETE" ||
+    latestAnalysis.writeBackAttempted
+  ) {
+    return {
+      ok: false as const,
+      error: "The analysis changed or is incomplete. Refresh Review Matches before approving anything.",
+    };
+  }
+  const scopeBase: Prisma.QuickBooksImportReviewWhereInput = {
     companyId: input.companyId,
     environment: input.scope.environment,
     realmId: input.scope.realmId,
     objectType: "CUSTOMER",
+    runId: input.analysisRunId,
+  };
+  const eligibleBase: Prisma.QuickBooksImportReviewWhereInput = {
+    ...scopeBase,
     status: { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED"] },
+  };
+  const selectionBase: Prisma.QuickBooksImportReviewWhereInput = {
+    ...scopeBase,
+    status:
+      input.reviewed === "reviewed"
+        ? { in: ["APPROVED", "IGNORED", "NOT_SAME", "RESOLVED"] }
+        : input.reviewed === "unreviewed"
+          ? { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED"] }
+          : { in: ["OPEN", "READY", "RE_REVIEW_REQUIRED", "FAILED", "APPROVED", "IGNORED", "NOT_SAME", "RESOLVED"] },
   };
   const filterMap: Record<string, string> = {
     exact: "EXACT",
@@ -218,9 +398,9 @@ export async function bulkQuickBooksReviewDecision(input: {
     new: "NONE",
     possible: "POSSIBLE",
   };
-  const selection = input.allFiltered
+  const selection = input.selectionMode === "ALL_FILTERED"
     ? {
-        ...base,
+        ...selectionBase,
         ...(input.confidenceFilter && filterMap[input.confidenceFilter]
           ? { confidence: filterMap[input.confidenceFilter] }
           : {}),
@@ -229,41 +409,70 @@ export async function bulkQuickBooksReviewDecision(input: {
         ...(input.differences === "yes" ? { differenceCount: { gt: 0 } } : {}),
         ...(input.differences === "no" ? { differenceCount: 0 } : {}),
       }
-    : { ...base, id: { in: input.selectedIds } };
-  if (!input.allFiltered && input.selectedIds.length === 0) {
+    : { ...selectionBase, id: { in: input.selectedIds } };
+  if (input.selectionMode !== "ALL_FILTERED" && input.selectedIds.length === 0) {
     return { ok: false as const, error: "Select at least one review record." };
   }
   const reviewed = { reviewedAt: new Date(), reviewedById: input.actorId };
 
   if (input.action === "APPROVE_SAFE_EXACT" || input.action === "APPROVE_SAFE_NEW") {
     const confidence = input.action === "APPROVE_SAFE_EXACT" ? "EXACT" : "NONE";
+    const candidates = await input.prisma.quickBooksImportReview.findMany({
+      where: { ...eligibleBase, confidence, safeAutoApprove: true, status: "READY" },
+    });
+    const validated = await revalidateCustomerPlans(input.prisma, input.scope, candidates);
+    const approvedIds = confidence === "EXACT" ? validated.safeExact : validated.safeNew;
     const result = await input.prisma.quickBooksImportReview.updateMany({
-      where: { ...base, confidence, safeAutoApprove: true },
+      where: { ...eligibleBase, id: { in: approvedIds }, status: "READY" },
       data: {
         status: "APPROVED",
         proposedAction: confidence === "EXACT" ? "LINK" : "CREATE",
         ...reviewed,
       },
     });
+    if (validated.excluded.length) {
+      await input.prisma.quickBooksImportReview.updateMany({
+        where: { ...eligibleBase, id: { in: validated.excluded } },
+        data: {
+          status: "RE_REVIEW_REQUIRED",
+          safeAutoApprove: false,
+          proposedAction: "REVIEW",
+          reviewedAt: null,
+          reviewedById: null,
+          reason: "Safe-match revalidation failed because identity, candidate, or fingerprint data changed.",
+        },
+      });
+    }
     return {
       ok: true as const,
       count: result.count,
-      message: `${result.count.toLocaleString()} safe ${confidence === "EXACT" ? "exact mappings" : "new-customer plans"} approved. No customer data was changed.`,
+      message: `${result.count.toLocaleString()} safe customer matches approved. ${validated.excluded.length.toLocaleString()} excluded for review. No customers were imported and nothing was written to QuickBooks.`,
     };
   }
 
   if (input.action === "APPROVE_SELECTED") {
+    const selectedRows = await input.prisma.quickBooksImportReview.findMany({ where: selection });
+    const validated = await revalidateCustomerPlans(input.prisma, input.scope, selectedRows);
+    const highIds = selectedRows
+      .filter(
+        (row) =>
+          row.status === "READY" &&
+          row.confidence === "HIGH" &&
+          Boolean(row.proposedInternalId)
+      )
+      .map((row) => row.id);
+    const linkIds = [...new Set([...validated.safeExact, ...highIds])];
     const [links, creates] = await input.prisma.$transaction([
       input.prisma.quickBooksImportReview.updateMany({
         where: {
-          ...selection,
-          confidence: { in: ["EXACT", "HIGH"] },
-          proposedInternalId: { not: null },
+          ...eligibleBase,
+          id: { in: linkIds },
+          status: "READY",
         },
         data: { status: "APPROVED", proposedAction: "LINK", ...reviewed },
       }),
       input.prisma.quickBooksImportReview.updateMany({
-        where: { ...selection, confidence: "NONE", safeAutoApprove: true },
+        where: { ...eligibleBase, id: { in: validated.safeNew }, status: "READY" },
         data: { status: "APPROVED", proposedAction: "CREATE", ...reviewed },
       }),
     ]);

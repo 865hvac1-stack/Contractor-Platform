@@ -180,6 +180,10 @@ export async function bulkQuickBooksReviewAction(
       .split(",")
       .map((id) => id.trim())
       .filter(Boolean);
+    const selectionMode = String(formData?.get("selectionMode") || "NONE");
+    if (!["NONE", "PAGE", "ALL_FILTERED"].includes(selectionMode)) {
+      return { ok: false, error: "Choose a valid selection mode." };
+    }
     const result = await bulkQuickBooksReviewDecision({
       prisma,
       companyId: ctx.company.id,
@@ -187,11 +191,13 @@ export async function bulkQuickBooksReviewAction(
       actorId: ctx.user.id,
       action: String(formData?.get("bulkAction") || "") as BulkReviewAction,
       selectedIds,
-      allFiltered: formData?.get("allFiltered") === "true",
+      selectionMode: selectionMode as "NONE" | "PAGE" | "ALL_FILTERED",
+      analysisRunId: String(formData?.get("analysisRunId") || ""),
       confidenceFilter: String(formData?.get("confidenceFilter") || "") || null,
       search: String(formData?.get("search") || "") || null,
       reason: String(formData?.get("reason") || "") || null,
       differences: String(formData?.get("differences") || "") || null,
+      reviewed: String(formData?.get("reviewed") || "") || null,
     });
     if (!result.ok) return result;
     await writeAudit({

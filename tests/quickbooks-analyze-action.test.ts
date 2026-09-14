@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   runAnalysis: vi.fn(),
   writeAudit: vi.fn(),
   revalidatePath: vi.fn(),
+  bulkReview: vi.fn(),
+  activeScope: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -13,11 +15,17 @@ vi.mock("@/lib/audit", () => ({ writeAudit: mocks.writeAudit }));
 vi.mock("@/lib/tenant", () => ({ requirePermission: mocks.requirePermission }));
 vi.mock("@/lib/quickbooks/analysis", () => ({ runQuickBooksImportAnalysis: mocks.runAnalysis }));
 vi.mock("@/lib/quickbooks/inbound-import", () => ({ importApprovedQuickBooksRecords: vi.fn() }));
-vi.mock("@/lib/quickbooks/inbound-review", () => ({ applyQuickBooksReviewDecision: vi.fn() }));
-vi.mock("@/lib/quickbooks/ownership", () => ({ getActiveQuickBooksScope: vi.fn() }));
+vi.mock("@/lib/quickbooks/inbound-review", () => ({
+  applyQuickBooksReviewDecision: vi.fn(),
+  bulkQuickBooksReviewDecision: mocks.bulkReview,
+}));
+vi.mock("@/lib/quickbooks/ownership", () => ({ getActiveQuickBooksScope: mocks.activeScope }));
 vi.mock("@/lib/quickbooks/production-preview", () => ({ requestQuickBooksPreviewRefresh: vi.fn() }));
 
-import { analyzeQuickBooksImportAction } from "@/server/actions/quickbooks-sync-center";
+import {
+  analyzeQuickBooksImportAction,
+  bulkQuickBooksReviewAction,
+} from "@/server/actions/quickbooks-sync-center";
 
 describe("Analyze Import server action", () => {
   beforeEach(() => {
@@ -26,6 +34,38 @@ describe("Analyze Import server action", () => {
       company: { id: "tenant-865" },
       user: { id: "owner-1" },
     });
+    mocks.activeScope.mockResolvedValue({
+      ok: true,
+      scope: { companyId: "tenant-865", environment: "production", realmId: "realm-865" },
+    });
+  });
+
+  it("passes ALL_FILTERED mode and validated filter context to the server workflow", async () => {
+    mocks.bulkReview.mockResolvedValue({
+      ok: true,
+      count: 2_253,
+      message: "2,253 safe customer matches approved.",
+    });
+    const form = new FormData();
+    form.set("selectionMode", "ALL_FILTERED");
+    form.set("analysisRunId", "analysis-1");
+    form.set("bulkAction", "APPROVE_SELECTED");
+    form.set("confidenceFilter", "exact");
+    form.set("search", "smith");
+
+    const result = await bulkQuickBooksReviewAction(null, form);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(mocks.bulkReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: "tenant-865",
+        selectionMode: "ALL_FILTERED",
+        analysisRunId: "analysis-1",
+        confidenceFilter: "exact",
+        search: "smith",
+        selectedIds: [],
+      })
+    );
   });
 
   it("resolves the authenticated tenant and invokes the resumable analysis service", async () => {
