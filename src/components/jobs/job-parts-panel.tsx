@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/money";
 import {
   addJobPartAction,
+  cancelJobPartAction,
   installJobPartAction,
   pickUpJobPartAction,
   reserveJobPartAction,
@@ -143,6 +144,12 @@ export function JobPartsPanel({
                   <ActionForm action={installJobPartAction} className="mt-2">
                     <input type="hidden" name="jobPartId" value={row.id} />
                     <Button type="submit" size="sm">Mark Installed</Button>
+                  </ActionForm>
+                ) : null}
+                {canUse ? (
+                  <ActionForm action={cancelJobPartAction} className="mt-2">
+                    <input type="hidden" name="jobPartId" value={row.id} />
+                    <Button type="submit" size="sm" variant="ghost">Remove / Correct Usage</Button>
                   </ActionForm>
                 ) : null}
               </li>

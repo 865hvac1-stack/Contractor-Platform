@@ -257,3 +257,117 @@ export async function installJobPartAction(
     return { ok: false, error: "Could not install that part." };
   }
 }
+
+export async function cancelJobPartAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("jobs:view");
+    const id = String(formData.get("jobPartId") || "");
+    const initial = await prisma.jobPart.findFirst({ where: { id, companyId: ctx.company.id } });
+    if (!initial) return { ok: false, error: "Job part not found." };
+    const job = await accessibleJob(ctx.company.id, ctx.user.id, ctx.role, initial.jobId);
+    if (!job) return { ok: false, error: "Job not found or unavailable." };
+    const result = await prisma.$transaction(async (tx) => {
+      const row = await tx.jobPart.findUnique({ where: { id } });
+      if (!row || row.status === "CANCELED") return { ok: true as const, jobId: initial.jobId, alreadyCanceled: true };
+      if (row.locationId && ["RESERVED", "PICKED_UP"].includes(row.status)) {
+        const stock = await tx.inventoryStock.findUnique({
+          where: {
+            companyId_partId_locationId: {
+              companyId: ctx.company.id,
+              partId: row.partId,
+              locationId: row.locationId,
+            },
+          },
+        });
+        if (stock) {
+          if (stock.reserved < row.quantity) {
+            throw new Error("Reserved stock is inconsistent; correction was not applied.");
+          }
+          await tx.inventoryStock.update({
+            where: { id: stock.id },
+            data: { reserved: { decrement: row.quantity } },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              companyId: ctx.company.id,
+              partId: row.partId,
+              quantity: row.quantity,
+              type: "RELEASE_RESERVATION",
+              fromLocationId: row.locationId,
+              jobId: row.jobId,
+              jobPartId: row.id,
+              actorId: ctx.user.id,
+              source: "JOB_PART_CORRECTION",
+              reference: row.id,
+              notes: String(formData.get("notes") || "") || "Part removed from job.",
+            },
+          });
+        }
+      }
+      if (row.locationId && row.status === "INSTALLED") {
+        await tx.inventoryStock.upsert({
+          where: {
+            companyId_partId_locationId: {
+              companyId: ctx.company.id,
+              partId: row.partId,
+              locationId: row.locationId,
+            },
+          },
+          create: {
+            companyId: ctx.company.id,
+            partId: row.partId,
+            locationId: row.locationId,
+            onHand: row.quantity,
+          },
+          update: { onHand: { increment: row.quantity } },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            companyId: ctx.company.id,
+            partId: row.partId,
+            quantity: row.quantity,
+            type: "RETURN",
+            toLocationId: row.locationId,
+            jobId: row.jobId,
+            jobPartId: row.id,
+            actorId: ctx.user.id,
+            source: "JOB_PART_CORRECTION",
+            reference: row.id,
+            notes: String(formData.get("notes") || "") || "Installed usage corrected and returned.",
+          },
+        });
+        await tx.jobCost.create({
+          data: {
+            companyId: ctx.company.id,
+            jobId: row.jobId,
+            category: "MATERIALS",
+            description: "Parts Bank usage correction",
+            amountCents: -(row.unitCostCents * row.quantity),
+            sourceType: "INVENTORY",
+            sourceId: `${row.id}:return:${Date.now()}`,
+            createdById: ctx.user.id,
+            confirmed: true,
+          },
+        });
+      }
+      await tx.jobPart.update({
+        where: { id: row.id },
+        data: { status: "CANCELED", canceledAt: new Date() },
+      });
+      return { ok: true as const, jobId: row.jobId, alreadyCanceled: false };
+    });
+    revalidateJob(result.jobId);
+    return {
+      ok: true,
+      message: result.alreadyCanceled
+        ? "This part was already removed; no inventory changed."
+        : "Part usage corrected. Reservation or installed inventory and job cost were reversed with ledger entries.",
+    };
+  } catch (error) {
+    if (error instanceof AuthError) return { ok: false, error: error.message };
+    return { ok: false, error: "Could not correct that part usage." };
+  }
+}

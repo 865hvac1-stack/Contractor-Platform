@@ -91,6 +91,7 @@ export default async function JobsPage({
         estimates: { select: { status: true, totalCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         invoices: { select: { status: true, totalCents: true, balanceCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         waitingRecords: { where: { state: "ACTIVE" }, select: { state: true }, take: 1 },
+        jobParts: { where: { status: { not: "CANCELED" } }, select: { status: true } },
       },
       orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
       skip,
@@ -219,6 +220,7 @@ export default async function JobsPage({
                       {alerts.slice(0, 2).map((alert) => <JobAlert key={alert} label={alert} />)}
                     </div>
                   ) : null}
+                  {job.jobParts.length ? <p className="mt-1 text-xs font-medium text-sky-700">Parts: {jobPartsStatus(job.jobParts)}</p> : null}
                 </Link>
               );
             })}
@@ -233,6 +235,7 @@ export default async function JobsPage({
                   <TableHead className="hidden lg:table-cell">Technician</TableHead>
                   <TableHead className="hidden lg:table-cell">Schedule</TableHead>
                   <TableHead className="hidden xl:table-cell">Value / Payment</TableHead>
+                  <TableHead className="hidden xl:table-cell">Parts</TableHead>
                   <TableHead className="hidden xl:table-cell">Alerts</TableHead>
                 </TableRow>
               </TableHeader>
@@ -276,6 +279,9 @@ export default async function JobsPage({
                         <p className="text-xs text-[var(--muted-foreground)]">
                           {job.invoices[0]?.status.replaceAll("_", " ") || "No invoice"}
                         </p>
+                      </TableCell>
+                      <TableCell className="hidden text-xs xl:table-cell">
+                        {job.jobParts.length ? jobPartsStatus(job.jobParts) : "None"}
                       </TableCell>
                       <TableCell className="hidden xl:table-cell">
                         <div className="flex max-w-48 flex-wrap gap-1">
@@ -332,4 +338,11 @@ function OperationsMetric({
 
 function JobAlert({ label }: { label: string }) {
   return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900">{label}</span>;
+}
+
+function jobPartsStatus(parts: Array<{ status: string }>) {
+  if (parts.some((part) => part.status === "NEEDED")) return "Needed";
+  if (parts.some((part) => part.status === "RESERVED")) return "Reserved";
+  if (parts.some((part) => part.status === "PICKED_UP")) return "On truck";
+  return "Installed";
 }
