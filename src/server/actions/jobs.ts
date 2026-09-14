@@ -130,10 +130,10 @@ export async function createJobAction(
     revalidatePath("/jobs");
     revalidatePath("/schedule");
     revalidatePath("/dashboard");
-    revalidatePath("/dispatch");
+    revalidatePath("/jobs");
     revalidatePath("/office");
     const returnTo = String(formData.get("returnTo") || "");
-    if (returnTo === "dispatch") redirect("/dispatch");
+    if (returnTo === "dispatch") redirect("/jobs?view=dispatch");
     if (returnTo === "office") redirect(`/office/customers/${customer.id}`);
     redirect(`/jobs/${job.id}`);
   } catch (e) {
@@ -276,9 +276,9 @@ export async function deleteJobAction(
     revalidatePath("/jobs");
     revalidatePath("/schedule");
     revalidatePath("/dashboard");
-    revalidatePath("/dispatch");
+    revalidatePath("/jobs");
     revalidatePath("/office");
-    redirect("/jobs");
+    redirect("/jobs?view=all");
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: e.message };
     throw e;

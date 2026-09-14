@@ -59,10 +59,10 @@ export default async function DashboardPage({
           : null;
 
   const metrics = [
-    { label: "Jobs today", value: String(data.today.jobsToday), href: "/jobs?when=today" },
-    { label: "In progress", value: String(data.today.inProgressToday), href: "/jobs?view=in-progress" },
+    { label: "Jobs today", value: String(data.today.jobsToday), href: "/jobs?view=all&date=today" },
+    { label: "In progress", value: String(data.today.inProgressToday), href: "/jobs?view=all&status=IN_PROGRESS" },
     { label: "Waiting", value: String(data.today.waitingCount), href: "/jobs?view=waiting", context: waitingContext },
-    { label: "Completed", value: String(data.today.completedToday), href: "/jobs?view=today&status=COMPLETED" },
+    { label: "Completed", value: String(data.today.completedToday), href: "/jobs?view=completed&date=today" },
   ];
 
   return (

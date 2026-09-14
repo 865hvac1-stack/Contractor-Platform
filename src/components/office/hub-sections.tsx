@@ -131,7 +131,7 @@ export function OfficeQuickActions({
       ? { label: "New job", short: "Job", href: "/office/jobs/new", primary: true, icon: Briefcase }
       : null,
     canDispatch
-      ? { label: "Schedule", short: "Schedule", href: "/dispatch", primary: false, icon: CalendarDays }
+      ? { label: "Schedule", short: "Schedule", href: "/jobs?view=dispatch", primary: false, icon: CalendarDays }
       : { label: "Schedule", short: "Schedule", href: "/schedule", primary: false, icon: CalendarDays },
     { label: "Inbox", short: "Inbox", href: "/marketing/communications", primary: false, icon: Inbox },
   ].filter(Boolean) as {
@@ -396,7 +396,7 @@ export function OfficeUpcomingSection({ jobs }: { jobs: OfficeUpcomingJob[] }) {
           <SectionEyebrow>Today / upcoming</SectionEyebrow>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--cy-navy)]">On the board</h2>
         </div>
-        <Link href="/dispatch" className="text-sm font-medium text-[var(--cy-orange)]">
+        <Link href="/jobs?view=dispatch" className="text-sm font-medium text-[var(--cy-orange)]">
           Dispatch →
         </Link>
       </div>

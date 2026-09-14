@@ -361,7 +361,7 @@ export function buildNotices(facts: IntelligenceFacts, context: BusinessContext 
       dataUsed: "Today's jobs",
       period: "Today",
       severity: "watch",
-      href: "/dispatch",
+      href: "/jobs?view=dispatch&issue=unassigned",
       ask: "Ask ContractorYou to recommend assignments",
     });
   }
@@ -438,7 +438,7 @@ export function buildNotices(facts: IntelligenceFacts, context: BusinessContext 
         dataUsed: "Jobs",
         period: "Today",
         severity: "info",
-        href: "/dispatch",
+        href: "/jobs?view=dispatch",
       });
     }
   }
@@ -538,7 +538,7 @@ export function buildRecommendations(
       title: "Review today's dispatch",
       detail: `${count} unassigned job${count === 1 ? "" : "s"}.`,
       count,
-      href: "/dispatch",
+      href: "/jobs?view=dispatch&issue=unassigned",
       ask: "Ask ContractorYou to recommend assignments",
     });
   }

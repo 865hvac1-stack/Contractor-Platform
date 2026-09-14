@@ -173,7 +173,7 @@ export function CustomerSearchTypeahead({
                     <Link href={`/office/jobs/new?customerId=${item.id}${propertyId ? `&propertyId=${propertyId}` : ""}`} className="text-xs font-medium text-[var(--cy-navy)] hover:underline">
                       New job
                     </Link>
-                    <Link href="/dispatch" className="text-xs font-medium text-[var(--cy-navy)] hover:underline">
+                    <Link href="/jobs?view=dispatch" className="text-xs font-medium text-[var(--cy-navy)] hover:underline">
                       Schedule
                     </Link>
                     <Link href={`/estimates/new?customerId=${item.id}`} className="text-xs font-medium text-[var(--cy-navy)] hover:underline">

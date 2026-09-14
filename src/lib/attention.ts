@@ -408,7 +408,7 @@ registerAttentionDetector(async (companyId) => {
       title: "Job needs technician",
       description: context || job.jobNumber,
       severity: "warning" as const,
-      href: `/dispatch`,
+      href: `/jobs?view=dispatch&issue=unassigned&job=${job.id}`,
       entityType: "Job",
       entityId: job.id,
       createdAt: job.scheduledStart ?? job.updatedAt,
@@ -554,7 +554,7 @@ registerAttentionDetector(async (companyId) => {
         ? `${tech.firstName} ${tech.lastName} · ${minutes} min past expected finish`
         : `${job.jobNumber} · ${minutes} min past expected finish`,
       severity: "warning" as const,
-      href: "/dispatch",
+      href: `/jobs?view=dispatch&issue=late&job=${job.id}`,
       entityType: "Job",
       entityId: job.id,
       createdAt: job.scheduledEnd ?? job.updatedAt,

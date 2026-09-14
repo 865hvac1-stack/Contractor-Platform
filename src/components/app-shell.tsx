@@ -17,12 +17,10 @@ import {
 import { logoutAction } from "@/server/actions/auth";
 import type { CompanyRole } from "@prisma/client";
 import { GlobalSearch } from "@/components/global-search";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { DemoModeBadge } from "@/components/demo-mode-badge";
 import { AppNav } from "@/components/app-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { isSettingsActive } from "@/lib/nav";
-import { accessibleWorkspaces, workspaceFromPath, type WorkspaceId } from "@/lib/workspaces";
 import { can } from "@/lib/permissions";
 
 function SettingsLink({
@@ -67,15 +65,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const workspaces = accessibleWorkspaces(role);
   const canSettings = can(role, "company:settings");
-  const detected = workspaceFromPath(pathname);
-  const current: WorkspaceId =
-    detected && workspaces.includes(detected)
-      ? detected
-      : workspaces.includes("command")
-        ? "command"
-        : workspaces[0] ?? "command";
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] md:h-dvh md:overflow-hidden">
@@ -155,7 +145,6 @@ export function AppShell({
           <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--cy-navy)] md:hidden">
             {companyName}
           </p>
-          <WorkspaceSwitcher current={current} allowed={workspaces} />
           {isDemo ? <span className="hidden md:inline-flex"><DemoModeBadge /></span> : null}
           <GlobalSearch />
 
@@ -223,7 +212,7 @@ export function AppShell({
         <main className="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:pb-0">
           <div
             className={`mx-auto w-full px-4 ${
-              pathname.startsWith("/dispatch")
+              pathname.startsWith("/dispatch") || pathname.startsWith("/jobs")
                 ? "max-w-[1600px] py-3 md:px-6 md:py-4"
                 : "max-w-7xl py-6 md:px-8 md:py-8"
             }`}

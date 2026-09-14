@@ -49,7 +49,7 @@ export function attentionCardActions(type: string, entityId: string): AttentionC
   if (type === "job_running_behind") {
     return [
       { label: "Ask AI", ask: "Who is running late?" },
-      { label: "View Dispatch", href: "/dispatch" },
+      { label: "View Dispatch", href: "/jobs?view=dispatch" },
       { label: "View", href: `/jobs/${entityId}` },
     ];
   }

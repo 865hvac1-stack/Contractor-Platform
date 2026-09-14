@@ -20,6 +20,8 @@ import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 import { deriveJobOperationalAlerts, loadJobOperationsSummary } from "@/lib/jobs/operations";
 import { formatMoney } from "@/lib/money";
+import { DispatchWorkspace } from "@/components/dispatch/workspace";
+import { canAccessWorkspace } from "@/lib/workspaces";
 
 function formatSchedule(start: Date | null, end: Date | null) {
   if (!start) return "Unscheduled";
@@ -60,19 +62,52 @@ export default async function JobsPage({
     source?: string;
     range?: string;
     attention?: string;
+    filter?: string;
+    date?: string;
+    issue?: string;
+    job?: string;
   }>;
 }) {
-  const ctx = await requirePermission("jobs:view");
-  const access = jobAccessFilter(ctx.role, ctx.user.id);
   const params = await searchParams;
-  const query = parseJobsListQuery(params);
+  const ctx = await requirePermission("jobs:view");
+  const listIntent = Boolean(
+    params.q || params.status || params.page || params.customerId || params.when || params.needsInvoice || params.serviceType || params.attention || params.filter || params.date
+  );
+  const requestedView = jobsWorkspaceView(params.view, listIntent);
+  const routeView = requestedView === "dispatch" && !canAccessWorkspace(ctx.role, "dispatch") ? "all" : requestedView;
+  if (routeView === "dispatch") {
+    return <DispatchWorkspace search={{ date: params.date, issue: params.issue, job: params.job }} />;
+  }
+
+  const access = jobAccessFilter(ctx.role, ctx.user.id);
+  const legacyOperationView =
+    params.view && ["active", "today", "scheduled", "in-progress", "completed-week", "needs-attention", "estimates-pending"].includes(params.view)
+      ? params.view
+      : undefined;
+  const operationView =
+    params.filter ||
+    legacyOperationView ||
+    (routeView === "waiting"
+      ? "waiting"
+      : routeView === "estimates"
+        ? "estimates-pending"
+        : routeView === "attention"
+          ? "needs-attention"
+          : undefined);
+  const query = parseJobsListQuery({
+    ...params,
+    view: operationView,
+    status: routeView === "completed" ? params.status || "COMPLETED" : params.status,
+    when: params.when || (params.date === "today" ? "today" : undefined),
+  });
+  query.routeView = routeView;
   const finance = parseFinanceSearch(params);
   const where = jobsWhere({
     companyId: ctx.company.id,
     access,
     q: query.q,
     status: query.status,
-    view: query.view,
+    view: query.view ?? (routeView === "completed" ? "completed" : undefined),
     customerId: query.customerId,
     when: query.when,
     needsInvoice: query.needsInvoice,
@@ -115,8 +150,8 @@ export default async function JobsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Job Operations</p>
-          <h1 className="font-display text-3xl tracking-tight">Active Jobs</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Operations</p>
+          <h1 className="font-display text-3xl tracking-tight">Jobs &amp; Dispatch</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             {total.toLocaleString()} job{total === 1 ? "" : "s"}
             {query.q ? ` matching “${query.q}”` : ""}
@@ -131,6 +166,7 @@ export default async function JobsPage({
           New job
         </Link>
       </div>
+      <JobsSubnav canDispatch={canAccessWorkspace(ctx.role, "dispatch")} />
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" aria-label="Job operations summary">
         <OperationsMetric label="Today" value={summary.today} href={metricHref(query, "today")} active={query.view === "today"} />
         <OperationsMetric label="Scheduled" value={summary.scheduled} href={metricHref(query, "scheduled")} active={query.view === "scheduled"} />
@@ -151,7 +187,7 @@ export default async function JobsPage({
               <span className="text-[var(--muted-foreground)]">
                 Filtered by: <strong className="text-[var(--cy-navy)]">{activeJobFilterLabel(query)}</strong>
               </span>
-              <Link href={jobsListHref({ ...query, view: undefined, attention: undefined, page: 1 })} className="font-semibold text-[var(--cy-orange)] hover:underline">
+              <Link href={jobsListHref({ ...query, routeView: "all", view: undefined, attention: undefined, page: 1 })} className="font-semibold text-[var(--cy-orange)] hover:underline">
                 Clear
               </Link>
             </div>
@@ -182,8 +218,6 @@ export default async function JobsPage({
           ) : null}
         </div>
       </section>
-      <JobsSubnav />
-
       {(() => {
         const copy = financeFilterCopy({ ...finance, needsInvoice: Boolean(query.needsInvoice), serviceType: query.serviceType });
         return copy ? <FinanceFilterContext title={copy.title} detail={copy.detail} backHref={finance.backHref} /> : null;
@@ -217,7 +251,8 @@ export default async function JobsPage({
           <option value="upcoming">Upcoming</option>
         </select>
         {query.customerId ? <input type="hidden" name="customerId" value={query.customerId} /> : null}
-        {query.view ? <input type="hidden" name="view" value={query.view} /> : null}
+        <input type="hidden" name="view" value={query.routeView ?? "all"} />
+        {query.routeView === "all" && query.view ? <input type="hidden" name="filter" value={query.view} /> : null}
         {query.attention ? <input type="hidden" name="attention" value={query.attention} /> : null}
         {query.needsInvoice ? <input type="hidden" name="needsInvoice" value="1" /> : null}
         {query.serviceType ? <input type="hidden" name="serviceType" value={query.serviceType} /> : null}
@@ -436,8 +471,17 @@ function jobPartsStatus(parts: JobPartSummary[]) {
 }
 
 function metricHref(query: JobsListQuery, view: string) {
+  const routeView =
+    view === "waiting"
+      ? "waiting"
+      : view === "estimates-pending"
+        ? "estimates"
+        : view === "needs-attention"
+          ? "attention"
+          : "all";
   return jobsListHref({
     ...query,
+    routeView,
     view: query.view === view ? undefined : view,
     attention: undefined,
     page: 1,
@@ -447,10 +491,21 @@ function metricHref(query: JobsListQuery, view: string) {
 function attentionHref(query: JobsListQuery, attention: string) {
   return jobsListHref({
     ...query,
-    view: undefined,
+    routeView: "attention",
+    view: "needs-attention",
     attention: query.attention === attention ? undefined : attention,
     page: 1,
   });
+}
+
+type JobsWorkspaceView = "dispatch" | "all" | "waiting" | "estimates" | "completed" | "attention";
+
+function jobsWorkspaceView(value: string | undefined, hasListIntent: boolean): JobsWorkspaceView {
+  if (value && ["dispatch", "all", "waiting", "estimates", "completed", "attention"].includes(value)) {
+    return value as JobsWorkspaceView;
+  }
+  if (value) return "all";
+  return hasListIntent ? "all" : "dispatch";
 }
 
 function activeJobFilterLabel(query: JobsListQuery) {

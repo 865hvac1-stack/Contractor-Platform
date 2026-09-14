@@ -15,12 +15,11 @@ import { landingPath } from "@/lib/workspaces";
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/customers/list";
 
 describe("nav catalog", () => {
-  it("keeps the everyday shell to six destinations", () => {
+  it("keeps the everyday shell to five destinations", () => {
     expect(PRIMARY_NAV.map((item) => item.label)).toEqual([
       "Home",
-      "Dispatch",
+      "Jobs & Dispatch",
       "Customers",
-      "Jobs",
       "Money",
       "Marketing",
     ]);
@@ -32,9 +31,7 @@ describe("nav catalog", () => {
       "Action Center",
       "Intelligence",
       "Inbox",
-      "Waiting Board",
       "Playbooks",
-      "Estimates",
       "Invoices",
       "Pricebook",
       "Memberships",
@@ -48,8 +45,9 @@ describe("nav catalog", () => {
 
 describe("hub highlighting", () => {
   it("treats Waiting and Estimates as Jobs hub routes", () => {
-    const jobs = PRIMARY_NAV.find((item) => item.label === "Jobs")!;
+    const jobs = PRIMARY_NAV.find((item) => item.label === "Jobs & Dispatch")!;
     expect(isNavItemActive("/jobs", jobs)).toBe(true);
+    expect(isNavItemActive("/dispatch", jobs)).toBe(true);
     expect(isNavItemActive("/operations/waiting", jobs)).toBe(true);
     expect(isNavItemActive("/estimates/abc", jobs)).toBe(true);
     expect(isNavItemActive("/settings/playbooks", jobs)).toBe(false);
@@ -74,9 +72,8 @@ describe("role-aware navigation", () => {
   it("shows owners the full primary shell", () => {
     expect(visiblePrimaryNav("COMPANY_OWNER").map((item) => item.label)).toEqual([
       "Home",
-      "Dispatch",
+      "Jobs & Dispatch",
       "Customers",
-      "Jobs",
       "Money",
       "Marketing",
     ]);
@@ -86,12 +83,11 @@ describe("role-aware navigation", () => {
   it("hides Money and Marketing from dispatchers", () => {
     expect(visiblePrimaryNav("DISPATCHER").map((item) => item.label)).toEqual([
       "Home",
-      "Dispatch",
+      "Jobs & Dispatch",
       "Customers",
-      "Jobs",
     ]);
     expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Inbox")).toBe(false);
-    expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Waiting Board")).toBe(true);
+    expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Waiting Board")).toBe(false);
   });
 
   it("lets office see Money without owner-only compensation", () => {
@@ -132,11 +128,18 @@ describe("sidebar and mobile source", () => {
     expect(more).toContain('can(ctx.role, "company:settings")');
     expect(visibleMobileTabs("COMPANY_OWNER").map((item) => item.label)).toEqual([
       "Home",
-      "Jobs",
+      "Jobs & Dispatch",
       "Customers",
-      "Dispatch",
       "More",
     ]);
+    expect(shell).not.toContain("WorkspaceSwitcher");
+    const jobsPage = readFileSync(resolve("src/app/(app)/jobs/page.tsx"), "utf8");
+    expect(jobsPage).toContain("DispatchWorkspace");
+    expect(jobsPage).toContain('return hasListIntent ? "all" : "dispatch"');
+    const tabs = readFileSync(resolve("src/components/hub-subnav.tsx"), "utf8");
+    for (const label of ["Dispatch Board", "All Jobs", "Waiting", "Estimates", "Completed", "Needs Attention"]) {
+      expect(tabs).toContain(label);
+    }
   });
 });
 

@@ -385,7 +385,7 @@ export function Customer360View({
 
           <CustomerHistoryTabs
             jobBase={jobBase}
-            jobsHref={`${jobBase}?customerId=${customer.id}`}
+            jobsHref={`${jobBase}?view=all&customerId=${customer.id}`}
             estimatesHref={`/estimates?customerId=${customer.id}`}
             invoicesHref={`/invoices?customerId=${customer.id}`}
             paymentsHref={`/payments?customerId=${customer.id}`}

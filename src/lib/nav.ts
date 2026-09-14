@@ -2,14 +2,12 @@ import {
   LayoutDashboard,
   Users,
   CalendarDays,
-  Briefcase,
   Megaphone,
   Wallet,
   Ellipsis,
   Settings,
   Inbox,
   UserPlus,
-  FileText,
   Receipt,
   Camera,
   Star,
@@ -22,7 +20,6 @@ import {
   UserCog,
   CircleHelp,
   ListChecks,
-  Hourglass,
   type LucideIcon,
 } from "lucide-react";
 import type { CompanyRole } from "@prisma/client";
@@ -38,9 +35,8 @@ export type NavItem = {
 
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true, permission: "dashboard:view" },
-  { href: "/dispatch", label: "Dispatch", icon: CalendarDays, permission: "schedule:view" },
+  { href: "/jobs", label: "Jobs & Dispatch", icon: CalendarDays, permission: "jobs:view" },
   { href: "/customers", label: "Customers", icon: Users, permission: "customers:view" },
-  { href: "/jobs", label: "Jobs", icon: Briefcase, permission: "jobs:view" },
   { href: "/money", label: "Money", icon: Wallet, permission: "invoices:view" },
   { href: "/marketing", label: "Marketing", icon: Megaphone, exact: true, permission: "marketing:view" },
 ];
@@ -52,8 +48,6 @@ export const MORE_NAV: NavItem[] = [
   { href: "/marketing/communications", label: "Inbox", icon: Inbox, permission: "marketing:view" },
   { href: "/office", label: "Customer Hub", icon: Users, permission: "customers:view" },
   { href: "/schedule", label: "Schedule", icon: CalendarDays, permission: "schedule:view" },
-  { href: "/operations/waiting", label: "Waiting Board", icon: Hourglass, permission: "jobs:view" },
-  { href: "/estimates", label: "Estimates", icon: FileText, permission: "estimates:view" },
   { href: "/billing-watchdog", label: "Billing Watchdog", icon: Wallet, permission: "invoices:view" },
   { href: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices:view" },
   { href: "/memberships", label: "Memberships", icon: Star, permission: "memberships:view" },
@@ -78,7 +72,7 @@ export const MORE_NAV: NavItem[] = [
 export const MORE_ITEM: NavItem = { href: "/more", label: "More", icon: Ellipsis };
 export const SETTINGS_ITEM: NavItem = { href: "/settings", label: "Settings", icon: Settings, permission: "company:settings" };
 
-export const MOBILE_TAB_HREFS = ["/dashboard", "/jobs", "/customers", "/dispatch", "/more"] as const;
+export const MOBILE_TAB_HREFS = ["/dashboard", "/jobs", "/customers", "/more"] as const;
 
 const JOBS_HUB_PREFIXES = ["/jobs", "/operations/waiting", "/estimates"];
 const MONEY_HUB_PREFIXES = ["/money", "/invoices", "/payments", "/expenses", "/receipts"];
@@ -86,7 +80,7 @@ const MARKETING_HUB_PREFIXES = ["/marketing"];
 
 export function isNavItemActive(pathname: string, item: NavItem): boolean {
   if (item.href === "/jobs") {
-    return JOBS_HUB_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+    return pathname === "/dispatch" || pathname.startsWith("/dispatch/") || JOBS_HUB_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   }
   if (item.href === "/money") {
     return MONEY_HUB_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

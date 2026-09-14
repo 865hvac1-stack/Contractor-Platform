@@ -224,7 +224,7 @@ export async function globalSearch(input: {
         type: "job",
         label: "Jobs",
         items: topJobs,
-        moreHref: jobHits.length > GROUP_LIMIT ? `/jobs?q=${encodeURIComponent(q)}` : null,
+        moreHref: jobHits.length > GROUP_LIMIT ? `/jobs?view=all&q=${encodeURIComponent(q)}` : null,
       });
     }
   }

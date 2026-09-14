@@ -92,7 +92,7 @@ export async function getBusinessPulse(companyId: string): Promise<PulseItem[]> 
       category: "Operations",
       title: `${jobsToday.length} job${jobsToday.length === 1 ? "" : "s"} need attention`,
       summary: "On hold, dispatched, or in progress.",
-      href: "/jobs",
+      href: "/jobs?view=attention",
     });
   }
 

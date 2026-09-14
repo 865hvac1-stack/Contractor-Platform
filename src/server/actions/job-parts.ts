@@ -23,7 +23,7 @@ async function accessibleJob(companyId: string, userId: string, role: Parameters
 function revalidateJob(jobId: string) {
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath(`/tech/jobs/${jobId}`);
-  revalidatePath("/dispatch");
+  revalidatePath("/jobs");
   revalidatePath("/jobs");
   revalidatePath("/pricebook");
 }

@@ -26,6 +26,7 @@ export type JobsListQuery = {
   serviceType?: string;
   source?: string;
   attention?: string;
+  routeView?: "all" | "waiting" | "estimates" | "completed" | "attention";
 };
 
 export const JOB_OPERATION_VIEWS = [
@@ -110,6 +111,9 @@ export function jobsWhere(input: {
   const readyToInvoice = Boolean(input.needsInvoice);
   const serviceType = input.serviceType?.trim();
   const extraFilters: Prisma.JobWhereInput[] = [];
+  if (status && (input.when === "today" || input.when === "upcoming")) {
+    extraFilters.push({ status });
+  }
   const operationView: Prisma.JobWhereInput | null =
     input.view === "today"
       ? { scheduledStart: { gte: dayStart, lte: dayEnd }, status: { not: "CANCELED" } }
@@ -209,7 +213,12 @@ export function jobsWhere(input: {
 export function jobsListHref(query: JobsListQuery, page = query.page ?? 1) {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
-  if (query.view) params.set("view", query.view);
+  if (query.routeView) {
+    params.set("view", query.routeView);
+    if (query.routeView === "all" && query.view && query.view !== "active") params.set("filter", query.view);
+  } else if (query.view) {
+    params.set("view", query.view);
+  }
   if (query.status && query.status !== "ALL") params.set("status", query.status);
   if (query.customerId) params.set("customerId", query.customerId);
   if (query.when) params.set("when", query.when);

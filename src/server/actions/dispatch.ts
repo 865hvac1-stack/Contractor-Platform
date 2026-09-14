@@ -10,7 +10,7 @@ import { googleRoutingProvider, RoutingNotConfiguredError, RoutingProviderError 
 import type { ActionResult } from "@/server/actions/auth";
 
 function revalidateDispatch(jobId?: string) {
-  revalidatePath("/dispatch");
+  revalidatePath("/jobs");
   revalidatePath("/office");
   revalidatePath("/schedule");
   revalidatePath("/jobs");

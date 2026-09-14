@@ -58,7 +58,7 @@ export function CommandHero({
             </p>
             {canDispatch ? (
               <Link
-                href="/dispatch"
+                href="/jobs?view=dispatch"
                 className="text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 View Dispatch →

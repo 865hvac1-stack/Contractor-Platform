@@ -84,10 +84,14 @@ export function DispatchBoard({
 
   useEffect(() => {
     const params = new URLSearchParams();
+    params.set("view", "dispatch");
     if (date) params.set("date", date);
-    if (pulse !== "all") params.set("view", pulse);
+    if (pulse !== "all") {
+      const issue = pulse === "runningLate" ? "late" : pulse;
+      params.set("issue", issue);
+    }
     if (selected?.id) params.set("job", selected.id);
-    router.replace(`/dispatch?${params.toString()}`, { scroll: false });
+    router.replace(`/jobs?${params.toString()}`, { scroll: false });
   }, [date, pulse, selected?.id, router]);
 
   const filters = useMemo(

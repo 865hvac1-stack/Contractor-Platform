@@ -10,7 +10,7 @@ export const WORKSPACES: {
   blurb: string;
 }[] = [
   { id: "command", href: "/dashboard", label: "Command Center", blurb: "The whole business" },
-  { id: "dispatch", href: "/dispatch", label: "Dispatch Center", blurb: "Today's dispatch" },
+  { id: "dispatch", href: "/jobs?view=dispatch", label: "Jobs & Dispatch", blurb: "Today's work" },
   { id: "office", href: "/customers", label: "Customer Hub", blurb: "Find and help customers" },
   { id: "field", href: "/tech", label: "Field", blurb: "Your next job" },
 ];
@@ -39,9 +39,9 @@ export function accessibleWorkspaces(role: CompanyRole): WorkspaceId[] {
 export function landingPath(role: CompanyRole): string {
   if (isFieldRole(role)) return "/tech";
   if (can(role, "dashboard:view")) return "/dashboard";
-  if (role === "DISPATCHER" && canAccessWorkspace(role, "dispatch")) return "/dispatch";
+  if (role === "DISPATCHER" && canAccessWorkspace(role, "dispatch")) return "/jobs?view=dispatch";
   if (canAccessWorkspace(role, "office")) return "/office";
-  if (canAccessWorkspace(role, "dispatch")) return "/dispatch";
+  if (canAccessWorkspace(role, "dispatch")) return "/jobs?view=dispatch";
   return "/dashboard";
 }
 
@@ -51,7 +51,7 @@ export function assertWorkspaceAccess(role: CompanyRole, workspace: WorkspaceId)
 
 export function workspaceFromPath(pathname: string): WorkspaceId | null {
   if (pathname.startsWith("/tech")) return "field";
-  if (pathname.startsWith("/dispatch")) return "dispatch";
+  if (pathname.startsWith("/dispatch") || pathname.startsWith("/jobs")) return "dispatch";
   if (pathname.startsWith("/office") || pathname.startsWith("/customers")) return "office";
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/intelligence") || pathname.startsWith("/reports")) {
     return "command";

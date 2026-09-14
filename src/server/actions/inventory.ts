@@ -180,7 +180,7 @@ export async function transferInventoryAction(
       metadata: { fromLocationId, toLocationId, quantity },
     });
     revalidatePath("/pricebook");
-    revalidatePath("/dispatch");
+    revalidatePath("/jobs");
     return { ok: true, message: "Inventory transferred and recorded in the movement ledger." };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };

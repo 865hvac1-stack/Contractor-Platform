@@ -776,7 +776,7 @@ export async function bookFromConversationAction(
       maintenanceVisitId: formString(formData, "maintenanceVisitId") || null,
     });
     if (!result.ok) return { ok: false, error: result.error };
-    revalidatePath("/dispatch");
+  revalidatePath("/jobs");
     revalidatePath("/marketing/communications");
     revalidatePath("/maintenance");
     return { ok: true, message: "Appointment booked." };
@@ -818,7 +818,7 @@ export async function cancelScheduledJobAction(
       actorId: ctx.user.id,
     });
     if (!result.ok) return { ok: false, error: result.error };
-    revalidatePath("/dispatch");
+  revalidatePath("/jobs");
     return { ok: true };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };
@@ -842,7 +842,7 @@ export async function rescheduleScheduledJobAction(
       sendConfirmation: formString(formData, "sendConfirmation") === "yes",
     });
     if (!result.ok) return { ok: false, error: result.error };
-    revalidatePath("/dispatch");
+  revalidatePath("/jobs");
     return { ok: true, message: "Appointment rescheduled." };
   } catch (error) {
     if (error instanceof AuthError) return { ok: false, error: error.message };

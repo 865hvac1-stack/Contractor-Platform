@@ -144,7 +144,7 @@ export function explainBusinessHealth(input: HealthExplainInput): HealthExplanat
     });
   }
   if (input.today.runningBehind > 0 || input.operations.unassignedJobs > 0) {
-    cta.push({ label: "Open dispatch", href: "/dispatch" });
+    cta.push({ label: "Open dispatch", href: "/jobs?view=dispatch" });
   }
 
   return {

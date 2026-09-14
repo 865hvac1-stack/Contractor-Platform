@@ -178,7 +178,7 @@ export async function loadFinancialSnapshot(
       openEstimates: "/estimates?status=open&source=home",
       overdueAr: financeHref("/invoices", { status: "overdue", view: "overdue" }),
       averageTicket: financeHref("/invoices", { period, status: "PAID", view: "ticket" }),
-      readyToInvoice: "/jobs?status=COMPLETED&needsInvoice=1&source=home",
+      readyToInvoice: "/jobs?view=completed&needsInvoice=1&source=home",
       expenses: "/expenses",
       receipts: "/receipts",
       money: financeHref("/money", { period }),

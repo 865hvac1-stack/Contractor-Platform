@@ -164,8 +164,11 @@ describe("dispatch V2 helpers", () => {
     expect(seed).toContain("SUMMIT_COMPANY_NAME");
     expect(seed).toContain("assertResettableDemoCompany");
     expect(seed).not.toMatch(/865 HVAC/);
-    const page = readFileSync(resolve("src/app/(app)/dispatch/page.tsx"), "utf8");
-    expect(page).toContain("Today&apos;s Dispatch");
+    const legacyPage = readFileSync(resolve("src/app/(app)/dispatch/page.tsx"), "utf8");
+    expect(legacyPage).toContain('view: "dispatch"');
+    expect(legacyPage).toContain("redirect(`/jobs?");
+    const page = readFileSync(resolve("src/components/dispatch/workspace.tsx"), "utf8");
+    expect(page).toContain("Jobs &amp; Dispatch");
     const board = readFileSync(resolve("src/components/dispatch/board.tsx"), "utf8");
     expect(board).toContain("md:hidden");
     expect(board).toContain("DispatchIntelligencePanel");
@@ -186,14 +189,14 @@ describe("dispatch V2 helpers", () => {
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
     expect(shell).not.toMatch(/<header[^>]*overflow-hidden/);
     expect(shell).toContain("AppNav");
-    expect(shell).toContain("WorkspaceSwitcher");
-    expect(shell).toContain("workspaceFromPath(pathname)");
+    expect(shell).not.toContain("WorkspaceSwitcher");
     expect(shell).toContain("shrink-0");
     expect(shell).not.toContain("MobileWorkspaceLinks");
     const switcher = readFileSync(resolve("src/components/workspace-switcher.tsx"), "utf8");
     expect(switcher).toContain("hidden min-w-0 md:flex");
     expect(switcher).not.toContain("flex-wrap");
     expect(board).toContain('params.set("job", selected.id)');
+    expect(board).toContain('router.replace(`/jobs?');
   });
 });
 

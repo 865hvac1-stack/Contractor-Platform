@@ -33,7 +33,7 @@ describe("Customer Hub interaction wiring", () => {
     expect(intelligence).toMatch(/status=overdue&source=hub&view=overdue/);
     expect(intelligence).toMatch(/needsResponse=1/);
     expect(intelligence).toMatch(/filter=needs-response/);
-    expect(intelligence).toMatch(/actionHref: "\/dispatch"/);
+    expect(intelligence).toMatch(/actionHref: "\/jobs\?view=dispatch"/);
     expect(intelligence).not.toMatch(/\/marketing\/leads\?source=hub/);
     expect(intelligence).toMatch(/Why are these estimates considered follow-up opportunities/);
     expect(page).toMatch(/<OfficeIncomingCallSection/);
@@ -263,7 +263,7 @@ describe("Customer Hub V2", () => {
     expect(rows.find((row) => row.id === "sales_opportunity")?.askQuestion).toMatch(/follow-up opportunities/);
     expect(rows.find((row) => row.id === "collection_risk")?.href).toContain("/invoices?status=overdue");
     expect(rows.find((row) => row.id === "customer_response")?.href).toContain("needsResponse=1");
-    expect(rows.find((row) => row.id === "scheduling_opportunity")?.actionHref).toBe("/dispatch");
+    expect(rows.find((row) => row.id === "scheduling_opportunity")?.actionHref).toBe("/jobs?view=dispatch");
     expect(rows.find((row) => row.id === "customer_response")?.actionHref).toContain("filter=needs-response");
   });
 

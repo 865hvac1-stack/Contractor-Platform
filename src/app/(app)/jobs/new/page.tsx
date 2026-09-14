@@ -51,10 +51,10 @@ export default async function NewJobPage({
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <Link
-          href="/jobs"
+          href={returnTo === "dispatch" ? "/jobs?view=dispatch" : "/jobs?view=all"}
           className="text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         >
-          ← Jobs
+          ← Jobs &amp; Dispatch
         </Link>
         <h1 className="mt-2 font-display text-3xl tracking-tight">New job</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">

@@ -9,7 +9,7 @@ import { publicImportedFields, buildImportedJobSnapshot, importedWorkFields, loa
 import { buildWorkSummary, isGenericJobTypeLabel, stripImportBoilerplate } from "@/lib/jobs/work-summary";
 import { customerSearchWhere } from "@/lib/customers/search";
 import { buildJobTimeline } from "@/lib/jobs/timeline";
-import { JOBS_PAGE_SIZE, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
+import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
 import { assignPlaybookToJob } from "@/lib/playbooks/assign";
 import { isHistoricalImport } from "@/lib/imports/safety";
 
@@ -103,6 +103,9 @@ describe("imported field safety", () => {
     expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, view: "waiting" }))).toContain("waitingRecords");
     expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, attention: "parts" }))).toContain("jobParts");
     expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, attention: "payment" }))).toContain("balanceCents");
+    expect(jobsListHref({ routeView: "all", view: "scheduled" })).toBe("/jobs?view=all&filter=scheduled");
+    expect(jobsListHref({ routeView: "waiting", view: "waiting" })).toBe("/jobs?view=waiting");
+    expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, when: "today", status: "COMPLETED" }))).toContain('"status":"COMPLETED"');
   });
 });
 

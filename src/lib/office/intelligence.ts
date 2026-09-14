@@ -46,7 +46,7 @@ export function buildOfficeIntelligence(input: {
           ? `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} totaling ${formatMoney(input.approvedValueCents)} have not been scheduled.`
           : `${input.approvedNotScheduled} approved estimate${input.approvedNotScheduled === 1 ? "" : "s"} have not been scheduled.`,
       href: "/estimates?status=approved&source=hub&view=schedule",
-      actionHref: "/dispatch",
+      actionHref: "/jobs?view=dispatch",
       actionLabel: "Schedule",
       askQuestion: "Why do these approved estimates still need scheduling?",
       count: input.approvedNotScheduled,

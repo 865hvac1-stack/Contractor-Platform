@@ -251,7 +251,7 @@ export async function getOfficeHubData(companyId: string) {
       label: "Jobs booked",
       value: String(jobsBookedToday),
       context: "Scheduled today",
-      href: "/jobs?when=today",
+      href: "/jobs?view=all&date=today",
       tone: "schedule",
       period: "Today",
     },
@@ -304,7 +304,7 @@ export async function getOfficeHubData(companyId: string) {
       label: "Upcoming jobs",
       value: String(upcomingJobs.length),
       context: "On today's board",
-      href: `/dispatch?date=${todayDate}`,
+      href: `/jobs?view=dispatch&date=${todayDate}`,
       tone: "schedule",
       period: "Today",
     },
@@ -404,7 +404,7 @@ export async function getOfficeHubData(companyId: string) {
       technician: tech
         ? { id: tech.id, name: `${tech.firstName} ${tech.lastName}`.trim() }
         : null,
-      dispatchHref: `/dispatch?date=${job.scheduledStart ? job.scheduledStart.toISOString().slice(0, 10) : todayDate}`,
+      dispatchHref: `/jobs?view=dispatch&date=${job.scheduledStart ? job.scheduledStart.toISOString().slice(0, 10) : todayDate}&job=${job.id}`,
     };
   });
 
