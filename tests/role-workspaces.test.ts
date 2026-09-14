@@ -6,6 +6,8 @@ import {
   accessibleWorkspaces,
   canAccessWorkspace,
   landingPath,
+  workspaceFromPath,
+  WORKSPACES,
 } from "@/lib/workspaces";
 
 const prisma = new PrismaClient();
@@ -28,6 +30,8 @@ describe("role landing and workspace access", () => {
     expect(canAccessWorkspace("COMPANY_OWNER", "office")).toBe(true);
     expect(canAccessWorkspace("COMPANY_OWNER", "field")).toBe(false);
     expect(accessibleWorkspaces("COMPANY_OWNER")).toEqual(["command", "dispatch", "office"]);
+    expect(WORKSPACES.find((workspace) => workspace.id === "office")?.href).toBe("/customers");
+    expect(workspaceFromPath("/customers/customer_1")).toBe("office");
   });
 
   it("lets a multi-role office employee use CSR and Dispatch", () => {

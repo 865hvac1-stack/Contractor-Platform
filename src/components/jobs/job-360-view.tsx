@@ -276,7 +276,8 @@ export function Job360View({
       ) : null}
 
       {canViewMoney ? (
-        <Section title="Job financials">
+        <Section title="Job financials" id="payment">
+          <span id="estimates" className="block scroll-mt-20" aria-hidden />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <MoneyCard label="Estimate" value={view.financials.estimateCents} />
             <MoneyCard label="Invoice" value={view.financials.invoiceCents} hideEmpty={false} />

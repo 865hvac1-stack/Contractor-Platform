@@ -37,14 +37,18 @@ export function CustomerSearchTypeahead({
   placeholder = "Search name, phone, email, address, or company…",
   showActions = false,
   emphasis = false,
+  initialQuery = "",
+  listSearchHref,
 }: {
   hrefPrefix?: string;
   placeholder?: string;
   showActions?: boolean;
   emphasis?: boolean;
+  initialQuery?: string;
+  listSearchHref?: string;
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -91,6 +95,13 @@ export function CustomerSearchTypeahead({
             )}
             autoComplete="off"
             inputMode="search"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && listSearchHref && query.trim()) {
+                event.preventDefault();
+                const separator = listSearchHref.includes("?") ? "&" : "?";
+                router.push(`${listSearchHref}${separator}q=${encodeURIComponent(query.trim())}`);
+              }
+            }}
           />
         </div>
         {query ? (

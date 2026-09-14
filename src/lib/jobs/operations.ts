@@ -16,7 +16,7 @@ export async function loadJobOperationsSummary(
     ...operationalRecordWhere(),
   } satisfies Prisma.JobWhereInput;
   const active = ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"] as const;
-  const [today, scheduled, inProgress, waiting, estimatesPending, completedThisWeek, needsAttention] =
+  const [today, scheduled, inProgress, waiting, estimatesPending, completedThisWeek, needsAttention, runningLate, paymentsDue, unassigned, neededParts] =
     await Promise.all([
       prisma.job.count({ where: { ...base, scheduledStart: { gte: dayStart, lte: dayEnd } } }),
       prisma.job.count({ where: { ...base, status: { in: ["SCHEDULED", "DISPATCHED"] } } }),
@@ -45,12 +45,73 @@ export async function loadJobOperationsSummary(
             { confirmationFailed: true },
             { assignments: { none: {} } },
             { waitingRecords: { some: { state: "ACTIVE" } } },
+            { estimates: { some: { status: { in: ["SENT", "VIEWED"] } } } },
             { invoices: { some: { balanceCents: { gt: 0 }, status: { in: ["OVERDUE", "SENT", "PARTIALLY_PAID"] } } } },
+            { jobParts: { some: { status: "NEEDED" } } },
+            { status: { in: ["SCHEDULED", "DISPATCHED"] }, scheduledStart: { lt: now } },
           ],
         },
       }),
+      prisma.job.count({
+        where: {
+          ...base,
+          status: { in: ["SCHEDULED", "DISPATCHED"] },
+          scheduledStart: { lt: now },
+        },
+      }),
+      prisma.job.count({
+        where: {
+          ...base,
+          status: { in: [...active] },
+          invoices: { some: { balanceCents: { gt: 0 }, status: { in: ["OVERDUE", "SENT", "PARTIALLY_PAID"] } } },
+        },
+      }),
+      prisma.job.count({
+        where: {
+          ...base,
+          status: { in: [...active] },
+          assignments: { none: {} },
+        },
+      }),
+      prisma.jobPart.findMany({
+        where: {
+          companyId: input.companyId,
+          status: "NEEDED",
+          job: { ...base, status: { in: [...active] } },
+        },
+        select: {
+          jobId: true,
+          quantity: true,
+          part: { select: { inventoryStocks: { select: { onHand: true, reserved: true } } } },
+        },
+      }),
     ]);
-  return { today, scheduled, inProgress, waiting, estimatesPending, completedThisWeek, needsAttention };
+  const missingParts = new Set(
+    neededParts
+      .filter(
+        (row) =>
+          row.part.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0) < row.quantity
+      )
+      .map((row) => row.jobId)
+  ).size;
+  const partsRequired = new Set(neededParts.map((row) => row.jobId)).size;
+  return {
+    today,
+    scheduled,
+    inProgress,
+    waiting,
+    estimatesPending,
+    completedThisWeek,
+    needsAttention,
+    intelligence: {
+      estimatesPending,
+      runningLate,
+      missingParts,
+      partsRequired,
+      paymentsDue,
+      unassigned,
+    },
+  };
 }
 
 export type JobOperationalAlert =
@@ -59,7 +120,9 @@ export type JobOperationalAlert =
   | "Appointment Conflict"
   | "Estimate Awaiting Approval"
   | "Payment Due"
-  | "Missing Invoice";
+  | "Missing Invoice"
+  | "Part Needed"
+  | "Late";
 
 export function deriveJobOperationalAlerts(job: {
   status: string;
@@ -68,6 +131,8 @@ export function deriveJobOperationalAlerts(job: {
   waitingRecords?: Array<{ state: string }>;
   estimates?: Array<{ status: string }>;
   invoices?: Array<{ status: string; balanceCents: number }>;
+  scheduledStart?: Date | null;
+  jobParts?: Array<{ status: string; quantity?: number; part?: { inventoryStocks: Array<{ onHand: number; reserved: number }> } }>;
 }): JobOperationalAlert[] {
   const alerts: JobOperationalAlert[] = [];
   if (!job.assignments.length && !["COMPLETED", "CANCELED"].includes(job.status)) alerts.push("Technician Unassigned");
@@ -78,5 +143,23 @@ export function deriveJobOperationalAlerts(job: {
     alerts.push("Payment Due");
   }
   if (job.status === "COMPLETED" && !job.invoices?.length) alerts.push("Missing Invoice");
+  if (
+    ["SCHEDULED", "DISPATCHED"].includes(job.status) &&
+    job.scheduledStart &&
+    job.scheduledStart.getTime() < Date.now()
+  ) {
+    alerts.push("Late");
+  }
+  if (
+    job.jobParts?.some(
+      (row) =>
+        row.status === "NEEDED" &&
+        (!row.part ||
+          row.part.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0) <
+            (row.quantity ?? 1))
+    )
+  ) {
+    alerts.push("Part Needed");
+  }
   return alerts;
 }

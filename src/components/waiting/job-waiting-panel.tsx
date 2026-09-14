@@ -38,7 +38,7 @@ export function JobWaitingPanel({
   const [partOpen, setPartOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   return (
-    <section className="space-y-3">
+    <section id="waiting" className="scroll-mt-20 space-y-3">
       <h2 className="font-display text-xl tracking-tight">Waiting status</h2>
       {waiting ? (
         <div className="rounded-2xl border border-[var(--cy-orange)]/40 bg-white p-4">

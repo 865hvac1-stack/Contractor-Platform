@@ -12,6 +12,7 @@ import { getNeedsAttention } from "@/lib/attention";
 import { canAccessWorkspace } from "@/lib/workspaces";
 import { can } from "@/lib/permissions";
 import { SUMMIT_COMPANY_NAME } from "@/lib/demo/constants";
+import { customerSearchWhere as customerListWhere, parseCustomerListQuery } from "@/lib/customers/list";
 
 const prisma = new PrismaClient();
 
@@ -269,6 +270,14 @@ describe("Customer Hub V2", () => {
   it("finds customers by property address in search", () => {
     const where = customerSearchWhere(ids.companyA, "123 Main Street");
     expect(JSON.stringify(where)).toContain("properties");
+  });
+
+  it("keeps customer intelligence filters explicit and property-aware", () => {
+    expect(parseCustomerListQuery({ view: "maintenance-due" }).view).toBe("maintenance-due");
+    expect(parseCustomerListQuery({ view: "balances-due" }).view).toBe("balances-due");
+    expect(parseCustomerListQuery({ view: "unknown" }).view).toBe("recent");
+    expect(JSON.stringify(customerListWhere(ids.companyA, "7409 Openview", "all"))).toContain("properties");
+    expect(JSON.stringify(customerListWhere(ids.companyA, "", "open-estimates"))).toContain("estimates");
   });
 
   it("wires Customer Hub page to V2 sections and compact Ask bar", () => {

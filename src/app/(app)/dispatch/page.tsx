@@ -11,13 +11,14 @@ import { routingConfigured } from "@/lib/routing/provider";
 import { requirePermission } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
+import type { DispatchPulse } from "@/lib/dispatch/filters";
 
 export const dynamic = "force-dynamic";
 
 export default async function DispatchCenterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; view?: string }>;
 }) {
   const ctx = await requirePermission("schedule:view");
   if (!canAccessWorkspace(ctx.role, "dispatch")) {
@@ -25,6 +26,8 @@ export default async function DispatchCenterPage({
   }
 
   const params = await searchParams;
+  const pulseValues: DispatchPulse[] = ["all", "completed", "inProgress", "runningLate", "unassigned", "emergency"];
+  const initialPulse = pulseValues.includes(params.view as DispatchPulse) ? (params.view as DispatchPulse) : "all";
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "")
     ? params.date!
     : format(new Date(), "yyyy-MM-dd");
@@ -115,6 +118,7 @@ export default async function DispatchCenterPage({
         routingConfigured={routingConfigured()}
         canAsk={can(ctx.role, "intelligence:view")}
         suggestions={suggestedQuestions(ctx.role, null, "dispatch")}
+        initialPulse={initialPulse}
       />
     </div>
   );

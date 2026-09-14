@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { askContractorYouAction, type AskState } from "@/server/actions/intelligence";
 import { ActionCard } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ export function DispatchAskBar({ suggestions }: { suggestions: string[] }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [conversationId, setConversationId] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const [state, formAction, pending] = useActionState(askContractorYouAction, null as AskState | null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -19,6 +20,15 @@ export function DispatchAskBar({ suggestions }: { suggestions: string[] }) {
     if (state?.ok && state.conversationId) setConversationId(state.conversationId);
     if (state) setOpen(true);
   }, [state]);
+
+  useEffect(() => {
+    setCollapsed(window.sessionStorage.getItem("dispatch-ask-collapsed") === "true");
+  }, []);
+
+  function setCollapsedPreference(value: boolean) {
+    setCollapsed(value);
+    window.sessionStorage.setItem("dispatch-ask-collapsed", String(value));
+  }
 
   const form = (
     <form ref={formRef} action={formAction} className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -82,8 +92,30 @@ export function DispatchAskBar({ suggestions }: { suggestions: string[] }) {
       ) : null}
 
       <div className="sticky bottom-0 z-20 hidden rounded-2xl border border-[var(--border)] bg-[var(--cy-navy)] px-3 py-2 text-white md:block">
-        {form}
-        <div className="mt-2 hidden gap-2 overflow-x-auto md:flex">
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={() => setCollapsedPreference(false)}
+            className="flex h-10 w-full items-center justify-between rounded-lg px-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]"
+            aria-expanded="false"
+          >
+            <span className="inline-flex items-center gap-2"><Sparkles className="size-4 text-[var(--cy-orange)]" />Ask ContractorYou</span>
+            <span className="inline-flex items-center gap-1 text-xs text-white/70">Ask <ChevronUp className="size-4" /></span>
+          </button>
+        ) : (
+          <>
+            <div className="mb-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setCollapsedPreference(true)}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]"
+                aria-expanded="true"
+              >
+                Collapse <ChevronDown className="size-3.5" />
+              </button>
+            </div>
+            {form}
+            <div className="mt-2 hidden gap-2 overflow-x-auto md:flex">
           {suggestions.map((item) => (
             <button
               key={item}
@@ -97,7 +129,9 @@ export function DispatchAskBar({ suggestions }: { suggestions: string[] }) {
               {item}
             </button>
           ))}
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {open ? (

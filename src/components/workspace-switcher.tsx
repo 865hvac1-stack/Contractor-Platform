@@ -16,8 +16,11 @@ export function WorkspaceSwitcher({
         <Link
           key={item.id}
           href={item.href}
-          className={`inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-xs font-semibold ${
-            current === item.id ? "bg-[var(--cy-navy)] text-white" : "text-[var(--muted-foreground)]"
+          aria-current={current === item.id ? "page" : undefined}
+          className={`inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)] focus-visible:ring-offset-1 ${
+            current === item.id
+              ? "bg-[var(--cy-navy)] text-white shadow-sm"
+              : "text-[var(--muted-foreground)] hover:bg-white hover:text-[var(--cy-navy)]"
           }`}
         >
           {item.label}

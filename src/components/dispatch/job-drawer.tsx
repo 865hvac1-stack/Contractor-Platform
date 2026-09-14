@@ -51,6 +51,7 @@ export function DispatchJobDrawer({
   canChangeStatus,
   onClose,
   onAssigned,
+  inline = false,
 }: {
   job: DispatchCard | null;
   technicians: DispatchLane[];
@@ -59,6 +60,7 @@ export function DispatchJobDrawer({
   canChangeStatus: boolean;
   onClose: () => void;
   onAssigned: () => void;
+  inline?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -128,19 +130,14 @@ export function DispatchJobDrawer({
 
   if (!job) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/25"
-        aria-label="Close job details"
-        onClick={close}
-      />
+  const panel = (
       <aside
-        role="dialog"
-        aria-modal="true"
+        role={inline ? "region" : "dialog"}
+        aria-modal={inline ? undefined : "true"}
         aria-labelledby="dispatch-job-title"
-        className="relative z-10 flex h-full w-full max-w-md flex-col bg-white shadow-2xl"
+        className={inline
+          ? "flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-white"
+          : "relative z-10 flex h-full w-full max-w-md flex-col bg-white shadow-2xl"}
       >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
           <div className="min-w-0">
@@ -441,6 +438,19 @@ export function DispatchJobDrawer({
           </Link>
         </div>
       </aside>
+  );
+
+  if (inline) return panel;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/25"
+        aria-label="Close job details"
+        onClick={close}
+      />
+      {panel}
     </div>
   );
 }

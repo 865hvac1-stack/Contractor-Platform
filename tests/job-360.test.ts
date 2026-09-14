@@ -90,6 +90,20 @@ describe("imported field safety", () => {
     expect(where.status).toBe("COMPLETED");
     expect(Array.isArray(where.OR)).toBe(true);
   });
+
+  it("builds URL-stable operational KPI and attention filters", () => {
+    expect(parseJobsListQuery({ view: "scheduled", attention: "parts" })).toMatchObject({
+      view: "scheduled",
+      attention: "parts",
+    });
+    expect(parseJobsListQuery({ view: "made-up", attention: "fake" })).toMatchObject({
+      view: undefined,
+      attention: undefined,
+    });
+    expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, view: "waiting" }))).toContain("waitingRecords");
+    expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, attention: "parts" }))).toContain("jobParts");
+    expect(JSON.stringify(jobsWhere({ companyId: "co_1", access: {}, attention: "payment" }))).toContain("balanceCents");
+  });
 });
 
 describe("Job 360 records", () => {

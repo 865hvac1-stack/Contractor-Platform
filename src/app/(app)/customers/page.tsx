@@ -15,7 +15,7 @@ export default async function CustomersPage({
 }) {
   const ctx = await requirePermission("customers:view");
   const params = await searchParams;
-  const { query, total, pages, customers } = await loadCustomerList(ctx.company.id, params);
+  const { query, total, pages, customers, summary } = await loadCustomerList(ctx.company.id, params);
   const views = [
     { id: "recent", label: "Recent", href: customersListHref({ q: query.q, view: "recent" }) },
     { id: "attention", label: "Needs attention", href: customersListHref({ q: query.q, view: "attention" }) },
@@ -42,20 +42,23 @@ export default async function CustomersPage({
       </div>
 
       <div className="rounded-2xl border border-[var(--border)] bg-white p-4">
-        <CustomerSearchTypeahead hrefPrefix="/customers" emphasis placeholder="Search name, phone, email, address..." />
-        <form method="get" className="mt-3 flex gap-2">
-          <input
-            name="q"
-            defaultValue={query.q}
-            placeholder="Or search the list"
-            className="h-10 min-w-0 flex-1 rounded-lg border border-[var(--border)] px-3 text-sm"
-          />
-          {query.view !== "recent" ? <input type="hidden" name="view" value={query.view} /> : null}
-          <button type="submit" className={cn(buttonVariants({ variant: "outline" }), "h-10")}>
-            Search
-          </button>
-        </form>
+        <CustomerSearchTypeahead
+          hrefPrefix="/customers"
+          emphasis
+          initialQuery={query.q}
+          listSearchHref={customersListHref({ view: query.view })}
+          placeholder="Search name, phone, email, company, or property address..."
+        />
       </div>
+
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" aria-label="Customer operations summary">
+        <CustomerMetric label="Total Customers" value={summary.total} href="/customers?view=all" active={query.view === "all"} />
+        <CustomerMetric label="Needs Attention" value={summary.needsAttention} href="/customers?view=attention" active={query.view === "attention"} tone />
+        <CustomerMetric label="Maintenance Due" value={summary.maintenanceDue} href="/customers?view=maintenance-due" active={query.view === "maintenance-due"} />
+        <CustomerMetric label="Open Estimates" value={summary.openEstimates} href="/customers?view=open-estimates" active={query.view === "open-estimates"} />
+        <CustomerMetric label="Balances Due" value={summary.balancesDue} href="/customers?view=balances-due" active={query.view === "balances-due"} tone />
+        <CustomerMetric label="New This Month" value={summary.newThisMonth} href="/customers?view=new-this-month" active={query.view === "new-this-month"} />
+      </section>
 
       <div className="flex gap-2 overflow-x-auto">
         {views.map((view) => (
@@ -109,25 +112,37 @@ export default async function CustomersPage({
               <tbody>
                 {customers.map((customer) => {
                   const name = customer.businessName?.trim() || `${customer.firstName} ${customer.lastName}`.trim();
-                  const property = customer.properties[0];
+                  const property = customer.displayProperty;
+                  const customerHref = `/customers/${customer.id}${customer.matchedPropertyId ? `?propertyId=${customer.matchedPropertyId}` : ""}`;
+                  const attention = [
+                    customer.maintenanceVisits.length ? "Maintenance due" : null,
+                    customer.invoices.length ? "Balance due" : null,
+                    customer.estimates.length ? "Open estimate" : null,
+                    customer.waitingRecords.length ? "Customer waiting" : null,
+                    customer.communicationThreads.length ? "Needs reply" : null,
+                  ].filter(Boolean);
                   return (
-                    <tr key={customer.id} className="border-t border-[var(--border)] hover:bg-[var(--cy-gray)]/50">
+                    <tr key={customer.id} className="group border-t border-[var(--border)] hover:bg-[var(--cy-gray)]/50">
                       <td className="px-4 py-3">
-                        <Link href={`/customers/${customer.id}`} className="font-medium text-[var(--cy-navy)] hover:text-[var(--cy-orange)]">
-                          {name}
+                        <Link href={customerHref} className="block rounded font-medium text-[var(--cy-navy)] hover:text-[var(--cy-orange)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]">
+                          <span>{name}</span>
+                          {attention.length ? <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">{attention[0]}{attention.length > 1 ? ` +${attention.length - 1}` : ""}</span> : null}
                         </Link>
                       </td>
                       <td className="hidden px-4 py-3 text-[var(--muted-foreground)] md:table-cell">
-                        {customer.phone || "—"}
+                        <Link href={customerHref} className="block">{customer.phone || "—"}</Link>
                       </td>
                       <td className="hidden px-4 py-3 text-[var(--muted-foreground)] sm:table-cell">
-                        {property?.city || property?.address || "—"}
+                        <Link href={customerHref} className="block">
+                          {property?.address || property?.city || "—"}
+                          {customer.matchedPropertyId ? <span className="block text-[10px] font-semibold uppercase text-[var(--cy-orange)]">Matched property</span> : null}
+                        </Link>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={customer.status} />
+                        <Link href={customerHref} className="block"><StatusBadge status={customer.status} /></Link>
                       </td>
                       <td className="hidden px-4 py-3 text-[var(--muted-foreground)] lg:table-cell">
-                        {customer.updatedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        <Link href={customerHref} className="block">{customer.updatedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</Link>
                       </td>
                     </tr>
                   );
@@ -155,5 +170,33 @@ export default async function CustomersPage({
         </>
       )}
     </div>
+  );
+}
+
+function CustomerMetric({
+  label,
+  value,
+  href,
+  active,
+  tone,
+}: {
+  label: string;
+  value: number;
+  href: string;
+  active: boolean;
+  tone?: boolean;
+}) {
+  return (
+    <Link
+      href={active ? "/customers" : href}
+      aria-pressed={active}
+      className={cn(
+        "rounded-xl border px-3 py-2.5 transition hover:-translate-y-0.5 hover:border-[var(--cy-orange)]/50 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]",
+        active ? "border-[var(--cy-navy)] bg-[var(--cy-navy)] text-white" : tone && value ? "border-amber-200 bg-amber-50" : "border-[var(--border)] bg-white"
+      )}
+    >
+      <p className={cn("text-xl font-semibold tabular-nums", active ? "text-white" : "text-[var(--cy-navy)]")}>{value.toLocaleString()}</p>
+      <p className={cn("text-[11px] font-medium", active ? "text-white/75" : "text-[var(--muted-foreground)]")}>{label}</p>
+    </Link>
   );
 }

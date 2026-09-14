@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { assignJobToTechnicianAction } from "@/server/actions/dispatch";
@@ -15,6 +15,7 @@ import { countActiveDispatchFilters, matchesDispatchFilters, uniqueCities, type 
 import { TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchBoardData, DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 import { formatTime } from "@/lib/datetime";
+import { cn } from "@/lib/utils";
 
 function hoursLabel(minutes: number) {
   if (!minutes) return "0 scheduled hrs";
@@ -38,6 +39,7 @@ export function DispatchBoard({
   routingConfigured,
   canAsk,
   suggestions,
+  initialPulse = "all",
 }: {
   date: string;
   isToday: boolean;
@@ -49,6 +51,7 @@ export function DispatchBoard({
   routingConfigured: boolean;
   canAsk: boolean;
   suggestions: string[];
+  initialPulse?: DispatchPulse;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<DispatchCard | null>(null);
@@ -58,7 +61,8 @@ export function DispatchBoard({
   const [status, setStatus] = useState("all");
   const [city, setCity] = useState("all");
   const [priority, setPriority] = useState("all");
-  const [pulse, setPulse] = useState<DispatchPulse>("all");
+  const [pulse, setPulse] = useState<DispatchPulse>(initialPulse);
+  const [capacityFocus, setCapacityFocus] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -72,6 +76,13 @@ export function DispatchBoard({
     message: string;
   } | null>(null);
   const [pending, start] = useTransition();
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (date) params.set("date", date);
+    if (pulse !== "all") params.set("view", pulse);
+    router.replace(`/dispatch?${params.toString()}`, { scroll: false });
+  }, [date, pulse, router]);
 
   const filters = useMemo(
     () => ({ query, jobType, status, city, pulse, priority }),
@@ -99,6 +110,7 @@ export function DispatchBoard({
   const cities = useMemo(() => uniqueCities(allJobs), [allJobs]);
   const filteredEmpty =
     unassigned.length === 0 && technicians.every((lane) => lane.jobs.length === 0) && allJobs.length > 0;
+  const showSidePanel = board.technicians.length <= 2;
 
   function assign(
     jobId: string,
@@ -127,6 +139,11 @@ export function DispatchBoard({
     });
   }
 
+  function selectPulse(next: DispatchPulse) {
+    setCapacityFocus(false);
+    setPulse((current) => (current === next && next !== "all" ? "all" : next));
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="space-y-2 md:hidden">
@@ -138,28 +155,28 @@ export function DispatchBoard({
           </span>
         </p>
         <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Quick filters">
-          <PulseChip label="All" value={board.metrics.jobs} active={pulse === "all"} onClick={() => setPulse("all")} />
+          <PulseChip label="All" value={board.metrics.jobs} active={pulse === "all"} onClick={() => selectPulse("all")} />
           <PulseChip
             label="Late"
             value={board.metrics.runningLate}
             active={pulse === "runningLate"}
-            onClick={() => setPulse("runningLate")}
+            onClick={() => selectPulse("runningLate")}
             tone={board.metrics.runningLate ? "late" : undefined}
           />
           <PulseChip
             label="Emergency"
             value={board.metrics.emergency}
             active={pulse === "emergency"}
-            onClick={() => setPulse("emergency")}
+            onClick={() => selectPulse("emergency")}
             tone={board.metrics.emergency ? "emergency" : undefined}
           />
           <PulseChip
             label="Unassigned"
             value={board.metrics.unassigned}
             active={pulse === "unassigned"}
-            onClick={() => setPulse("unassigned")}
+            onClick={() => selectPulse("unassigned")}
           />
-          <SummaryStat label="Available techs" value={board.metrics.availableCapacity} />
+          <SummaryStat label="Available techs" value={board.metrics.availableCapacity} active={capacityFocus} onClick={() => setCapacityFocus((value) => !value)} />
         </div>
         <div className="flex items-center gap-2">
           {searchOpen ? (
@@ -209,25 +226,25 @@ export function DispatchBoard({
       </div>
 
       <div className="hidden flex-wrap gap-1.5 md:flex" role="toolbar" aria-label="Daily pulse">
-        <PulseChip label="Jobs" value={board.metrics.jobs} active={pulse === "all"} onClick={() => setPulse("all")} />
-        <PulseChip label="Completed" value={board.metrics.completed} active={pulse === "completed"} onClick={() => setPulse("completed")} />
-        <PulseChip label="In progress" value={board.metrics.inProgress} active={pulse === "inProgress"} onClick={() => setPulse("inProgress")} />
+        <PulseChip label="Jobs" value={board.metrics.jobs} active={pulse === "all"} onClick={() => selectPulse("all")} />
+        <PulseChip label="Completed" value={board.metrics.completed} active={pulse === "completed"} onClick={() => selectPulse("completed")} />
+        <PulseChip label="In progress" value={board.metrics.inProgress} active={pulse === "inProgress"} onClick={() => selectPulse("inProgress")} />
         <PulseChip
           label="Running late"
           value={board.metrics.runningLate}
           active={pulse === "runningLate"}
-          onClick={() => setPulse("runningLate")}
+          onClick={() => selectPulse("runningLate")}
           tone={board.metrics.runningLate ? "late" : undefined}
         />
-        <PulseChip label="Unassigned" value={board.metrics.unassigned} active={pulse === "unassigned"} onClick={() => setPulse("unassigned")} />
+        <PulseChip label="Unassigned" value={board.metrics.unassigned} active={pulse === "unassigned"} onClick={() => selectPulse("unassigned")} />
         <PulseChip
           label="Emergency"
           value={board.metrics.emergency}
           active={pulse === "emergency"}
-          onClick={() => setPulse("emergency")}
+          onClick={() => selectPulse("emergency")}
           tone={board.metrics.emergency ? "emergency" : undefined}
         />
-        <SummaryStat label="Available capacity" value={board.metrics.availableCapacity} />
+        <SummaryStat label="Available capacity" value={board.metrics.availableCapacity} active={capacityFocus} onClick={() => setCapacityFocus((value) => !value)} />
       </div>
 
       <div className="hidden flex-wrap items-center gap-2 md:flex">
@@ -374,7 +391,7 @@ export function DispatchBoard({
         </div>
       ) : null}
 
-      <div className="hidden min-h-[28rem] flex-1 md:block">
+      <div className={cn("hidden min-h-[28rem] flex-1 gap-3 md:grid", showSidePanel ? "md:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]" : "md:grid-cols-1")}>
         <div className="flex h-[calc(100dvh-15.5rem)] min-h-[28rem] gap-3 overflow-x-auto pb-2">
           <Lane
             title="Unassigned"
@@ -423,6 +440,28 @@ export function DispatchBoard({
         </div>
         {filteredEmpty ? (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No jobs match these filters.</p>
+        ) : null}
+        {showSidePanel ? (
+          <div className="h-[calc(100dvh-15.5rem)] min-h-[28rem] min-w-0">
+            {selected ? (
+              <DispatchJobDrawer
+                job={selected}
+                technicians={board.technicians}
+                canAssign={canAssign}
+                canLock={canLock}
+                canChangeStatus={canChangeStatus}
+                onClose={() => setSelected(null)}
+                onAssigned={() => router.refresh()}
+                inline
+              />
+            ) : (
+              <DispatchIntelligencePanel
+                board={board}
+                capacityFocus={capacityFocus}
+                onSelectJob={(jobId) => setSelected(allJobs.find((job) => job.id === jobId) ?? null)}
+              />
+            )}
+          </div>
         ) : null}
       </div>
 
@@ -503,17 +542,28 @@ export function DispatchBoard({
         </Sheet>
       ) : null}
 
-      <DispatchJobDrawer
-        job={selected}
-        technicians={board.technicians}
-        canAssign={canAssign}
-        canLock={canLock}
-        canChangeStatus={canChangeStatus}
-        onClose={() => setSelected(null)}
-        onAssigned={() => {
-          router.refresh();
-        }}
-      />
+      <div className="md:hidden">
+        <DispatchJobDrawer
+          job={selected}
+          technicians={board.technicians}
+          canAssign={canAssign}
+          canLock={canLock}
+          canChangeStatus={canChangeStatus}
+          onClose={() => setSelected(null)}
+          onAssigned={() => router.refresh()}
+        />
+      </div>
+      {!showSidePanel ? (
+        <DispatchJobDrawer
+          job={selected}
+          technicians={board.technicians}
+          canAssign={canAssign}
+          canLock={canLock}
+          canChangeStatus={canChangeStatus}
+          onClose={() => setSelected(null)}
+          onAssigned={() => router.refresh()}
+        />
+      ) : null}
 
       {canAsk ? <DispatchAskBar suggestions={suggestions} /> : null}
     </div>
@@ -553,11 +603,96 @@ function PulseChip({
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: number }) {
+function SummaryStat({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "rounded-full px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]",
+        active ? "bg-[var(--cy-navy)] text-white" : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+      )}
+    >
       {value} {label}
-    </span>
+    </button>
+  );
+}
+
+function DispatchIntelligencePanel({
+  board,
+  capacityFocus,
+  onSelectJob,
+}: {
+  board: DispatchBoardData;
+  capacityFocus: boolean;
+  onSelectJob: (jobId: string) => void;
+}) {
+  const allJobs = [...board.unassigned, ...board.technicians.flatMap((lane) => lane.jobs)];
+  const partsReady = allJobs.filter((job) => job.partsStatus === "READY" || job.partsStatus === "RESERVED").length;
+  const partsMissing = allJobs.filter((job) => job.partsStatus === "NOT_AVAILABLE").length;
+  const issueJobs = board.issues.filter((issue) => issue.jobId).slice(0, 5);
+  return (
+    <aside className="h-full overflow-y-auto rounded-2xl border border-[var(--border)] bg-white p-4" aria-labelledby="dispatch-intelligence-title">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Dispatch 360</p>
+      <h2 id="dispatch-intelligence-title" className="text-lg font-semibold text-[var(--cy-navy)]">Dispatch Intelligence</h2>
+      <p className="mt-1 text-xs text-[var(--muted-foreground)]">Select a job for its full operational panel.</p>
+
+      <PanelBlock title="Needs attention">
+        {issueJobs.length ? (
+          issueJobs.map((issue) => (
+            <button
+              key={issue.id}
+              type="button"
+              onClick={() => issue.jobId && onSelectJob(issue.jobId)}
+              className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-[var(--cy-gray)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]"
+            >
+              <span className="block text-sm font-medium text-[var(--cy-navy)]">{issue.subtitle}</span>
+              <span className="text-xs text-[var(--muted-foreground)]">{issue.title}</span>
+            </button>
+          ))
+        ) : (
+          <p className="text-sm font-medium text-emerald-700">All clear</p>
+        )}
+      </PanelBlock>
+
+      <PanelBlock title="Parts readiness">
+        <p className="text-sm text-[var(--cy-navy)]">{partsReady} job{partsReady === 1 ? "" : "s"} ready or reserved</p>
+        <p className={cn("text-sm", partsMissing ? "font-medium text-rose-700" : "text-[var(--muted-foreground)]")}>
+          {partsMissing} job{partsMissing === 1 ? "" : "s"} missing a required part
+        </p>
+      </PanelBlock>
+
+      <PanelBlock title="Capacity" active={capacityFocus}>
+        {board.technicians.length ? board.technicians.map((lane) => (
+          <div key={lane.userId} className="flex items-start justify-between gap-2 text-sm">
+            <span className="font-medium text-[var(--cy-navy)]">{lane.name}</span>
+            <span className="text-right text-[var(--muted-foreground)]">
+              {lane.nextAvailable ? nextLabel(lane.nextAvailable) : TECH_STATE_LABEL[lane.state]}
+            </span>
+          </div>
+        )) : <p className="text-sm text-[var(--muted-foreground)]">No active technicians.</p>}
+      </PanelBlock>
+    </aside>
+  );
+}
+
+function PanelBlock({ title, children, active }: { title: string; children: React.ReactNode; active?: boolean }) {
+  return (
+    <section className={cn("mt-4 rounded-xl border p-3", active ? "border-[var(--cy-orange)] bg-orange-50/40" : "border-[var(--border)] bg-[var(--cy-gray)]/35")}>
+      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-navy)]">{title}</h3>
+      <div className="space-y-1">{children}</div>
+    </section>
   );
 }
 

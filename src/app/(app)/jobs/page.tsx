@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery } from "@/lib/jobs/search";
+import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery, type JobsListQuery } from "@/lib/jobs/search";
 import { JobsSubnav } from "@/components/hub-subnav";
 import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
@@ -59,6 +59,7 @@ export default async function JobsPage({
     serviceType?: string;
     source?: string;
     range?: string;
+    attention?: string;
   }>;
 }) {
   const ctx = await requirePermission("jobs:view");
@@ -76,6 +77,7 @@ export default async function JobsPage({
     when: query.when,
     needsInvoice: query.needsInvoice,
     serviceType: query.serviceType,
+    attention: query.attention,
   });
   const skip = ((query.page ?? 1) - 1) * JOBS_PAGE_SIZE;
   const [total, jobs, summary] = await Promise.all([
@@ -91,7 +93,14 @@ export default async function JobsPage({
         estimates: { select: { status: true, totalCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         invoices: { select: { status: true, totalCents: true, balanceCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         waitingRecords: { where: { state: "ACTIVE" }, select: { state: true }, take: 1 },
-        jobParts: { where: { status: { not: "CANCELED" } }, select: { status: true } },
+        jobParts: {
+          where: { status: { not: "CANCELED" } },
+          select: {
+            status: true,
+            quantity: true,
+            part: { select: { inventoryStocks: { select: { onHand: true, reserved: true, minimumStock: true } } } },
+          },
+        },
       },
       orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
       skip,
@@ -123,13 +132,55 @@ export default async function JobsPage({
         </Link>
       </div>
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" aria-label="Job operations summary">
-        <OperationsMetric label="Today" value={summary.today} />
-        <OperationsMetric label="Scheduled" value={summary.scheduled} />
-        <OperationsMetric label="In Progress" value={summary.inProgress} />
-        <OperationsMetric label="Waiting" value={summary.waiting} tone={summary.waiting ? "attention" : undefined} />
-        <OperationsMetric label="Estimates Pending" value={summary.estimatesPending} />
-        <OperationsMetric label="Completed This Week" value={summary.completedThisWeek} />
-        <OperationsMetric label="Needs Attention" value={summary.needsAttention} tone={summary.needsAttention ? "attention" : undefined} />
+        <OperationsMetric label="Today" value={summary.today} href={metricHref(query, "today")} active={query.view === "today"} />
+        <OperationsMetric label="Scheduled" value={summary.scheduled} href={metricHref(query, "scheduled")} active={query.view === "scheduled"} />
+        <OperationsMetric label="In Progress" value={summary.inProgress} href={metricHref(query, "in-progress")} active={query.view === "in-progress"} />
+        <OperationsMetric label="Waiting" value={summary.waiting} href={metricHref(query, "waiting")} active={query.view === "waiting"} tone={summary.waiting ? "attention" : undefined} />
+        <OperationsMetric label="Estimates Pending" value={summary.estimatesPending} href={metricHref(query, "estimates-pending")} active={query.view === "estimates-pending"} />
+        <OperationsMetric label="Completed This Week" value={summary.completedThisWeek} href={metricHref(query, "completed-week")} active={query.view === "completed-week"} />
+        <OperationsMetric label="Needs Attention" value={summary.needsAttention} href={metricHref(query, "needs-attention")} active={query.view === "needs-attention"} tone={summary.needsAttention ? "attention" : undefined} />
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-4" aria-labelledby="job-intelligence-title">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Job Intelligence</p>
+            <h2 id="job-intelligence-title" className="font-semibold text-[var(--cy-navy)]">Needs attention</h2>
+          </div>
+          {query.view || query.attention ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-[var(--muted-foreground)]">
+                Filtered by: <strong className="text-[var(--cy-navy)]">{activeJobFilterLabel(query)}</strong>
+              </span>
+              <Link href={jobsListHref({ ...query, view: undefined, attention: undefined, page: 1 })} className="font-semibold text-[var(--cy-orange)] hover:underline">
+                Clear
+              </Link>
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[
+            ["estimate", summary.intelligence.estimatesPending, "Estimates Awaiting Approval"],
+            ["late", summary.intelligence.runningLate, "Running Late"],
+            ["parts", summary.intelligence.partsRequired, "Jobs Requiring Parts"],
+            ["payment", summary.intelligence.paymentsDue, "Payment Due"],
+            ["unassigned", summary.intelligence.unassigned, "Unassigned"],
+          ].filter(([, value]) => Number(value) > 0).map(([id, value, label]) => (
+            <Link
+              key={String(id)}
+              href={attentionHref(query, String(id))}
+              aria-current={query.attention === id ? "true" : undefined}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-sm font-medium transition hover:-translate-y-0.5 hover:border-[var(--cy-orange)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]",
+                query.attention === id ? "border-[var(--cy-navy)] bg-[var(--cy-navy)] text-white" : "border-[var(--border)] bg-[var(--cy-gray)]/50 text-[var(--cy-navy)]"
+              )}
+            >
+              {Number(value).toLocaleString()} {String(label)}
+            </Link>
+          ))}
+          {Object.values(summary.intelligence).every((value) => value === 0) ? (
+            <span className="text-sm font-medium text-emerald-700">All clear</span>
+          ) : null}
+        </div>
       </section>
       <JobsSubnav />
 
@@ -167,6 +218,7 @@ export default async function JobsPage({
         </select>
         {query.customerId ? <input type="hidden" name="customerId" value={query.customerId} /> : null}
         {query.view ? <input type="hidden" name="view" value={query.view} /> : null}
+        {query.attention ? <input type="hidden" name="attention" value={query.attention} /> : null}
         {query.needsInvoice ? <input type="hidden" name="needsInvoice" value="1" /> : null}
         {query.serviceType ? <input type="hidden" name="serviceType" value={query.serviceType} /> : null}
         {query.source ? <input type="hidden" name="source" value={query.source} /> : null}
@@ -194,7 +246,6 @@ export default async function JobsPage({
                 job.customer.businessName?.trim() ||
                 `${job.customer.firstName} ${job.customer.lastName}`.trim();
               const alerts = deriveJobOperationalAlerts(job);
-              const value = job.invoices[0]?.totalCents ?? job.estimates[0]?.totalCents ?? null;
               return (
                 <Link
                   key={job.id}
@@ -212,15 +263,14 @@ export default async function JobsPage({
                   </p>
                   <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                     {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
-                    {value != null ? ` · ${formatMoney(value)}` : ""}
-                    {job.invoices[0] ? ` · ${job.invoices[0].status.replaceAll("_", " ")}` : ""}
+                    {` · ${jobFinancialLabel(job)}`}
                   </p>
                   {alerts.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {alerts.slice(0, 2).map((alert) => <JobAlert key={alert} label={alert} />)}
                     </div>
                   ) : null}
-                  {job.jobParts.length ? <p className="mt-1 text-xs font-medium text-sky-700">Parts: {jobPartsStatus(job.jobParts)}</p> : null}
+                  <p className="mt-1 text-xs font-medium text-sky-700">Parts: {jobPartsStatus(job.jobParts)}</p>
                 </Link>
               );
             })}
@@ -245,9 +295,8 @@ export default async function JobsPage({
                     job.customer.businessName?.trim() ||
                     `${job.customer.firstName} ${job.customer.lastName}`.trim();
                   const alerts = deriveJobOperationalAlerts(job);
-                  const value = job.invoices[0]?.totalCents ?? job.estimates[0]?.totalCents ?? null;
                   return (
-                    <TableRow key={job.id} className="hover:bg-[var(--cy-gray)]">
+                    <TableRow key={job.id} className="group hover:bg-[var(--cy-gray)]">
                       <TableCell>
                         <Link
                           href={`/jobs/${job.id}?from=${encodeURIComponent(returnTo)}`}
@@ -266,27 +315,36 @@ export default async function JobsPage({
                         <p className="text-xs text-[var(--muted-foreground)]">{job.property.address}</p>
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={job.status} />
+                        <Link href={`/jobs/${job.id}?from=${encodeURIComponent(returnTo)}`} className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]">
+                          <StatusBadge status={job.status} />
+                        </Link>
                       </TableCell>
                       <TableCell className="hidden text-sm lg:table-cell">
-                        {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
+                        <Link href={`/jobs/${job.id}?from=${encodeURIComponent(returnTo)}`} className="block">
+                          {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
+                        </Link>
                       </TableCell>
                       <TableCell className="hidden text-sm text-[var(--muted-foreground)] lg:table-cell">
-                        {formatSchedule(job.scheduledStart, job.scheduledEnd)}
+                        <Link href={`/jobs/${job.id}?from=${encodeURIComponent(returnTo)}#schedule`} className="block">
+                          {formatSchedule(job.scheduledStart, job.scheduledEnd)}
+                        </Link>
                       </TableCell>
                       <TableCell className="hidden text-sm xl:table-cell">
-                        <p>{value == null ? "—" : formatMoney(value)}</p>
-                        <p className="text-xs text-[var(--muted-foreground)]">
-                          {job.invoices[0]?.status.replaceAll("_", " ") || "No invoice"}
-                        </p>
+                        <Link href={`/jobs/${job.id}#payment`} className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]">
+                          {jobFinancialDisplay(job).map((line) => <p key={line} className="first:font-medium last:text-xs last:text-[var(--muted-foreground)]">{line}</p>)}
+                        </Link>
                       </TableCell>
                       <TableCell className="hidden text-xs xl:table-cell">
-                        {job.jobParts.length ? jobPartsStatus(job.jobParts) : "None"}
+                        <Link href={`/jobs/${job.id}#parts`} className="block rounded font-medium text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]">
+                          {jobPartsStatus(job.jobParts)}
+                        </Link>
                       </TableCell>
                       <TableCell className="hidden xl:table-cell">
-                        <div className="flex max-w-48 flex-wrap gap-1">
-                          {alerts.length ? alerts.slice(0, 2).map((alert) => <JobAlert key={alert} label={alert} />) : <span className="text-xs text-[var(--muted-foreground)]">Clear</span>}
-                        </div>
+                        {alerts.length ? (
+                          <Link href={`${alertHref(job.id, alerts[0])}`} title={alerts.join(", ")} className="inline-flex rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]">
+                            <JobAlert label={`${shortAlert(alerts[0])}${alerts.length > 1 ? ` +${alerts.length - 1}` : ""}`} />
+                          </Link>
+                        ) : <span className="text-xs text-[var(--muted-foreground)]">Clear</span>}
                       </TableCell>
                     </TableRow>
                   );
@@ -323,16 +381,31 @@ function OperationsMetric({
   label,
   value,
   tone,
+  href,
+  active,
 }: {
   label: string;
   value: number;
   tone?: "attention";
+  href: string;
+  active: boolean;
 }) {
   return (
-    <div className={`rounded-xl border px-3 py-2.5 ${tone ? "border-amber-200 bg-amber-50" : "border-[var(--border)] bg-white"}`}>
-      <p className="text-xl font-semibold tabular-nums text-[var(--cy-navy)]">{value.toLocaleString()}</p>
-      <p className="text-[11px] font-medium text-[var(--muted-foreground)]">{label}</p>
-    </div>
+    <Link
+      href={href}
+      aria-pressed={active}
+      className={cn(
+        "rounded-xl border px-3 py-2.5 transition hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]",
+        active
+          ? "border-[var(--cy-navy)] bg-[var(--cy-navy)]"
+          : tone
+            ? "border-amber-200 bg-amber-50"
+            : "border-[var(--border)] bg-white"
+      )}
+    >
+      <p className={cn("text-xl font-semibold tabular-nums", active ? "text-white" : "text-[var(--cy-navy)]")}>{value.toLocaleString()}</p>
+      <p className={cn("text-[11px] font-medium", active ? "text-white/75" : "text-[var(--muted-foreground)]")}>{label}</p>
+    </Link>
   );
 }
 
@@ -340,9 +413,102 @@ function JobAlert({ label }: { label: string }) {
   return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900">{label}</span>;
 }
 
-function jobPartsStatus(parts: Array<{ status: string }>) {
-  if (parts.some((part) => part.status === "NEEDED")) return "Needed";
-  if (parts.some((part) => part.status === "RESERVED")) return "Reserved";
-  if (parts.some((part) => part.status === "PICKED_UP")) return "On truck";
+type JobPartSummary = {
+  status: string;
+  quantity: number;
+  part: { inventoryStocks: Array<{ onHand: number; reserved: number; minimumStock: number }> };
+};
+
+function jobPartsStatus(parts: JobPartSummary[]) {
+  if (!parts.length) return "Not Required";
+  const missing = parts.filter(
+    (row) =>
+      row.status === "NEEDED" &&
+      row.part.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0) < row.quantity
+  ).length;
+  if (missing) return `${missing} Missing`;
+  const needed = parts.filter((part) => part.status === "NEEDED").length;
+  if (needed) return `${needed} Required`;
+  const reserved = parts.filter((part) => part.status === "RESERVED").length;
+  if (reserved) return `${reserved} Reserved`;
+  if (parts.some((part) => part.status === "PICKED_UP")) return "Ready";
   return "Installed";
+}
+
+function metricHref(query: JobsListQuery, view: string) {
+  return jobsListHref({
+    ...query,
+    view: query.view === view ? undefined : view,
+    attention: undefined,
+    page: 1,
+  });
+}
+
+function attentionHref(query: JobsListQuery, attention: string) {
+  return jobsListHref({
+    ...query,
+    view: undefined,
+    attention: query.attention === attention ? undefined : attention,
+    page: 1,
+  });
+}
+
+function activeJobFilterLabel(query: JobsListQuery) {
+  const labels: Record<string, string> = {
+    today: "Today",
+    scheduled: "Scheduled",
+    "in-progress": "In Progress",
+    waiting: "Waiting",
+    "estimates-pending": "Estimates Pending",
+    "completed-week": "Completed This Week",
+    "needs-attention": "Needs Attention",
+    estimate: "Estimates Awaiting Approval",
+    late: "Running Late",
+    parts: "Parts Required",
+    payment: "Payment Due",
+    unassigned: "Unassigned",
+  };
+  return labels[query.attention || query.view || ""] || "Jobs";
+}
+
+function jobFinancialDisplay(job: {
+  invoices: Array<{ status: string; totalCents: number; balanceCents: number }>;
+  estimates: Array<{ status: string; totalCents: number }>;
+}) {
+  const invoice = job.invoices[0];
+  if (invoice) {
+    if (invoice.balanceCents <= 0 || invoice.status === "PAID") return [formatMoney(invoice.totalCents), "Paid"];
+    return [formatMoney(invoice.totalCents), `Balance ${formatMoney(invoice.balanceCents)}`];
+  }
+  const estimate = job.estimates[0];
+  if (estimate) {
+    return [`Estimate ${formatMoney(estimate.totalCents)}`, ["SENT", "VIEWED"].includes(estimate.status) ? "Awaiting Approval" : estimate.status.replaceAll("_", " ")];
+  }
+  return ["—", "No invoice"];
+}
+
+function jobFinancialLabel(job: Parameters<typeof jobFinancialDisplay>[0]) {
+  return jobFinancialDisplay(job).join(" · ");
+}
+
+function shortAlert(alert: string) {
+  const labels: Record<string, string> = {
+    "Technician Unassigned": "Unassigned",
+    "Customer Waiting": "Customer Waiting",
+    "Appointment Conflict": "Conflict",
+    "Estimate Awaiting Approval": "Estimate",
+    "Payment Due": "Payment Due",
+    "Missing Invoice": "Missing Invoice",
+    "Part Needed": "Part Needed",
+    Late: "Late",
+  };
+  return labels[alert] || alert;
+}
+
+function alertHref(jobId: string, alert: string) {
+  if (alert === "Part Needed") return `/jobs/${jobId}#parts`;
+  if (alert === "Payment Due" || alert === "Missing Invoice") return `/jobs/${jobId}#payment`;
+  if (alert === "Estimate Awaiting Approval") return `/jobs/${jobId}#estimates`;
+  if (alert === "Customer Waiting") return `/jobs/${jobId}#waiting`;
+  return `/jobs/${jobId}`;
 }

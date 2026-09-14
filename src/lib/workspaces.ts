@@ -11,7 +11,7 @@ export const WORKSPACES: {
 }[] = [
   { id: "command", href: "/dashboard", label: "Command Center", blurb: "The whole business" },
   { id: "dispatch", href: "/dispatch", label: "Dispatch Center", blurb: "Today's dispatch" },
-  { id: "office", href: "/office", label: "Customer Hub", blurb: "Find and help customers" },
+  { id: "office", href: "/customers", label: "Customer Hub", blurb: "Find and help customers" },
   { id: "field", href: "/tech", label: "Field", blurb: "Your next job" },
 ];
 
@@ -52,7 +52,7 @@ export function assertWorkspaceAccess(role: CompanyRole, workspace: WorkspaceId)
 export function workspaceFromPath(pathname: string): WorkspaceId | null {
   if (pathname.startsWith("/tech")) return "field";
   if (pathname.startsWith("/dispatch")) return "dispatch";
-  if (pathname.startsWith("/office")) return "office";
+  if (pathname.startsWith("/office") || pathname.startsWith("/customers")) return "office";
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/intelligence") || pathname.startsWith("/reports")) {
     return "command";
   }

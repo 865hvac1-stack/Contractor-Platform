@@ -1,4 +1,4 @@
-import { addDays, endOfDay, startOfDay } from "date-fns";
+import { addDays, endOfDay, startOfDay, startOfWeek } from "date-fns";
 import type { JobStatus, Prisma } from "@prisma/client";
 import { operationalRecordWhere } from "@/lib/imports/modes";
 
@@ -25,7 +25,20 @@ export type JobsListQuery = {
   needsInvoice?: boolean;
   serviceType?: string;
   source?: string;
+  attention?: string;
 };
+
+export const JOB_OPERATION_VIEWS = [
+  "today",
+  "scheduled",
+  "in-progress",
+  "waiting",
+  "estimates-pending",
+  "completed-week",
+  "needs-attention",
+] as const;
+
+export const JOB_ATTENTION_FILTERS = ["estimate", "late", "parts", "payment", "unassigned"] as const;
 
 export function parseJobsListQuery(input: {
   q?: string;
@@ -37,18 +50,27 @@ export function parseJobsListQuery(input: {
   needsInvoice?: string;
   serviceType?: string;
   source?: string;
+  attention?: string;
 }): JobsListQuery {
   const page = Number(input.page || "1");
   return {
     q: input.q?.trim() || undefined,
     status: input.status?.trim() || undefined,
-    view: input.view?.trim() || undefined,
+    view: input.view && JOB_OPERATION_VIEWS.includes(input.view as (typeof JOB_OPERATION_VIEWS)[number])
+      ? input.view
+      : input.view === "active"
+        ? input.view
+        : undefined,
     customerId: input.customerId?.trim() || undefined,
     when: input.when?.trim() || undefined,
     page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
     needsInvoice: input.needsInvoice === "1" || input.needsInvoice === "true",
     serviceType: input.serviceType?.trim() || undefined,
     source: input.source?.trim() || undefined,
+    attention:
+      input.attention && JOB_ATTENTION_FILTERS.includes(input.attention as (typeof JOB_ATTENTION_FILTERS)[number])
+        ? input.attention
+        : undefined,
   };
 }
 
@@ -63,6 +85,7 @@ export function jobsWhere(input: {
   now?: Date;
   needsInvoice?: boolean;
   serviceType?: string;
+  attention?: string;
 }): Prisma.JobWhereInput {
   const query = input.q?.trim();
   const status =
@@ -72,6 +95,7 @@ export function jobsWhere(input: {
   const now = input.now ?? new Date();
   const dayStart = startOfDay(now);
   const dayEnd = endOfDay(now);
+  const weekStart = startOfWeek(now);
   const whenFilter: Prisma.JobWhereInput =
     input.when === "today"
       ? {
@@ -86,6 +110,47 @@ export function jobsWhere(input: {
   const readyToInvoice = Boolean(input.needsInvoice);
   const serviceType = input.serviceType?.trim();
   const extraFilters: Prisma.JobWhereInput[] = [];
+  const operationView: Prisma.JobWhereInput | null =
+    input.view === "today"
+      ? { scheduledStart: { gte: dayStart, lte: dayEnd }, status: { not: "CANCELED" } }
+      : input.view === "scheduled"
+        ? { status: { in: ["SCHEDULED", "DISPATCHED"] } }
+        : input.view === "in-progress"
+          ? { status: "IN_PROGRESS" }
+          : input.view === "waiting"
+            ? { OR: [{ status: "ON_HOLD" }, { waitingRecords: { some: { state: "ACTIVE" } } }] }
+            : input.view === "estimates-pending"
+              ? { estimates: { some: { status: { in: ["SENT", "VIEWED"] } } } }
+              : input.view === "completed-week"
+                ? { status: "COMPLETED", completedAt: { gte: weekStart, lte: now } }
+                : input.view === "needs-attention"
+                  ? {
+                      status: { in: ["NEW", "UNSCHEDULED", "SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"] },
+                      OR: [
+                        { status: "ON_HOLD" },
+                        { confirmationFailed: true },
+                        { assignments: { none: {} } },
+                        { waitingRecords: { some: { state: "ACTIVE" } } },
+                        { estimates: { some: { status: { in: ["SENT", "VIEWED"] } } } },
+                        { invoices: { some: { balanceCents: { gt: 0 }, status: { in: ["OVERDUE", "SENT", "PARTIALLY_PAID"] } } } },
+                        { jobParts: { some: { status: "NEEDED" } } },
+                      ],
+                    }
+                  : null;
+  const attentionFilter: Prisma.JobWhereInput | null =
+    input.attention === "estimate"
+      ? { estimates: { some: { status: { in: ["SENT", "VIEWED"] } } } }
+      : input.attention === "late"
+        ? { status: { in: ["SCHEDULED", "DISPATCHED"] }, scheduledStart: { lt: now } }
+        : input.attention === "parts"
+          ? { jobParts: { some: { status: "NEEDED" } } }
+          : input.attention === "payment"
+            ? { invoices: { some: { balanceCents: { gt: 0 }, status: { in: ["OVERDUE", "SENT", "PARTIALLY_PAID"] } } } }
+            : input.attention === "unassigned"
+              ? { assignments: { none: {} }, status: { notIn: ["COMPLETED", "CANCELED"] } }
+              : null;
+  if (operationView) extraFilters.push(operationView);
+  if (attentionFilter) extraFilters.push(attentionFilter);
   if (input.when === "upcoming") {
     extraFilters.push({
       OR: [
@@ -122,7 +187,7 @@ export function jobsWhere(input: {
     });
   }
   const operationalOnly =
-    readyToInvoice || input.when === "today" || input.when === "upcoming" || input.view === "active";
+    readyToInvoice || input.when === "today" || input.when === "upcoming" || Boolean(input.view) || Boolean(input.attention);
   return {
     companyId: input.companyId,
     ...input.access,
@@ -151,6 +216,7 @@ export function jobsListHref(query: JobsListQuery, page = query.page ?? 1) {
   if (query.needsInvoice) params.set("needsInvoice", "1");
   if (query.serviceType) params.set("serviceType", query.serviceType);
   if (query.source) params.set("source", query.source);
+  if (query.attention) params.set("attention", query.attention);
   if (page > 1) params.set("page", String(page));
   const text = params.toString();
   return text ? `/jobs?${text}` : "/jobs";

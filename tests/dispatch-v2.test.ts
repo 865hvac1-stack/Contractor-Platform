@@ -168,7 +168,8 @@ describe("dispatch V2 helpers", () => {
     expect(page).toContain("Today&apos;s Dispatch");
     const board = readFileSync(resolve("src/components/dispatch/board.tsx"), "utf8");
     expect(board).toContain("md:hidden");
-    expect(board).toContain("hidden min-h-[28rem] flex-1 md:block");
+    expect(board).toContain("DispatchIntelligencePanel");
+    expect(board).toContain("md:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]");
     expect(board).toContain("w-[300px]");
     expect(board).toContain("Filters");
     expect(board).toContain("hidden flex-wrap items-center gap-2 md:flex");
@@ -179,6 +180,9 @@ describe("dispatch V2 helpers", () => {
     const drawer = readFileSync(resolve("src/components/dispatch/job-drawer.tsx"), "utf8");
     expect(drawer).toContain("Open Job 360");
     expect(drawer).toContain("sticky bottom-0");
+    expect(drawer).toContain('inline?: boolean');
+    const ask = readFileSync(resolve("src/components/dispatch/ai-bar.tsx"), "utf8");
+    expect(ask).toContain("dispatch-ask-collapsed");
     const shell = readFileSync(resolve("src/components/app-shell.tsx"), "utf8");
     expect(shell).not.toMatch(/<header[^>]*overflow-hidden/);
     expect(shell).toContain("AppNav");

@@ -49,8 +49,6 @@ export default async function DashboardPage({
     timeZone: ctx.company.timezone || undefined,
   }).format(new Date());
 
-  const waitingHref =
-    data.today.readyToSchedule > 0 ? "/operations/waiting?focus=ready" : "/operations/waiting?focus=waiting";
   const waitingContext =
     data.today.readyToSchedule === 1
       ? "1 ready to schedule"
@@ -62,9 +60,9 @@ export default async function DashboardPage({
 
   const metrics = [
     { label: "Jobs today", value: String(data.today.jobsToday), href: "/jobs?when=today" },
-    { label: "In progress", value: String(data.today.inProgressToday), href: "/dispatch" },
-    { label: "Waiting", value: String(data.today.waitingCount), href: waitingHref, context: waitingContext },
-    { label: "Completed", value: String(data.today.completedToday), href: "/jobs?status=COMPLETED&when=today" },
+    { label: "In progress", value: String(data.today.inProgressToday), href: "/jobs?view=in-progress" },
+    { label: "Waiting", value: String(data.today.waitingCount), href: "/jobs?view=waiting", context: waitingContext },
+    { label: "Completed", value: String(data.today.completedToday), href: "/jobs?view=today&status=COMPLETED" },
   ];
 
   return (
