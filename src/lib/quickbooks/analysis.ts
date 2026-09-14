@@ -333,9 +333,34 @@ export async function runQuickBooksImportAnalysis(input: {
 
   let run = input.resumeRunId
     ? await prisma.quickBooksSyncRun.findFirst({
-        where: { id: input.resumeRunId, companyId: input.companyId, type: "ANALYSIS" },
+        where: {
+          id: input.resumeRunId,
+          companyId: input.companyId,
+          environment: scope.environment,
+          realmId: scope.realmId,
+          type: "ANALYSIS",
+          status: { in: ["RUNNING", "PAUSED"] },
+        },
       })
     : null;
+  if (!run) {
+    run = await prisma.quickBooksSyncRun.findFirst({
+      where: {
+        companyId: input.companyId,
+        environment: scope.environment,
+        realmId: scope.realmId,
+        type: "ANALYSIS",
+        status: { in: ["RUNNING", "PAUSED"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+  if (run?.status === "RUNNING") {
+    return {
+      ok: false as const,
+      error: "A QuickBooks analysis is already running for this tenant and realm. Reconnect to that run instead of starting another.",
+    };
+  }
   const isNewRun = !run;
   if (!run) {
     run = await prisma.quickBooksSyncRun.create({

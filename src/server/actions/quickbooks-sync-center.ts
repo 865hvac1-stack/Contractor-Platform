@@ -78,7 +78,9 @@ export async function analyzeQuickBooksImportAction(
       entityId: result.runId,
       metadata: { paused: result.paused, finished: result.finished },
     });
-    paths();
+    if (result.finished || !result.autoContinue) {
+      paths();
+    }
     return {
       ok: true,
       runId: result.runId,

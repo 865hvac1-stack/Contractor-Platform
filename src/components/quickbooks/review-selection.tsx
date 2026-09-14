@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useActionState, useContext, useEffect, useState } from "react";
+import { createContext, useActionState, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { bulkQuickBooksReviewAction } from "@/server/actions/quickbooks-sync-center";
@@ -71,15 +71,19 @@ export function ReviewSelection({
     bulkQuickBooksReviewAction,
     null as ActionResult | null
   );
+  const handledResult = useRef<ActionResult | null>(null);
   useEffect(() => {
-    if (!state?.ok) return;
+    if (!state?.ok || handledResult.current === state) return;
+    handledResult.current = state;
     setSelected(new Set());
     setSelectionMode("NONE");
     setConfirm(null);
     const params = new URLSearchParams(searchParams.toString());
-    params.delete("selection");
-    router.replace(`${pathname}?${params.toString()}`);
-    router.refresh();
+    if (params.has("selection")) {
+      params.delete("selection");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }
   }, [state, router, pathname, searchParams]);
   useEffect(() => {
     setSelected(new Set());
@@ -90,9 +94,13 @@ export function ReviewSelection({
   }, [pageIds]); // Page IDs are stable server props; ALL_FILTERED uses no browser ID set.
   const setUrlSelection = (mode: "ALL_FILTERED" | "NONE") => {
     const params = new URLSearchParams(searchParams.toString());
-    if (mode === "ALL_FILTERED") params.set("selection", "all");
+    const current = params.get("selection");
+    const desired = mode === "ALL_FILTERED" ? "all" : null;
+    if (current === desired) return;
+    if (desired) params.set("selection", desired);
     else params.delete("selection");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
   const toggle = (id: string) => {
     if (selectionMode === "ALL_FILTERED") {

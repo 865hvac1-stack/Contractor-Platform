@@ -5,14 +5,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
 const refresh = vi.fn();
+const bulkAction = vi.fn(
+  async (_args?: unknown): Promise<{ ok: boolean; error?: string; message?: string }> => ({
+    ok: false,
+    error: "Test action",
+  })
+);
+let currentQuery = "view=review&filter=exact";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, refresh }),
   usePathname: () => "/settings/quickbooks/manage",
-  useSearchParams: () => new URLSearchParams("view=review&filter=exact"),
+  useSearchParams: () => new URLSearchParams(currentQuery),
 }));
 vi.mock("@/server/actions/quickbooks-sync-center", () => ({
-  bulkQuickBooksReviewAction: vi.fn(async () => ({ ok: false, error: "Test action" })),
+  bulkQuickBooksReviewAction: (...args: unknown[]) => bulkAction(args),
 }));
 
 import {
@@ -45,6 +52,9 @@ describe("QuickBooks review selection", () => {
     cleanup();
     replace.mockClear();
     refresh.mockClear();
+    bulkAction.mockReset();
+    bulkAction.mockResolvedValue({ ok: false, error: "Test action" });
+    currentQuery = "view=review&filter=exact";
   });
 
   it("selects the visible page and supports deselection", () => {
@@ -106,5 +116,24 @@ describe("QuickBooks review selection", () => {
       </ReviewSelection>
     );
     expect(screen.getByText("0 selected")).toBeTruthy();
+  });
+
+  it("handles a successful bulk result once without a replace/refresh feedback loop", async () => {
+    replace.mockImplementation((url: string) => {
+      currentQuery = url.split("?")[1] || "";
+    });
+    bulkAction.mockResolvedValue({
+      ok: true,
+      message: "1 safe customer match approved.",
+    });
+    renderSelection();
+    fireEvent.click(screen.getByRole("button", { name: "Select All Filtered Results" }));
+    expect(replace).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve Selected" }));
+    await screen.findByText("1 safe customer match approved.");
+
+    expect(replace).toHaveBeenCalledTimes(2);
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

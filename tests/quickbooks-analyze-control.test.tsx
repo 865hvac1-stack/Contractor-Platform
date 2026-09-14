@@ -47,7 +47,7 @@ describe("AnalyzeImportControl", () => {
     expect(screen.getByRole("alert").textContent).toContain("Import analysis failed. No records were changed.");
   });
 
-  it("shows category progress and refreshes after completion", async () => {
+  it("shows category progress after completion without a client refresh loop", async () => {
     render(<AnalyzeImportControl />);
     fireEvent.click(screen.getByRole("button", { name: "Analyze Import" }));
 
@@ -69,6 +69,15 @@ describe("AnalyzeImportControl", () => {
     });
 
     expect(screen.getByRole("status").textContent).toContain("31,315 of approximately 31,315 records examined");
-    expect(refresh).toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("reconnects to a running analysis without starting another run", () => {
+    render(<AnalyzeImportControl resumeRunId="run-active" initialStatus="RUNNING" />);
+    const button = screen.getByRole("button", { name: "Analyzing QuickBooks…" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Analysis is already running. This page will not start another run."
+    );
   });
 });

@@ -126,7 +126,12 @@ export default async function QuickBooksManagePage({
         </ActionForm>
         {canManage ? (
           <AnalyzeImportControl
-            resumeRunId={inbound.latestAnalysis?.status === "PAUSED" ? inbound.latestAnalysis.id : null}
+            resumeRunId={
+              inbound.latestAnalysis?.status === "PAUSED" ||
+              inbound.latestAnalysis?.status === "RUNNING"
+                ? inbound.latestAnalysis.id
+                : null
+            }
             initialStatus={inbound.latestAnalysis?.status}
           />
         ) : null}

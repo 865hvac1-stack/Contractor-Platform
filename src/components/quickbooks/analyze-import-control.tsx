@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { AnalyzeQuickBooksState } from "@/server/actions/quickbooks-sync-center";
 import { analyzeQuickBooksImportAction } from "@/server/actions/quickbooks-sync-center";
@@ -15,14 +14,8 @@ export function AnalyzeImportControl({
   resumeRunId?: string | null;
   initialStatus?: string | null;
 }) {
-  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(analyzeQuickBooksImportAction, initialState);
-
-  useEffect(() => {
-    if (!state?.ok || (state.paused && state.autoContinue)) return;
-    router.refresh();
-  }, [state, router]);
 
   useEffect(() => {
     if (!state?.ok || !state.paused || !state.autoContinue) return;
@@ -30,7 +23,11 @@ export function AnalyzeImportControl({
     return () => window.clearTimeout(timer);
   }, [state]);
 
-  const active = pending || (state?.ok === true && state.paused && state.autoContinue);
+  const reconnectedRunning = !state && initialStatus === "RUNNING";
+  const active =
+    reconnectedRunning ||
+    pending ||
+    (state?.ok === true && state.paused && state.autoContinue);
   const runId = state?.ok ? state.runId : resumeRunId;
   const statusText = pending
     ? state?.ok
@@ -38,7 +35,7 @@ export function AnalyzeImportControl({
       : "Starting read-only analysis…"
     : state?.ok
       ? state.message
-      : state?.error;
+      : state?.error || (reconnectedRunning ? "Analysis is already running. This page will not start another run." : null);
 
   return (
     <div className="min-w-56">
