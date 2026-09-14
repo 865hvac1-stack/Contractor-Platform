@@ -142,6 +142,8 @@ export async function importApprovedQuickBooksAction(
       ok: true,
       message: result.paused
         ? `Imported a batch (created ${result.created}, linked ${result.linked}, failed ${result.failed}). Resume to continue from the checkpoint. ${result.writeBack}`
+        : stage === 1
+          ? `Stage 1 complete. ${result.examined.toLocaleString()} QuickBooks customers examined. Final outcomes: linked to existing ${result.linked.toLocaleString()}, created new ${result.created.toLocaleString()}, ignored or skipped ${result.skipped.toLocaleString()}, failed ${result.failed.toLocaleString()}. Additional operations: ${result.updated.toLocaleString()} existing customers had QuickBooks link/sync metadata supplemented; this count is included in linked. ${result.writeBack}`
         : `Stage ${stage} finished. Created ${result.created}, updated ${result.updated}, linked ${result.linked}. ${result.writeBack}`,
     };
   } catch (error) {

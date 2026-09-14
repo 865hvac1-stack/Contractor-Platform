@@ -37,6 +37,7 @@ import {
   safeQuickBooksErrorText,
 } from "@/lib/quickbooks/exception-review";
 import { ExceptionReviewer } from "@/components/quickbooks/exception-reviewer";
+import { loadStageOneCustomerAudit } from "@/lib/quickbooks/stage-one-audit";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,13 @@ export default async function QuickBooksManagePage({
   const stageOnePlan = stageOnePreview?.ok ? stageOnePreview.plan : null;
   const analyzedCustomerTotal =
     inbound.categories.find((category) => category.objectType === "CUSTOMER")?.available ?? null;
+  const stageOneAudit =
+    inbound.latestImport?.objectType === "STAGE_1"
+      ? await loadStageOneCustomerAudit(prisma, active.scope).catch((error) => {
+          console.error("[quickbooks-stage-one-audit] load failed", error);
+          return null;
+        })
+      : null;
   const connectionHealth =
     inbound.connection?.status === "CONNECTED"
       ? inbound.settings.inboundSyncHealth || "Connected"
@@ -267,6 +275,8 @@ export default async function QuickBooksManagePage({
           ))}
         </div>
       </section>
+
+      {stageOneAudit ? <StageOneAuditPanel audit={stageOneAudit} /> : null}
 
       <details className="rounded-2xl border border-[var(--border)] bg-white p-5">
         <summary className="cursor-pointer font-medium">Analysis definitions</summary>
@@ -885,6 +895,97 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dt className="text-[var(--muted-foreground)]">{label}</dt>
       <dd className="font-medium">{value}</dd>
     </div>
+  );
+}
+
+type StageOneAudit = NonNullable<Awaited<ReturnType<typeof loadStageOneCustomerAudit>>>;
+
+function StageOneAuditPanel({ audit }: { audit: StageOneAudit }) {
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Stage 1 complete</p>
+          <h2 className="mt-1 text-xl font-semibold">QuickBooks customer import audit</h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            {audit.uniqueQuickBooksCustomers.toLocaleString()} unique QuickBooks customers represented
+          </p>
+        </div>
+        <StatusBadge status={audit.integrityPassed ? "COMPLETE" : "NEEDS_REVIEW"} />
+      </div>
+
+      <h3 className="mt-5 text-sm font-semibold">Final outcomes · mutually exclusive</h3>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <Fact label="Analyzed" value={audit.analyzed.toLocaleString()} />
+        <Fact label="Linked to existing" value={audit.outcomes.linkedExisting.toLocaleString()} />
+        <Fact label="Created new" value={audit.outcomes.createdNew.toLocaleString()} />
+        <Fact label="Ignored" value={audit.outcomes.ignored.toLocaleString()} />
+        <Fact label="Failed" value={audit.outcomes.failed.toLocaleString()} />
+        <Fact label="Unresolved" value={audit.outcomes.unresolved.toLocaleString()} />
+        <Fact label="Skipped / unexplained" value={audit.outcomes.skipped.toLocaleString()} />
+        <Fact label="Outcome total" value={audit.outcomeTotal.toLocaleString()} />
+      </dl>
+
+      <h3 className="mt-5 text-sm font-semibold">Import operations · overlapping counters</h3>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <Fact label="Records examined" value={audit.operations.examined.toLocaleString()} />
+        <Fact label="Created" value={audit.operations.created.toLocaleString()} />
+        <Fact label="Updated metadata" value={audit.operations.updated.toLocaleString()} />
+        <Fact label="Linked" value={audit.operations.linked.toLocaleString()} />
+        <Fact label="Skipped" value={audit.operations.skipped.toLocaleString()} />
+        <Fact label="Failed" value={audit.operations.failed.toLocaleString()} />
+      </dl>
+      <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+        Updated is included in Linked. Created records receive a mapping but are not incremented in the Linked operation counter.
+      </p>
+
+      <h3 className="mt-5 text-sm font-semibold">Updated field breakdown</h3>
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <Fact label="QuickBooks ID stamped" value={audit.updatedFieldBreakdown.quickbooksCustomerIdStamped.toLocaleString()} />
+        <Fact label="Realm ID stamped" value={audit.updatedFieldBreakdown.quickbooksRealmIdStamped.toLocaleString()} />
+        <Fact label="Sync timestamps/status stamped" value={audit.operations.updated.toLocaleString()} />
+        <Fact label="Mapping metadata upserted" value={audit.updatedFieldBreakdown.mappingMetadataUpserted.toLocaleString()} />
+        <Fact label="Name changed" value="0 by implementation" />
+        <Fact label="Phone changed" value="0 by implementation" />
+        <Fact label="Email changed" value="0 by implementation" />
+        <Fact label="Property changed" value="0 by implementation" />
+      </dl>
+
+      <h3 className="mt-5 text-sm font-semibold">Created-customer audit</h3>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <Fact label="Approved create decisions" value={audit.created.approvedCreateDecisions.toLocaleString()} />
+        <Fact label="Actually created" value={audit.created.actuallyCreated.toLocaleString()} />
+        <Fact label="Correctly linked after creation" value={audit.created.correctlyLinkedAfterCreation.toLocaleString()} />
+        <Fact label="Unexpected creations" value={audit.created.unexpected.toLocaleString()} />
+        <Fact label="Invalid property relationships" value={audit.created.invalidProperties.toLocaleString()} />
+        <Fact label="Potential duplicates" value={audit.created.potentialDuplicates.toLocaleString()} />
+      </dl>
+
+      <h3 className="mt-5 text-sm font-semibold">Safety and integrity</h3>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <Fact label="Customer mappings" value={audit.mappings.total.toLocaleString()} />
+        <Fact label="Duplicate active mappings" value={audit.mappings.duplicateQuickBooksIds.toLocaleString()} />
+        <Fact label="Invalid mapping targets" value={audit.mappings.invalid.toLocaleString()} />
+        <Fact label="QuickBooks writes attempted" value={audit.quickBooksWrites === "ZERO" ? "0" : "NOT ZERO"} />
+        <Fact label="QuickBooks write-back" value={audit.writeBackEnabled ? "Enabled" : "Disabled"} />
+        <Fact label="Automatic customer merges" value="None" />
+        <Fact label="Rerun duplicate safety" value={audit.duplicateSafeOnRerun ? "Pass" : "Fail"} />
+        <Fact label="Strict no-op on rerun" value={audit.strictNoOpOnRerun ? "Pass" : "Fail — metadata would be restamped"} />
+        <Fact label="Stage 2" value={audit.stageTwoSafe ? "Safe to review" : "Blocked"} />
+      </dl>
+      {audit.integrityIssues.length ? (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-950">Stage 2 remains blocked</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+            {audit.integrityIssues.map((issue) => <li key={issue}>{issue}</li>)}
+          </ul>
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">
+          Mapping and outcome integrity checks passed. Stage 2 was not executed.
+        </p>
+      )}
+    </section>
   );
 }
 
