@@ -45,32 +45,32 @@ export function JobsSubnav({ canDispatch = true }: { canDispatch?: boolean } = {
           {
             href: "/jobs?view=dispatch",
             label: "Dispatch Board",
-            match: (pathname, search) => pathname === "/jobs" && (!search.includes("view=") || search.includes("view=dispatch")),
+            match: (pathname: string, search: string) => pathname === "/jobs" && (!search.includes("view=") || search.includes("view=dispatch")),
           },
           {
             href: "/jobs?view=all",
             label: "All Jobs",
-            match: (pathname, search) => pathname === "/jobs" && search.includes("view=all"),
+            match: (pathname: string, search: string) => pathname === "/jobs" && search.includes("view=all"),
           },
           {
             href: "/jobs?view=waiting",
             label: "Waiting",
-            match: (pathname, search) => pathname.startsWith("/operations/waiting") || (pathname === "/jobs" && search.includes("view=waiting")),
+            match: (pathname: string, search: string) => pathname.startsWith("/operations/waiting") || (pathname === "/jobs" && search.includes("view=waiting")),
           },
           {
             href: "/jobs?view=estimates",
             label: "Estimates",
-            match: (pathname, search) => pathname.startsWith("/estimates") || (pathname === "/jobs" && search.includes("view=estimates")),
+            match: (pathname: string, search: string) => pathname.startsWith("/estimates") || (pathname === "/jobs" && search.includes("view=estimates")),
           },
           {
             href: "/jobs?view=completed",
             label: "Completed",
-            match: (pathname, search) => pathname === "/jobs" && search.includes("view=completed"),
+            match: (pathname: string, search: string) => pathname === "/jobs" && search.includes("view=completed"),
           },
           {
             href: "/jobs?view=attention",
             label: "Needs Attention",
-            match: (pathname, search) => pathname === "/jobs" && search.includes("view=attention"),
+            match: (pathname: string, search: string) => pathname === "/jobs" && search.includes("view=attention"),
           },
         ].filter((item) => canDispatch || item.href !== "/jobs?view=dispatch")}
       />

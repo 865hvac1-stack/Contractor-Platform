@@ -14,7 +14,6 @@ import {
   Zap,
   Plug,
   Share2,
-  MessageSquare,
   BarChart3,
   BookOpen,
   UserCog,
