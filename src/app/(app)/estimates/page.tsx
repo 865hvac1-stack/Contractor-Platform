@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { JobsSubnav } from "@/components/hub-subnav";
+import { canAccessWorkspace } from "@/lib/workspaces";
 import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
 import type { EstimateStatus, Prisma } from "@prisma/client";
@@ -81,7 +82,7 @@ export default async function EstimatesPage({
           New estimate
         </Link>
       </div>
-      <JobsSubnav />
+      <JobsSubnav canDispatch={canAccessWorkspace(ctx.role, "dispatch")} />
 
       {(() => {
         const copy = financeFilterCopy({ ...finance, status: status ?? finance.status });

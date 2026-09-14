@@ -11,7 +11,7 @@ function item(partial: Partial<RankedAttention>): RankedAttention {
     title: "Scheduled job has no technician",
     description: "31777570",
     severity: "warning",
-    href: "/dispatch",
+    href: "/jobs?view=dispatch",
     entityType: "Job",
     entityId: "job_1",
     createdAt: new Date("2026-09-07T12:00:00.000Z"),

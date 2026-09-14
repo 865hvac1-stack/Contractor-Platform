@@ -14,6 +14,7 @@ import { formatMoney } from "@/lib/money";
 import { customerDisplayName } from "@/lib/actions/eligibility";
 import { WaitingBoard } from "@/components/waiting/waiting-board";
 import { JobsSubnav } from "@/components/hub-subnav";
+import { canAccessWorkspace } from "@/lib/workspaces";
 import type { WaitingDetailPayload } from "@/components/waiting/detail-drawer";
 
 export default async function WaitingBoardPage({
@@ -109,7 +110,7 @@ export default async function WaitingBoardPage({
           The office shouldn&apos;t have to remember who needs an update. ContractorYou remembers.
         </p>
       </header>
-      <JobsSubnav />
+      <JobsSubnav canDispatch={canAccessWorkspace(ctx.role, "dispatch")} />
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
         <Metric
