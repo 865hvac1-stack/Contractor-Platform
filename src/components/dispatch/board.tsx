@@ -40,6 +40,7 @@ export function DispatchBoard({
   canAsk,
   suggestions,
   initialPulse = "all",
+  initialJobId,
 }: {
   date: string;
   isToday: boolean;
@@ -52,9 +53,13 @@ export function DispatchBoard({
   canAsk: boolean;
   suggestions: string[];
   initialPulse?: DispatchPulse;
+  initialJobId?: string;
 }) {
   const router = useRouter();
-  const [selected, setSelected] = useState<DispatchCard | null>(null);
+  const [selected, setSelected] = useState<DispatchCard | null>(() => {
+    if (!initialJobId) return null;
+    return [...board.unassigned, ...board.technicians.flatMap((lane) => lane.jobs)].find((job) => job.id === initialJobId) ?? null;
+  });
   const [query, setQuery] = useState("");
   const [techId, setTechId] = useState("all");
   const [jobType, setJobType] = useState("all");
@@ -81,8 +86,9 @@ export function DispatchBoard({
     const params = new URLSearchParams();
     if (date) params.set("date", date);
     if (pulse !== "all") params.set("view", pulse);
+    if (selected?.id) params.set("job", selected.id);
     router.replace(`/dispatch?${params.toString()}`, { scroll: false });
-  }, [date, pulse, router]);
+  }, [date, pulse, selected?.id, router]);
 
   const filters = useMemo(
     () => ({ query, jobType, status, city, pulse, priority }),

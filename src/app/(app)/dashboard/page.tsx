@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/tenant";
 import { isFieldRole } from "@/lib/permissions";
 import { can } from "@/lib/permissions";
-import { landingPath } from "@/lib/workspaces";
+import { canAccessWorkspace, landingPath } from "@/lib/workspaces";
 import { AskContractorYou } from "@/components/ask-contractoryou";
 import { financialKpiRow } from "@/lib/finance/kpis";
 import { parseFinanceRange } from "@/lib/finance/period";
@@ -73,6 +73,7 @@ export default async function DashboardPage({
         dateLabel={dateLabel}
         metrics={metrics}
         needsYouTotal={data.needsYouTotal}
+        canDispatch={canAccessWorkspace(ctx.role, "dispatch")}
         finance={
           canSeeMoney
             ? {

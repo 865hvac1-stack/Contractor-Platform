@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function DispatchCenterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; view?: string }>;
+  searchParams: Promise<{ date?: string; view?: string; job?: string }>;
 }) {
   const ctx = await requirePermission("schedule:view");
   if (!canAccessWorkspace(ctx.role, "dispatch")) {
@@ -119,6 +119,7 @@ export default async function DispatchCenterPage({
         canAsk={can(ctx.role, "intelligence:view")}
         suggestions={suggestedQuestions(ctx.role, null, "dispatch")}
         initialPulse={initialPulse}
+        initialJobId={params.job}
       />
     </div>
   );

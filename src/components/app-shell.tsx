@@ -22,7 +22,7 @@ import { DemoModeBadge } from "@/components/demo-mode-badge";
 import { AppNav } from "@/components/app-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { isSettingsActive } from "@/lib/nav";
-import { accessibleWorkspaces, type WorkspaceId } from "@/lib/workspaces";
+import { accessibleWorkspaces, workspaceFromPath, type WorkspaceId } from "@/lib/workspaces";
 import { can } from "@/lib/permissions";
 
 function SettingsLink({
@@ -69,8 +69,13 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const workspaces = accessibleWorkspaces(role);
   const canSettings = can(role, "company:settings");
+  const detected = workspaceFromPath(pathname);
   const current: WorkspaceId =
-    pathname.startsWith("/dispatch") ? "dispatch" : pathname.startsWith("/office") ? "office" : "command";
+    detected && workspaces.includes(detected)
+      ? detected
+      : workspaces.includes("command")
+        ? "command"
+        : workspaces[0] ?? "command";
 
   return (
     <div className="flex min-h-screen bg-[var(--background)] md:h-dvh md:overflow-hidden">

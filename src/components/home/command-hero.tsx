@@ -8,6 +8,7 @@ export function CommandHero({
   metrics,
   needsYouTotal,
   finance,
+  canDispatch = true,
 }: {
   greeting: string;
   firstName: string;
@@ -24,6 +25,7 @@ export function CommandHero({
     hasData: boolean;
     metrics: FinancialKpi[];
   } | null;
+  canDispatch?: boolean;
 }) {
   const status =
     needsYouTotal === 0
@@ -54,12 +56,14 @@ export function CommandHero({
               />
               {status}
             </p>
-            <Link
-              href="/dispatch"
-              className="text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            >
-              View Dispatch →
-            </Link>
+            {canDispatch ? (
+              <Link
+                href="/dispatch"
+                className="text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                View Dispatch →
+              </Link>
+            ) : null}
           </div>
         </div>
 

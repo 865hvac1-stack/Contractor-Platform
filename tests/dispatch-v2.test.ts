@@ -187,11 +187,13 @@ describe("dispatch V2 helpers", () => {
     expect(shell).not.toMatch(/<header[^>]*overflow-hidden/);
     expect(shell).toContain("AppNav");
     expect(shell).toContain("WorkspaceSwitcher");
+    expect(shell).toContain("workspaceFromPath(pathname)");
     expect(shell).toContain("shrink-0");
     expect(shell).not.toContain("MobileWorkspaceLinks");
     const switcher = readFileSync(resolve("src/components/workspace-switcher.tsx"), "utf8");
     expect(switcher).toContain("hidden min-w-0 md:flex");
     expect(switcher).not.toContain("flex-wrap");
+    expect(board).toContain('params.set("job", selected.id)');
   });
 });
 

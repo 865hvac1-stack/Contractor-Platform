@@ -278,6 +278,8 @@ describe("Customer Hub V2", () => {
     expect(parseCustomerListQuery({ view: "unknown" }).view).toBe("recent");
     expect(JSON.stringify(customerListWhere(ids.companyA, "7409 Openview", "all"))).toContain("properties");
     expect(JSON.stringify(customerListWhere(ids.companyA, "", "open-estimates"))).toContain("estimates");
+    const combined = customerListWhere(ids.companyA, "7409 Openview", "attention");
+    expect(combined.AND).toHaveLength(2);
   });
 
   it("wires Customer Hub page to V2 sections and compact Ask bar", () => {

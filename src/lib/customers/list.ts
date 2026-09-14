@@ -75,6 +75,7 @@ export function customerSearchWhere(companyId: string, q: string, view: Customer
                 OR: [
                   { address: { contains: q, mode: "insensitive" } },
                   { city: { contains: q, mode: "insensitive" } },
+                  { zip: { contains: q, mode: "insensitive" } },
                 ],
               },
             },
@@ -98,8 +99,7 @@ export function customerSearchWhere(companyId: string, q: string, view: Customer
 
   return {
     companyId,
-    ...(search ?? {}),
-    ...(viewFilter ?? {}),
+    ...(search && viewFilter ? { AND: [search, viewFilter] } : search ?? viewFilter ?? {}),
   };
 }
 
