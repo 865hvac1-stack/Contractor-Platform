@@ -42,7 +42,9 @@ describe("global search wiring", () => {
     expect(ui).toContain("No results for");
     expect(ui).toContain("Search unavailable. Try again.");
     expect(ui).toContain("⌘K");
-    expect(shell).not.toContain("overflow-hidden");
+    expect(shell).toContain("md:h-dvh md:overflow-hidden");
+    expect(shell).toContain("md:overflow-y-auto");
+    expect(search).toContain('type: "part"');
     expect(api).toContain("requireTenant");
   });
 });
