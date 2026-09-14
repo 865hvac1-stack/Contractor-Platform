@@ -7,6 +7,8 @@ import { refreshQuickBooksPreviewAction } from "@/server/actions/quickbooks";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 
+export const dynamic = "force-dynamic";
+
 export default async function QuickBooksProductionPreviewPage() {
   const ctx = await requirePermission("accounting:view");
   const result = await loadQuickBooksProductionPreview(prisma, ctx.company.id)

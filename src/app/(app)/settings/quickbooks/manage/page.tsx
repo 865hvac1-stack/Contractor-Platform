@@ -27,6 +27,8 @@ import {
   unlinkQuickBooksCustomerAction,
 } from "@/server/actions/quickbooks";
 
+export const dynamic = "force-dynamic";
+
 export default async function QuickBooksManagePage({
   searchParams,
 }: {

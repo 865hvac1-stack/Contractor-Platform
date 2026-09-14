@@ -16,7 +16,6 @@ import {
   readOnlyQuickBooksTransport,
   type QboAddress,
 } from "@/lib/quickbooks/read-only";
-import type { QboTransport } from "@/lib/quickbooks/client";
 
 const PAGE = 50;
 const BUDGET_MS = 18_000;

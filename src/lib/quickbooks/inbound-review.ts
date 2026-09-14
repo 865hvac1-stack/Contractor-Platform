@@ -1,8 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { QuickBooksScope } from "@/lib/quickbooks/ownership";
 
-const REVIEW_ACTIONS = ["LINK", "CREATE", "MERGE", "IGNORE", "NOT_DUPLICATE", "MARK_INACTIVE"] as const;
-export type ReviewDecision = (typeof REVIEW_ACTIONS)[number];
+export type ReviewDecision = "LINK" | "CREATE" | "MERGE" | "IGNORE" | "NOT_DUPLICATE" | "MARK_INACTIVE";
 
 export async function applyQuickBooksReviewDecision(input: {
   prisma: PrismaClient;

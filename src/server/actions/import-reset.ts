@@ -180,7 +180,7 @@ export async function importQuickBooksHistoricalAction(
   formData: FormData
 ): Promise<ActionResult> {
   try {
-    const ctx = await requirePermission("accounting:manage");
+    await requirePermission("accounting:manage");
     const categories = (["customers", "invoices", "payments", "items", "expenses"] as QboHistoricalCategory[]).filter(
       (category) => formData.get(category) === "on"
     );

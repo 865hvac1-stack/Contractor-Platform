@@ -10,7 +10,6 @@ import { getActiveQuickBooksScope } from "@/lib/quickbooks/ownership";
 import { runQuickBooksImportAnalysis } from "@/lib/quickbooks/analysis";
 import { importApprovedQuickBooksRecords } from "@/lib/quickbooks/inbound-import";
 import { applyQuickBooksReviewDecision, type ReviewDecision } from "@/lib/quickbooks/inbound-review";
-import { IMPORT_CONFIRMATION } from "@/lib/quickbooks/inbound-types";
 import { QUICKBOOKS_WRITEBACK_DISABLED_MESSAGE } from "@/lib/quickbooks/writeback";
 import { requestQuickBooksPreviewRefresh } from "@/lib/quickbooks/production-preview";
 
@@ -126,8 +125,8 @@ export async function syncChangesDisabledAction(): Promise<ActionResult> {
 }
 
 export async function refreshPreviewFromSyncCenterAction(
-  prev?: ActionResult | null,
-  formData?: FormData
+  _prev?: ActionResult | null,
+  _formData?: FormData
 ): Promise<ActionResult> {
   try {
     const ctx = await requirePermission("accounting:view");
@@ -147,5 +146,3 @@ export async function refreshPreviewFromSyncCenterAction(
     return { ok: false, error: "Could not refresh preview." };
   }
 }
-
-export { IMPORT_CONFIRMATION };
