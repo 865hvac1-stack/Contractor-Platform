@@ -336,7 +336,11 @@ Changing a playbook creates a new version. Jobs already started keep the snapsho
 
 ## Phase 2 (intentionally deferred)
 
-Live ContractorYou AI receptionist ownership (still shadow-only by default), inventory, payroll, GPS/routing, native/PWA apps, full custom form builder. Recurring Stripe subscriptions for memberships are foundation-ready, not live.
+Live ContractorYou AI receptionist ownership (still shadow-only by default), payroll, native/PWA apps, full custom form builder, and advanced inventory purchasing. Recurring Stripe subscriptions for memberships are foundation-ready, not live.
+
+## Parts Bank and job inventory
+
+Pricebook materials and products are the part catalog; there is no duplicate parts master. Tenant-configured warehouses and trucks hold on-hand, reserved, available, and minimum-stock balances. Every receive, transfer, reserve, release, consume, return, or adjustment is represented by an inventory movement. Job parts move through Needed → Reserved → Picked Up → Installed. Installation deducts the selected location and creates one confirmed inventory-sourced material cost for Job 360 profitability. Corrections create return/release movements and a cost reversal rather than silently rewriting history.
 
 ## ContractorYou Payments (Stripe Connect)
 
