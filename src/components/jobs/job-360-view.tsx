@@ -55,12 +55,15 @@ export function Job360View({
         <Link href={backHref} className="text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
           ← Jobs
         </Link>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Job 360</p>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display text-3xl tracking-tight">{view.job.jobNumber}</h1>
               <StatusBadge status={view.job.status} />
+              {view.job.priority === "URGENT" || view.job.priority === "HIGH" ? <StatusBadge status={view.job.priority} /> : null}
               {view.job.historical ? <StatusBadge status="Historical import" /> : null}
+              {view.customer.membership ? <StatusBadge status={view.customer.membership} /> : null}
             </div>
             {service ? <p className="text-base font-medium">{service}</p> : null}
             <p className="text-sm">
@@ -79,7 +82,10 @@ export function Job360View({
               {view.job.scheduledStart ? (
                 <div>
                   <dt className="text-[var(--muted-foreground)]">Scheduled</dt>
-                  <dd>{formatDateTime(view.job.scheduledStart)}</dd>
+                  <dd>
+                    {formatDateTime(view.job.scheduledStart)}
+                    {view.job.scheduledEnd ? ` – ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(view.job.scheduledEnd)}` : ""}
+                  </dd>
                 </div>
               ) : null}
               {view.job.completedAt || view.import.occurredAt ? (
@@ -91,6 +97,11 @@ export function Job360View({
                 </div>
               ) : null}
             </dl>
+            {view.property.accessNotes ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                Property note: {view.property.accessNotes}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {canCall && view.customer.phone ? (
@@ -228,6 +239,8 @@ export function Job360View({
                   {item.model ? <p>Model: {item.model}</p> : null}
                   {item.serialNumber ? <p>Serial: {item.serialNumber}</p> : null}
                   {item.installDate ? <p>Installed: {formatDate(item.installDate)}</p> : null}
+                  {item.warrantyExpiresAt ? <p>Warranty through: {formatDate(item.warrantyExpiresAt)}</p> : null}
+                  {item.warrantyNotes ? <p>{item.warrantyNotes}</p> : null}
                 </CardContent>
               </Card>
             ))}

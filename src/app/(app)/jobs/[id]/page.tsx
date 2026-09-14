@@ -27,6 +27,7 @@ import { ensureWaitingSetup } from "@/lib/waiting/columns";
 import { loadActiveWaitingForJob } from "@/lib/waiting/board";
 import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
 import { JobWaitingPanel } from "@/components/waiting/job-waiting-panel";
+import { JobPartsPanel } from "@/components/jobs/job-parts-panel";
 
 function toLocalInputValue(d: Date | null | undefined) {
   if (!d) return "";
@@ -66,12 +67,30 @@ export default async function JobDetailPage({
     view.job.status !== "COMPLETED" &&
     view.job.status !== "CANCELED";
   const canAddCost = can(ctx.role, "job_costs:manage");
-  const [{ columns: waitingColumns }, activeWaiting, officeMembers] = await Promise.all([
+  const [{ columns: waitingColumns }, activeWaiting, officeMembers, parts, jobParts, stocks] = await Promise.all([
     ensureWaitingSetup(ctx.company.id),
     loadActiveWaitingForJob(ctx.company.id, view.job.id),
     prisma.membership.findMany({
       where: { companyId: ctx.company.id, status: "ACTIVE" },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    }),
+    prisma.pricebookItem.findMany({
+      where: { companyId: ctx.company.id, active: true, type: { in: ["MATERIAL", "PRODUCT"] } },
+      select: { id: true, name: true, sku: true, internalCostCents: true },
+      orderBy: [{ name: "asc" }],
+      take: 200,
+    }),
+    prisma.jobPart.findMany({
+      where: { companyId: ctx.company.id, jobId: view.job.id, status: { not: "CANCELED" } },
+      include: {
+        part: { select: { name: true, sku: true } },
+        location: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.inventoryStock.findMany({
+      where: { companyId: ctx.company.id, part: { active: true } },
+      include: { location: { select: { name: true } } },
     }),
   ]);
   const waitingOwners = officeMembers.map((row) => ({
@@ -130,6 +149,16 @@ export default async function JobDetailPage({
         readyColumnId={readyColumnId}
         timezone={ctx.company.timezone}
         canPlace={canPlaceWaiting && !view.job.historical}
+      />
+
+      <JobPartsPanel
+        jobId={view.job.id}
+        parts={parts}
+        jobParts={jobParts}
+        stocks={stocks}
+        canAdd={can(ctx.role, "jobs:manage") || canAct}
+        canReserve={can(ctx.role, "jobs:manage") || can(ctx.role, "schedule:manage")}
+        canUse={canAct}
       />
 
       {can(ctx.role, "intelligence:view") ? (

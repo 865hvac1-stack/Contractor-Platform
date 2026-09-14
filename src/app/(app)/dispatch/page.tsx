@@ -43,7 +43,7 @@ export default async function DispatchCenterPage({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="hidden text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)] md:block">
-            Dispatch Center
+            Dispatch 360
           </p>
           <h1 className="text-xl font-semibold tracking-tight text-[var(--cy-navy)] md:text-2xl">
             Today&apos;s Dispatch

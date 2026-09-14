@@ -101,6 +101,23 @@ export function DispatchJobCard({
             {job.membership}
           </span>
         ) : null}
+        {job.partsStatus !== "NONE" ? (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+            job.partsStatus === "NOT_AVAILABLE"
+              ? "bg-rose-100 text-rose-800"
+              : job.partsStatus === "NEEDED"
+                ? "bg-amber-100 text-amber-900"
+                : "bg-sky-50 text-sky-800"
+          }`}>
+            {job.partsStatus === "NOT_AVAILABLE"
+              ? "Part not available"
+              : job.partsStatus === "NEEDED"
+                ? "Part needed"
+                : job.partsStatus === "RESERVED"
+                  ? "Part reserved"
+                  : "Parts ready"}
+          </span>
+        ) : null}
       </div>
     </article>
   );

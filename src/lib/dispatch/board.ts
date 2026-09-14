@@ -18,6 +18,16 @@ const jobInclude = {
   },
   property: true,
   assignments: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+  jobParts: {
+    where: { status: { not: "CANCELED" as const } },
+    include: {
+      part: {
+        select: {
+          inventoryStocks: { select: { onHand: true, reserved: true } },
+        },
+      },
+    },
+  },
 } as const;
 
 export type DispatchIssueKind =
@@ -27,7 +37,9 @@ export type DispatchIssueKind =
   | "emergency"
   | "missing_technician"
   | "missing_contact"
-  | "missing_address";
+  | "missing_address"
+  | "part_needed"
+  | "part_not_available";
 
 export type DispatchIssue = {
   id: string;
@@ -117,7 +129,10 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
     exceptions: issues.map((issue) => ({ kind: issue.kind, title: issue.title, href: issue.href })),
     issues,
     openings: buildOpenings(byTech),
-    metrics: buildMetrics(cards),
+    metrics: {
+      ...buildMetrics(cards),
+      availableCapacity: byTech.filter((lane) => lane.state === "AVAILABLE").length,
+    },
     jobTypes: [...new Set(cards.map((job) => job.jobType).filter(Boolean))] as string[],
   };
 }
@@ -146,6 +161,11 @@ export function toDispatchCard(job: {
   };
   property: { address: string; city: string; state: string; zip: string; accessNotes: string | null };
   assignments: { userId: string; user: { id: string; firstName: string; lastName: string } }[];
+  jobParts?: Array<{
+    quantity: number;
+    status: string;
+    part: { inventoryStocks: Array<{ onHand: number; reserved: number }> };
+  }>;
 }) {
   const kind = classifyDispatchJob({ jobType: job.jobType, priority: job.priority, description: job.description });
   return {
@@ -173,7 +193,21 @@ export function toDispatchCard(job: {
     assigneeIds: job.assignments.map((row) => row.userId),
     assignees: job.assignments.map((row) => `${row.user.firstName} ${row.user.lastName}`.trim()),
     bookedByContractorYou: Boolean(job.bookedByContractorYou),
+    partsStatus: partsStatus(job.jobParts ?? []),
   };
+}
+
+function partsStatus(parts: NonNullable<Parameters<typeof toDispatchCard>[0]["jobParts"]>) {
+  if (!parts.length) return "NONE" as const;
+  const unavailable = parts.some(
+    (row) =>
+      row.status === "NEEDED" &&
+      row.part.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0) < row.quantity
+  );
+  if (unavailable) return "NOT_AVAILABLE" as const;
+  if (parts.some((row) => row.status === "NEEDED")) return "NEEDED" as const;
+  if (parts.some((row) => row.status === "RESERVED")) return "RESERVED" as const;
+  return "READY" as const;
 }
 
 function nextAvailableAt(jobs: ReturnType<typeof toDispatchCard>[]) {
@@ -262,6 +296,28 @@ export function buildIssues(
       title: job.customer,
       subtitle: "No phone on file",
       href: `/office/customers/${job.customerId}`,
+      jobId: job.id,
+      customerName: job.customer,
+    });
+  }
+  for (const job of cards.filter((row) => row.partsStatus === "NOT_AVAILABLE")) {
+    items.push({
+      id: `part-unavailable-${job.id}`,
+      kind: "part_not_available",
+      title: job.customer,
+      subtitle: `${job.jobNumber} · required part is not available`,
+      href: `/jobs/${job.id}#parts`,
+      jobId: job.id,
+      customerName: job.customer,
+    });
+  }
+  for (const job of cards.filter((row) => row.partsStatus === "NEEDED")) {
+    items.push({
+      id: `part-needed-${job.id}`,
+      kind: "part_needed",
+      title: job.customer,
+      subtitle: `${job.jobNumber} · part needs reservation`,
+      href: `/jobs/${job.id}#parts`,
       jobId: job.id,
       customerName: job.customer,
     });

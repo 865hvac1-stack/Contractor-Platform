@@ -42,6 +42,7 @@ function card(partial: Partial<ReturnType<typeof toDispatchCard>> & { id: string
     assigneeIds: [] as string[],
     assignees: [] as string[],
     bookedByContractorYou: false,
+    partsStatus: "NONE" as const,
     ...partial,
   };
 }

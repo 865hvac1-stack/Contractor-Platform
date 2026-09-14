@@ -38,6 +38,7 @@ import { ensureWaitingSetup } from "@/lib/waiting/columns";
 import { loadActiveWaitingForJob } from "@/lib/waiting/board";
 import { JobWaitingPanel } from "@/components/waiting/job-waiting-panel";
 import { itemNameFromMetadata, parseWaitingMetadata } from "@/lib/waiting/types";
+import { JobPartsPanel } from "@/components/jobs/job-parts-panel";
 
 export default async function TechJobWorkspacePage({
   params,
@@ -143,6 +144,26 @@ export default async function TechJobWorkspacePage({
     loadActiveWaitingForJob(ctx.company.id, full.id),
   ]);
   const readyColumnId = waitingColumns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE")?.id;
+  const [partOptions, jobParts, inventoryStocks] = await Promise.all([
+    prisma.pricebookItem.findMany({
+      where: { companyId: ctx.company.id, active: true, type: { in: ["MATERIAL", "PRODUCT"] } },
+      select: { id: true, name: true, sku: true, internalCostCents: true },
+      orderBy: { name: "asc" },
+      take: 200,
+    }),
+    prisma.jobPart.findMany({
+      where: { companyId: ctx.company.id, jobId: full.id, status: { not: "CANCELED" } },
+      include: {
+        part: { select: { name: true, sku: true } },
+        location: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.inventoryStock.findMany({
+      where: { companyId: ctx.company.id, part: { active: true } },
+      include: { location: { select: { name: true } } },
+    }),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -479,6 +500,23 @@ export default async function TechJobWorkspacePage({
         <Reveal label="Add notes">
           <JobNotesForm jobId={full.id} internalNotes={full.internalNotes} customerNotes={full.customerNotes} />
         </Reveal>
+      </WorkspaceSection>
+
+      <WorkspaceSection
+        id="parts"
+        title="Parts & materials"
+        summary={jobParts.length ? `${jobParts.length} tracked` : "No parts required"}
+      >
+        <JobPartsPanel
+          jobId={full.id}
+          parts={partOptions}
+          stocks={inventoryStocks}
+          jobParts={jobParts}
+          canAdd={full.status !== "COMPLETED" && full.status !== "CANCELED"}
+          canReserve={false}
+          canUse={full.status !== "COMPLETED" && full.status !== "CANCELED"}
+          showCost={false}
+        />
       </WorkspaceSection>
 
       <WorkspaceSection

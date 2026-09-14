@@ -182,6 +182,30 @@ enum JobCostSource {
   IMPORTED
 }
 
+enum InventoryLocationType {
+  WAREHOUSE
+  TRUCK
+  OTHER
+}
+
+enum InventoryMovementType {
+  RECEIVE
+  TRANSFER
+  RESERVE
+  RELEASE_RESERVATION
+  CONSUME
+  RETURN
+  ADJUSTMENT
+}
+
+enum JobPartStatus {
+  NEEDED
+  RESERVED
+  PICKED_UP
+  INSTALLED
+  CANCELED
+}
+
 enum QuickBooksInvoiceTrigger {
   MANUAL_ONLY
   WHEN_CREATED
@@ -395,57 +419,59 @@ enum SchedulingBookingSource {
 // ============================================================
 
 model User {
-  id             String    @id @default(cuid())
-  email          String    @unique
-  passwordHash   String
-  firstName      String
-  lastName       String
-  phone          String?
-  isPlatformAdmin Boolean  @default(false)
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  phone                String?
+  isPlatformAdmin      Boolean   @default(false)
   loadedLaborCostCents Int?
-  emailVerifiedAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  emailVerifiedAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  memberships          Membership[]
-  sessions             Session[]
-  passwordResetTokens  PasswordResetToken[]
-  teamInvitesSent      TeamInvite[]         @relation("TeamInviteSender")
-  auditLogs            AuditLog[]           @relation("AuditActor")
-  assignedJobs         JobAssignment[]
-  expensesCreated      Expense[]            @relation("ExpenseCreator")
-  invitedMemberships   Membership[]         @relation("MembershipInviter")
-  assignedLeads        Lead[]               @relation("LeadAssignee")
-  leadActivities       LeadActivity[]
-  attributionOverrides AttributionEvent[]   @relation("AttributionOverride")
-  playbookVersionsCreated PlaybookVersion[] @relation("PlaybookVersionAuthor")
-  jobWorkflowEvents JobWorkflowEvent[]
-  oauthStates OAuthState[]
-  importSessions ImportSession[]
-  importResetOperations ImportResetOperation[] @relation("ImportResetActor")
-  receiptsUploaded Receipt[] @relation("ReceiptUploader")
-  jobCostsCreated JobCost[] @relation("JobCostCreator")
-  estimatesCreated Estimate[] @relation("EstimateCreator")
-  paymentsRecorded Payment[] @relation("PaymentRecorder")
-  membershipsSold CustomerMembership[] @relation("MembershipSoldBy")
-  compensationEvents CompensationEvent[]
-  compensationApprovals CompensationEvent[] @relation("CompensationApprover")
-  jobPhotosUploaded JobPhoto[] @relation("JobPhotoUploader")
-  customerNotesAuthored CustomerNote[] @relation("CustomerNoteAuthor")
-  waitingRecordsOwned WaitingRecord[] @relation("WaitingRecordOwner")
-  waitingTransitions WaitingTransition[]
-  performanceGoals PerformanceGoal[]
-  aiConversations AIConversation[]
-  aiUsageEvents AIUsageEvent[]
-  aiActionDrafts AIActionDraft[]
-  aiActionsRequested AIActionRequest[] @relation("AIActionRequestedBy")
-  aiActionsApproved AIActionRequest[] @relation("AIActionApprovedBy")
-  companyTasksAssigned CompanyTask[] @relation("CompanyTaskAssignee")
-  companyTasksCreated CompanyTask[] @relation("CompanyTaskCreator")
+  memberships                    Membership[]
+  sessions                       Session[]
+  passwordResetTokens            PasswordResetToken[]
+  teamInvitesSent                TeamInvite[]                   @relation("TeamInviteSender")
+  auditLogs                      AuditLog[]                     @relation("AuditActor")
+  assignedJobs                   JobAssignment[]
+  expensesCreated                Expense[]                      @relation("ExpenseCreator")
+  invitedMemberships             Membership[]                   @relation("MembershipInviter")
+  assignedLeads                  Lead[]                         @relation("LeadAssignee")
+  leadActivities                 LeadActivity[]
+  attributionOverrides           AttributionEvent[]             @relation("AttributionOverride")
+  playbookVersionsCreated        PlaybookVersion[]              @relation("PlaybookVersionAuthor")
+  jobWorkflowEvents              JobWorkflowEvent[]
+  oauthStates                    OAuthState[]
+  importSessions                 ImportSession[]
+  importResetOperations          ImportResetOperation[]         @relation("ImportResetActor")
+  receiptsUploaded               Receipt[]                      @relation("ReceiptUploader")
+  jobCostsCreated                JobCost[]                      @relation("JobCostCreator")
+  jobPartsCreated                JobPart[]                      @relation("JobPartCreator")
+  inventoryMovements             InventoryMovement[]            @relation("InventoryMovementActor")
+  estimatesCreated               Estimate[]                     @relation("EstimateCreator")
+  paymentsRecorded               Payment[]                      @relation("PaymentRecorder")
+  membershipsSold                CustomerMembership[]           @relation("MembershipSoldBy")
+  compensationEvents             CompensationEvent[]
+  compensationApprovals          CompensationEvent[]            @relation("CompensationApprover")
+  jobPhotosUploaded              JobPhoto[]                     @relation("JobPhotoUploader")
+  customerNotesAuthored          CustomerNote[]                 @relation("CustomerNoteAuthor")
+  waitingRecordsOwned            WaitingRecord[]                @relation("WaitingRecordOwner")
+  waitingTransitions             WaitingTransition[]
+  performanceGoals               PerformanceGoal[]
+  aiConversations                AIConversation[]
+  aiUsageEvents                  AIUsageEvent[]
+  aiActionDrafts                 AIActionDraft[]
+  aiActionsRequested             AIActionRequest[]              @relation("AIActionRequestedBy")
+  aiActionsApproved              AIActionRequest[]              @relation("AIActionApprovedBy")
+  companyTasksAssigned           CompanyTask[]                  @relation("CompanyTaskAssignee")
+  companyTasksCreated            CompanyTask[]                  @relation("CompanyTaskCreator")
   technicianWindowAvailabilities TechnicianWindowAvailability[]
-  availabilityOverrides AvailabilityOverride[]
+  availabilityOverrides          AvailabilityOverride[]
   technicianServiceEligibilities TechnicianServiceEligibility[]
-  schedulingBookings SchedulingBooking[]
+  schedulingBookings             SchedulingBooking[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -467,23 +493,23 @@ model Session {
 }
 
 model TeamInvite {
-  id               String      @id @default(cuid())
-  companyId        String
-  email            String
-  firstName        String
-  lastName         String
-  role             CompanyRole
-  tokenHash        String      @unique
-  invitedById      String
-  userId           String?
-  expiresAt        DateTime
-  acceptedAt       DateTime?
-  revokedAt        DateTime?
-  lastEmailStatus  String?
-  lastEmailError   String?
-  lastEmailedAt    DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  companyId       String
+  email           String
+  firstName       String
+  lastName        String
+  role            CompanyRole
+  tokenHash       String      @unique
+  invitedById     String
+  userId          String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  lastEmailStatus String?
+  lastEmailError  String?
+  lastEmailedAt   DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invitedBy User    @relation("TeamInviteSender", fields: [invitedById], references: [id], onDelete: Restrict)
@@ -493,12 +519,12 @@ model TeamInvite {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -507,152 +533,156 @@ model PasswordResetToken {
 }
 
 model Company {
-  id            String        @id @default(cuid())
-  businessName  String
-  legalName     String?
-  tradeName     String?
-  industry      Industry      @default(HVAC)
-  phone         String?
-  email         String?
-  website       String?
-  address       String?
-  city          String?
-  state         String?
-  zip           String?
-  timezone      String        @default("America/New_York")
-  logoUrl       String?
-  primaryColor  String?       @default("#0F766E")
-  accentColor   String?
-  tagline       String?
-  description   String?
-  hoursNote     String?
-  isDemo        Boolean       @default(false)
-  customerConversationOwner CustomerConversationOwner @default(CONTRACTORYOU)
-  allowExternalIntegrationTesting Boolean @default(false)
-  status        CompanyStatus @default(ONBOARDING)
-  companySize   String?
-  serviceArea   String?
-  onboardingStep Int          @default(0)
-  suspendedAt   DateTime?
-  suspendedReason String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                              String                    @id @default(cuid())
+  businessName                    String
+  legalName                       String?
+  tradeName                       String?
+  industry                        Industry                  @default(HVAC)
+  phone                           String?
+  email                           String?
+  website                         String?
+  address                         String?
+  city                            String?
+  state                           String?
+  zip                             String?
+  timezone                        String                    @default("America/New_York")
+  logoUrl                         String?
+  primaryColor                    String?                   @default("#0F766E")
+  accentColor                     String?
+  tagline                         String?
+  description                     String?
+  hoursNote                       String?
+  isDemo                          Boolean                   @default(false)
+  customerConversationOwner       CustomerConversationOwner @default(CONTRACTORYOU)
+  allowExternalIntegrationTesting Boolean                   @default(false)
+  status                          CompanyStatus             @default(ONBOARDING)
+  companySize                     String?
+  serviceArea                     String?
+  onboardingStep                  Int                       @default(0)
+  suspendedAt                     DateTime?
+  suspendedReason                 String?
+  createdAt                       DateTime                  @default(now())
+  updatedAt                       DateTime                  @updatedAt
 
-  memberships Membership[]
-  customers   Customer[]
-  properties  Property[]
-  jobs        Job[]
-  estimates   Estimate[]
-  invoices    Invoice[]
-  expenses    Expense[]
-  receipts    Receipt[]
-  equipment   Equipment[]
-  auditLogs   AuditLog[]
-  numberSequences NumberSequence[]
-  leads Lead[]
-  leadActivities LeadActivity[]
-  integrationConnections IntegrationConnection[]
-  integrationCredentials IntegrationCredential[]
-  integrationSyncs IntegrationSync[]
-  integrationEvents IntegrationEvent[]
-  attributionEvents AttributionEvent[]
-  marketingSpendEntries MarketingSpend[]
-  campaigns Campaign[]
-  reviews Review[]
-  reviewRequests ReviewRequest[]
-  callRecords CallRecord[]
-  automations Automation[]
-  insights Insight[]
-  metricSnapshots MetricSnapshot[]
-  socialPosts SocialPost[]
-  formSubmissions FormSubmission[]
-  oauthStates OAuthState[]
-  integrationAccounts IntegrationAccount[]
-  websiteForms WebsiteForm[]
-  landingPages LandingPage[]
-  trackingNumbers TrackingNumber[]
-  socialPublications SocialPostPublication[]
-  playbooks Playbook[]
-  playbookVersions PlaybookVersion[]
-  jobPlaybookSnapshots JobPlaybookSnapshot[]
-  jobWorkflowEvents JobWorkflowEvent[]
-  jobChecklistItems JobChecklistItem[]
-  formTemplates FormTemplate[]
-  aiConversations AIConversation[]
-  aiMessages AIMessage[]
-  aiUsageEvents AIUsageEvent[]
-  aiActionDrafts AIActionDraft[]
-  aiActionRequests AIActionRequest[]
-  aiActionTargets AIActionTarget[]
-  companyTasks CompanyTask[]
-  intelligenceSetting CompanyIntelligenceSetting?
-  aiReceptionistSetting CompanyAiReceptionistSetting?
-  receptionistTurns ReceptionistTurn[]
-  receptionistKnowledgeItems ReceptionistKnowledgeItem[]
-  receptionistConversationRules ReceptionistConversationRule[]
-  receptionistOpportunityRules ReceptionistOpportunityRule[]
-  receptionistApprovedExamples ReceptionistApprovedExample[]
-  receptionistTrainingReviews ReceptionistTrainingReview[]
-  receptionistOpportunityEvents ReceptionistOpportunityEvent[]
-  importSessions ImportSession[]
-  importRows ImportRow[]
-  importExternalRefs ImportExternalRef[]
-  importProfiles ImportMappingProfile[]
-  importResetOperations ImportResetOperation[]
-  importReviewItems ImportReviewItem[]
-  quickBooksSyncRuns QuickBooksSyncRun[]
-  quickBooksImportReviews QuickBooksImportReview[]
-  vendors Vendor[]
-  accountingAccounts AccountingAccount[]
-  migrationProjects MigrationProject[]
-  vehicles Vehicle[]
-  jobCosts JobCost[]
-  quickBooksSettings QuickBooksSettings?
-  quickBooksMappings QuickBooksMapping[]
-  quickBooksSyncEvents QuickBooksSyncEvent[]
-  billingWatchdogSettings BillingWatchdogSettings?
-  billingWatchdogFindings BillingWatchdogFinding[]
-  pricebookCategories PricebookCategory[]
-  pricebookItems PricebookItem[]
-  membershipPlans MembershipPlan[]
-  customerMemberships CustomerMembership[]
-  estimateOptions EstimateOption[]
-  compensationRules CompensationRule[]
-  compensationRuleVersions CompensationRuleVersion[]
-  compensationEvents CompensationEvent[]
-  performanceGoals PerformanceGoal[]
-  jobPhotos JobPhoto[]
-  customerNotes CustomerNote[]
-  teamInvites TeamInvite[]
-  routeOptimizationRuns RouteOptimizationRun[]
-  stripeConnectAccount StripeConnectAccount?
-  stripeWebhookEvents StripeWebhookEvent[]
-  serviceTypes ServiceType[]
-  providerIdentityMaps ProviderIdentityMap[]
-  communicationThreads CommunicationThread[]
-  communicationMessages CommunicationMessage[]
-  techDiscountLimitBps Int?
-  routeStartKind String?
-  routeEndKind String?
-  providerTestGrantsAsTenant ProviderTestGrant[] @relation("ProviderTestGrantTenant")
-  providerTestGrantsAsOwner  ProviderTestGrant[] @relation("ProviderTestGrantOwner")
-  waitingColumns WaitingColumn[]
-  waitingRecords WaitingRecord[]
-  waitingTransitions WaitingTransition[]
-  waitingTemplates WaitingTemplate[]
-  waitingCommunications WaitingCommunication[]
-  waitingBoardSetting WaitingBoardSetting?
-  appointmentWindows AppointmentWindow[]
+  memberships                    Membership[]
+  customers                      Customer[]
+  properties                     Property[]
+  jobs                           Job[]
+  estimates                      Estimate[]
+  invoices                       Invoice[]
+  expenses                       Expense[]
+  receipts                       Receipt[]
+  equipment                      Equipment[]
+  auditLogs                      AuditLog[]
+  numberSequences                NumberSequence[]
+  leads                          Lead[]
+  leadActivities                 LeadActivity[]
+  integrationConnections         IntegrationConnection[]
+  integrationCredentials         IntegrationCredential[]
+  integrationSyncs               IntegrationSync[]
+  integrationEvents              IntegrationEvent[]
+  attributionEvents              AttributionEvent[]
+  marketingSpendEntries          MarketingSpend[]
+  campaigns                      Campaign[]
+  reviews                        Review[]
+  reviewRequests                 ReviewRequest[]
+  callRecords                    CallRecord[]
+  automations                    Automation[]
+  insights                       Insight[]
+  metricSnapshots                MetricSnapshot[]
+  socialPosts                    SocialPost[]
+  formSubmissions                FormSubmission[]
+  oauthStates                    OAuthState[]
+  integrationAccounts            IntegrationAccount[]
+  websiteForms                   WebsiteForm[]
+  landingPages                   LandingPage[]
+  trackingNumbers                TrackingNumber[]
+  socialPublications             SocialPostPublication[]
+  playbooks                      Playbook[]
+  playbookVersions               PlaybookVersion[]
+  jobPlaybookSnapshots           JobPlaybookSnapshot[]
+  jobWorkflowEvents              JobWorkflowEvent[]
+  jobChecklistItems              JobChecklistItem[]
+  formTemplates                  FormTemplate[]
+  aiConversations                AIConversation[]
+  aiMessages                     AIMessage[]
+  aiUsageEvents                  AIUsageEvent[]
+  aiActionDrafts                 AIActionDraft[]
+  aiActionRequests               AIActionRequest[]
+  aiActionTargets                AIActionTarget[]
+  companyTasks                   CompanyTask[]
+  intelligenceSetting            CompanyIntelligenceSetting?
+  aiReceptionistSetting          CompanyAiReceptionistSetting?
+  receptionistTurns              ReceptionistTurn[]
+  receptionistKnowledgeItems     ReceptionistKnowledgeItem[]
+  receptionistConversationRules  ReceptionistConversationRule[]
+  receptionistOpportunityRules   ReceptionistOpportunityRule[]
+  receptionistApprovedExamples   ReceptionistApprovedExample[]
+  receptionistTrainingReviews    ReceptionistTrainingReview[]
+  receptionistOpportunityEvents  ReceptionistOpportunityEvent[]
+  importSessions                 ImportSession[]
+  importRows                     ImportRow[]
+  importExternalRefs             ImportExternalRef[]
+  importProfiles                 ImportMappingProfile[]
+  importResetOperations          ImportResetOperation[]
+  importReviewItems              ImportReviewItem[]
+  quickBooksSyncRuns             QuickBooksSyncRun[]
+  quickBooksImportReviews        QuickBooksImportReview[]
+  vendors                        Vendor[]
+  accountingAccounts             AccountingAccount[]
+  migrationProjects              MigrationProject[]
+  vehicles                       Vehicle[]
+  jobCosts                       JobCost[]
+  quickBooksSettings             QuickBooksSettings?
+  quickBooksMappings             QuickBooksMapping[]
+  quickBooksSyncEvents           QuickBooksSyncEvent[]
+  inventoryLocations             InventoryLocation[]
+  inventoryStocks                InventoryStock[]
+  inventoryMovements             InventoryMovement[]
+  jobParts                       JobPart[]
+  billingWatchdogSettings        BillingWatchdogSettings?
+  billingWatchdogFindings        BillingWatchdogFinding[]
+  pricebookCategories            PricebookCategory[]
+  pricebookItems                 PricebookItem[]
+  membershipPlans                MembershipPlan[]
+  customerMemberships            CustomerMembership[]
+  estimateOptions                EstimateOption[]
+  compensationRules              CompensationRule[]
+  compensationRuleVersions       CompensationRuleVersion[]
+  compensationEvents             CompensationEvent[]
+  performanceGoals               PerformanceGoal[]
+  jobPhotos                      JobPhoto[]
+  customerNotes                  CustomerNote[]
+  teamInvites                    TeamInvite[]
+  routeOptimizationRuns          RouteOptimizationRun[]
+  stripeConnectAccount           StripeConnectAccount?
+  stripeWebhookEvents            StripeWebhookEvent[]
+  serviceTypes                   ServiceType[]
+  providerIdentityMaps           ProviderIdentityMap[]
+  communicationThreads           CommunicationThread[]
+  communicationMessages          CommunicationMessage[]
+  techDiscountLimitBps           Int?
+  routeStartKind                 String?
+  routeEndKind                   String?
+  providerTestGrantsAsTenant     ProviderTestGrant[]            @relation("ProviderTestGrantTenant")
+  providerTestGrantsAsOwner      ProviderTestGrant[]            @relation("ProviderTestGrantOwner")
+  waitingColumns                 WaitingColumn[]
+  waitingRecords                 WaitingRecord[]
+  waitingTransitions             WaitingTransition[]
+  waitingTemplates               WaitingTemplate[]
+  waitingCommunications          WaitingCommunication[]
+  waitingBoardSetting            WaitingBoardSetting?
+  appointmentWindows             AppointmentWindow[]
   technicianWindowAvailabilities TechnicianWindowAvailability[]
-  availabilityOverrides AvailabilityOverride[]
-  schedulingPolicy SchedulingPolicy?
-  serviceTypeSchedulingRules ServiceTypeSchedulingRule[]
+  availabilityOverrides          AvailabilityOverride[]
+  schedulingPolicy               SchedulingPolicy?
+  serviceTypeSchedulingRules     ServiceTypeSchedulingRule[]
   technicianServiceEligibilities TechnicianServiceEligibility[]
-  conversationSchedulingStates ConversationSchedulingState[]
-  maintenanceVisits MaintenanceVisit[]
-  schedulingBookings SchedulingBooking[]
-  agentToolCredentials AgentToolCredential[]
-  agentToolCalls AgentToolCall[]
+  conversationSchedulingStates   ConversationSchedulingState[]
+  maintenanceVisits              MaintenanceVisit[]
+  schedulingBookings             SchedulingBooking[]
+  agentToolCredentials           AgentToolCredential[]
+  agentToolCalls                 AgentToolCall[]
 
   @@index([status])
   @@index([industry])
@@ -672,17 +702,17 @@ model Membership {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  invitedBy User?   @relation("MembershipInviter", fields: [invitedById], references: [id])
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy         User?    @relation("MembershipInviter", fields: [invitedById], references: [id])
   assignedVehicleId String?
-  assignedVehicle Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
-  routeStartKind String?
-  routeEndKind String?
-  homeAddress String?
-  homeCity String?
-  homeState String?
-  homeZip String?
+  assignedVehicle   Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+  routeStartKind    String?
+  routeEndKind      String?
+  homeAddress       String?
+  homeCity          String?
+  homeState         String?
+  homeZip           String?
 
   @@unique([companyId, userId])
   @@index([userId])
@@ -718,14 +748,14 @@ model ServiceType {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
-  jobs     Job[]
-  invoices Invoice[]
-  schedulingRules ServiceTypeSchedulingRule[]
+  company                 Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook                Playbook?                      @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  jobs                    Job[]
+  invoices                Invoice[]
+  schedulingRules         ServiceTypeSchedulingRule[]
   technicianEligibilities TechnicianServiceEligibility[]
-  defaultForPolicies SchedulingPolicy[] @relation("DefaultServiceType")
-  maintenanceForPolicies SchedulingPolicy[] @relation("MaintenanceServiceType")
+  defaultForPolicies      SchedulingPolicy[]             @relation("DefaultServiceType")
+  maintenanceForPolicies  SchedulingPolicy[]             @relation("MaintenanceServiceType")
 
   @@unique([companyId, key])
   @@index([companyId, active, sortOrder])
@@ -737,53 +767,53 @@ model ServiceType {
 // ============================================================
 
 model Customer {
-  id                     String                 @id @default(cuid())
-  companyId              String
-  firstName              String
-  lastName               String
-  businessName           String?
-  email                  String?
-  phone                  String?
-  secondaryPhone         String?
-  preferredContactMethod PreferredContactMethod @default(ANY)
-  notes                  String?
-  status                 CustomerStatus         @default(ACTIVE)
-  tags                   String[]               @default([])
-  source                 String?
-  sourceSystem           String?
-  externalId             String?
-  importSessionId        String?
-  importMode             String                 @default("LIVE")
-  quickbooksCustomerId   String?
-  quickbooksRealmId      String?
+  id                       String                 @id @default(cuid())
+  companyId                String
+  firstName                String
+  lastName                 String
+  businessName             String?
+  email                    String?
+  phone                    String?
+  secondaryPhone           String?
+  preferredContactMethod   PreferredContactMethod @default(ANY)
+  notes                    String?
+  status                   CustomerStatus         @default(ACTIVE)
+  tags                     String[]               @default([])
+  source                   String?
+  sourceSystem             String?
+  externalId               String?
+  importSessionId          String?
+  importMode               String                 @default("LIVE")
+  quickbooksCustomerId     String?
+  quickbooksRealmId        String?
   quickbooksLastModifiedAt DateTime?
-  lastSyncedAt           DateTime?
-  syncStatus             String?
-  syncError              String?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
+  lastSyncedAt             DateTime?
+  syncStatus               String?
+  syncError                String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
-  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  properties Property[]
-  jobs       Job[]
-  estimates  Estimate[]
-  invoices   Invoice[]
-  expenses   Expense[]
-  equipment  Equipment[]
-  leads      Lead[]
-  reviews    Review[]
-  reviewRequests ReviewRequest[]
-  callRecords CallRecord[]
-  formSubmissions FormSubmission[]
-  attributionEvents AttributionEvent[]
-  communicationThreads CommunicationThread[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
-  customerMemberships CustomerMembership[]
-  compensationEvents CompensationEvent[]
-  customerNotes CustomerNote[]
-  waitingRecords WaitingRecord[]
+  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  properties                   Property[]
+  jobs                         Job[]
+  estimates                    Estimate[]
+  invoices                     Invoice[]
+  expenses                     Expense[]
+  equipment                    Equipment[]
+  leads                        Lead[]
+  reviews                      Review[]
+  reviewRequests               ReviewRequest[]
+  callRecords                  CallRecord[]
+  formSubmissions              FormSubmission[]
+  attributionEvents            AttributionEvent[]
+  communicationThreads         CommunicationThread[]
+  importSession                ImportSession?                @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships          CustomerMembership[]
+  compensationEvents           CompensationEvent[]
+  customerNotes                CustomerNote[]
+  waitingRecords               WaitingRecord[]
   conversationSchedulingStates ConversationSchedulingState[]
-  maintenanceVisits MaintenanceVisit[]
+  maintenanceVisits            MaintenanceVisit[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -797,56 +827,56 @@ model Customer {
 }
 
 model Property {
-  id           String       @id @default(cuid())
-  companyId    String
-  customerId   String
-  name         String?
-  address      String
-  city         String
-  state        String
-  zip          String
-  propertyType PropertyType @default(RESIDENTIAL)
-  accessNotes  String?
-  gateCodeNotes String? // treat as sensitive operational note
-  isPrimary    Boolean      @default(false)
-  yearBuilt    Int?
-  squareFeet   Int?
-  bedrooms     Int?
-  bathrooms    Float?
-  lotSizeSqFt  Int?
-  lastSaleDate DateTime?
-  lastSalePriceCents Int?
-  assessedValueCents Int?
-  latitude     Float?
-  longitude    Float?
-  photoPath    String?
-  photoSource  String?
-  photoCaption String?
-  propertyClass String?
-  tags         String[]     @default([])
-  enrichmentProvider     String?
-  enrichmentRetrievedAt  DateTime?
-  enrichmentExternalId   String?
-  enrichmentStatus       String?   @default("NONE")
-  factProvenance         Json?
-  sourceSystem    String?
-  externalId      String?
-  importSessionId String?
-  importMode      String       @default("LIVE")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                    String       @id @default(cuid())
+  companyId             String
+  customerId            String
+  name                  String?
+  address               String
+  city                  String
+  state                 String
+  zip                   String
+  propertyType          PropertyType @default(RESIDENTIAL)
+  accessNotes           String?
+  gateCodeNotes         String? // treat as sensitive operational note
+  isPrimary             Boolean      @default(false)
+  yearBuilt             Int?
+  squareFeet            Int?
+  bedrooms              Int?
+  bathrooms             Float?
+  lotSizeSqFt           Int?
+  lastSaleDate          DateTime?
+  lastSalePriceCents    Int?
+  assessedValueCents    Int?
+  latitude              Float?
+  longitude             Float?
+  photoPath             String?
+  photoSource           String?
+  photoCaption          String?
+  propertyClass         String?
+  tags                  String[]     @default([])
+  enrichmentProvider    String?
+  enrichmentRetrievedAt DateTime?
+  enrichmentExternalId  String?
+  enrichmentStatus      String?      @default("NONE")
+  factProvenance        Json?
+  sourceSystem          String?
+  externalId            String?
+  importSessionId       String?
+  importMode            String       @default("LIVE")
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer  Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  jobs      Job[]
-  estimates Estimate[]
-  invoices  Invoice[]
-  equipment Equipment[]
-  leads     Lead[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobs                Job[]
+  estimates           Estimate[]
+  invoices            Invoice[]
+  equipment           Equipment[]
+  leads               Lead[]
+  importSession       ImportSession?       @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
   customerMemberships CustomerMembership[]
-  customerNotes CustomerNote[]
-  waitingRecords WaitingRecord[]
+  customerNotes       CustomerNote[]
+  waitingRecords      WaitingRecord[]
 
   @@index([companyId])
   @@index([companyId, customerId])
@@ -857,32 +887,32 @@ model Property {
 }
 
 model Equipment {
-  id          String   @id @default(cuid())
-  companyId   String
-  customerId  String?
-  propertyId  String?
-  name        String
-  equipmentType String?
-  manufacturer String?
-  model       String?
-  serialNumber String?
-  installDate DateTime?
-  location    String?
+  id                String    @id @default(cuid())
+  companyId         String
+  customerId        String?
+  propertyId        String?
+  name              String
+  equipmentType     String?
+  manufacturer      String?
+  model             String?
+  serialNumber      String?
+  installDate       DateTime?
+  location          String?
   warrantyExpiresAt DateTime?
-  warrantyNotes String?
-  notes       String?
-  sourceSystem String?
-  externalId   String?
-  importSessionId String?
-  importMode  String   @default("LIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  warrantyNotes     String?
+  notes             String?
+  sourceSystem      String?
+  externalId        String?
+  importSessionId   String?
+  importMode        String    @default("LIVE")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  property      Property?      @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
-  photos JobPhoto[]
+  photos        JobPhoto[]
 
   @@index([companyId])
   @@index([companyId, customerId])
@@ -894,18 +924,18 @@ model Equipment {
 }
 
 model JobPhoto {
-  id            String   @id @default(cuid())
-  companyId     String
-  jobId         String
-  equipmentId   String?
-  kind          String   @default("OTHER")
-  caption       String?
-  fileName      String
-  filePath      String
-  mimeType      String
-  uploadedById  String?
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
+  id           String    @id @default(cuid())
+  companyId    String
+  jobId        String
+  equipmentId  String?
+  kind         String    @default("OTHER")
+  caption      String?
+  fileName     String
+  filePath     String
+  mimeType     String
+  uploadedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
 
   company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -926,10 +956,10 @@ model CustomerNote {
   body       String   @db.Text
   createdAt  DateTime @default(now())
 
-  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  author   User?    @relation("CustomerNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  author   User?     @relation("CustomerNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([companyId, customerId, createdAt])
   @@index([companyId, propertyId])
@@ -940,80 +970,82 @@ model CustomerNote {
 // ============================================================
 
 model Job {
-  id                  String      @id @default(cuid())
-  companyId           String
-  customerId          String
-  propertyId          String
-  jobNumber           String
-  jobType             String?
-  serviceTypeId       String?
-  trade               Industry?
-  status              JobStatus   @default(NEW)
-  priority            JobPriority @default(NORMAL)
-  source              String?
-  description         String?
-  internalNotes       String?
-  customerNotes       String?
-  scheduledStart      DateTime?
-  scheduledEnd        DateTime?
-  arrivalWindowStart  DateTime?
-  arrivalWindowEnd    DateTime?
-  checkedInAt         DateTime?
-  checkedOutAt        DateTime?
-  completedAt         DateTime?
+  id                       String      @id @default(cuid())
+  companyId                String
+  customerId               String
+  propertyId               String
+  jobNumber                String
+  jobType                  String?
+  serviceTypeId            String?
+  trade                    Industry?
+  status                   JobStatus   @default(NEW)
+  priority                 JobPriority @default(NORMAL)
+  source                   String?
+  description              String?
+  internalNotes            String?
+  customerNotes            String?
+  scheduledStart           DateTime?
+  scheduledEnd             DateTime?
+  arrivalWindowStart       DateTime?
+  arrivalWindowEnd         DateTime?
+  checkedInAt              DateTime?
+  checkedOutAt             DateTime?
+  completedAt              DateTime?
   // Financial readiness (cents) — populated as invoices/expenses link
   // Do not invent values; calculated from related records when available
-  estimateId          String?     @unique
-  playbookId          String?
-  playbookVersionId   String?
-  sourceSystem        String?
-  externalId          String?
-  importSessionId     String?
-  importMode          String      @default("LIVE")
-  importedTechnicianName String?
-  importedSnapshot    Json?
-  importedOccurredAt  DateTime?
-  importedTotalCents  Int?
-  scheduleLocked      Boolean     @default(false)
-  routeOrder          Int?
-  appointmentWindowId String?
-  bookedByContractorYou Boolean   @default(false)
-  confirmationFailed  Boolean     @default(false)
+  estimateId               String?     @unique
+  playbookId               String?
+  playbookVersionId        String?
+  sourceSystem             String?
+  externalId               String?
+  importSessionId          String?
+  importMode               String      @default("LIVE")
+  importedTechnicianName   String?
+  importedSnapshot         Json?
+  importedOccurredAt       DateTime?
+  importedTotalCents       Int?
+  scheduleLocked           Boolean     @default(false)
+  routeOrder               Int?
+  appointmentWindowId      String?
+  bookedByContractorYou    Boolean     @default(false)
+  confirmationFailed       Boolean     @default(false)
   schedulingIdempotencyKey String?
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
 
-  company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  serviceType ServiceType?   @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
-  playbook   Playbook?       @relation(fields: [playbookId], references: [id], onDelete: SetNull)
-  playbookVersion PlaybookVersion? @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
-  playbookSnapshot JobPlaybookSnapshot?
-  workflowEvents JobWorkflowEvent[]
-  checklistItems JobChecklistItem[]
-  customer   Customer        @relation(fields: [customerId], references: [id])
-  property   Property        @relation(fields: [propertyId], references: [id])
-  estimate   Estimate?       @relation("JobEstimate", fields: [estimateId], references: [id])
-  estimates  Estimate[]      @relation("EstimateOptionalJob")
-  invoices   Invoice[]
-  expenses   Expense[]
-  jobCosts   JobCost[]
-  receipts   Receipt[]
-  assignments JobAssignment[]
-  leads      Lead[]
-  reviews    Review[]
-  reviewRequests ReviewRequest[]
-  callRecords CallRecord[]
-  attributionEvents AttributionEvent[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
-  customerMemberships CustomerMembership[]
-  compensationEvents CompensationEvent[]
-  photos JobPhoto[]
-  waitingRecords WaitingRecord[]
-  appointmentWindow AppointmentWindow? @relation(fields: [appointmentWindowId], references: [id], onDelete: SetNull)
-  schedulingBooking SchedulingBooking?
-  maintenanceVisits MaintenanceVisit[]
+  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceType                  ServiceType?                  @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  playbook                     Playbook?                     @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  playbookVersion              PlaybookVersion?              @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
+  playbookSnapshot             JobPlaybookSnapshot?
+  workflowEvents               JobWorkflowEvent[]
+  checklistItems               JobChecklistItem[]
+  customer                     Customer                      @relation(fields: [customerId], references: [id])
+  property                     Property                      @relation(fields: [propertyId], references: [id])
+  estimate                     Estimate?                     @relation("JobEstimate", fields: [estimateId], references: [id])
+  estimates                    Estimate[]                    @relation("EstimateOptionalJob")
+  invoices                     Invoice[]
+  expenses                     Expense[]
+  jobCosts                     JobCost[]
+  jobParts                     JobPart[]
+  inventoryMovements           InventoryMovement[]
+  receipts                     Receipt[]
+  assignments                  JobAssignment[]
+  leads                        Lead[]
+  reviews                      Review[]
+  reviewRequests               ReviewRequest[]
+  callRecords                  CallRecord[]
+  attributionEvents            AttributionEvent[]
+  importSession                ImportSession?                @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships          CustomerMembership[]
+  compensationEvents           CompensationEvent[]
+  photos                       JobPhoto[]
+  waitingRecords               WaitingRecord[]
+  appointmentWindow            AppointmentWindow?            @relation(fields: [appointmentWindowId], references: [id], onDelete: SetNull)
+  schedulingBooking            SchedulingBooking?
+  maintenanceVisits            MaintenanceVisit[]
   conversationSchedulingStates ConversationSchedulingState[]
-  billingWatchdogFindings BillingWatchdogFinding[]
+  billingWatchdogFindings      BillingWatchdogFinding[]
 
   @@unique([companyId, jobNumber])
   @@unique([companyId, schedulingIdempotencyKey])
@@ -1030,22 +1062,22 @@ model Job {
 }
 
 model RouteOptimizationRun {
-  id                 String   @id @default(cuid())
-  companyId          String
-  technicianUserId   String
-  day                DateTime
-  actorId            String
-  provider           String
-  status             String
-  currentSeconds     Int?
-  suggestedSeconds   Int?
-  currentMeters      Int?
-  suggestedMeters    Int?
-  currentJobIds      String
-  suggestedJobIds    String
-  error              String?
-  appliedAt          DateTime?
-  createdAt          DateTime @default(now())
+  id               String    @id @default(cuid())
+  companyId        String
+  technicianUserId String
+  day              DateTime
+  actorId          String
+  provider         String
+  status           String
+  currentSeconds   Int?
+  suggestedSeconds Int?
+  currentMeters    Int?
+  suggestedMeters  Int?
+  currentJobIds    String
+  suggestedJobIds  String
+  error            String?
+  appliedAt        DateTime?
+  createdAt        DateTime  @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1072,47 +1104,47 @@ model JobAssignment {
 // ============================================================
 
 model Estimate {
-  id             String         @id @default(cuid())
-  companyId      String
-  customerId     String
-  propertyId     String?
-  jobId          String?
-  estimateNumber String
-  status         EstimateStatus @default(DRAFT)
-  issueDate      DateTime       @default(now())
-  expirationDate DateTime?
+  id               String         @id @default(cuid())
+  companyId        String
+  customerId       String
+  propertyId       String?
+  jobId            String?
+  estimateNumber   String
+  status           EstimateStatus @default(DRAFT)
+  issueDate        DateTime       @default(now())
+  expirationDate   DateTime?
   // Money in integer cents
-  subtotalCents  Int            @default(0)
-  taxCents       Int            @default(0)
-  totalCents     Int            @default(0)
-  notes          String?
-  followUpAt     DateTime?
-  approvedAt     DateTime?
-  declinedAt     DateTime?
-  sourceSystem   String?
-  externalId     String?
-  importSessionId String?
-  importMode     String         @default("LIVE")
-  publicToken    String?        @unique
-  createdById    String?
+  subtotalCents    Int            @default(0)
+  taxCents         Int            @default(0)
+  totalCents       Int            @default(0)
+  notes            String?
+  followUpAt       DateTime?
+  approvedAt       DateTime?
+  declinedAt       DateTime?
+  sourceSystem     String?
+  externalId       String?
+  importSessionId  String?
+  importMode       String         @default("LIVE")
+  publicToken      String?        @unique
+  createdById      String?
   approvedOptionId String?
-  approvalMethod String?
-  version        Int            @default(1)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  approvalMethod   String?
+  version          Int            @default(1)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer  Customer        @relation(fields: [customerId], references: [id])
-  property  Property?       @relation(fields: [propertyId], references: [id])
-  job       Job?            @relation("EstimateOptionalJob", fields: [jobId], references: [id])
-  linkedJob Job?            @relation("JobEstimate")
-  createdBy User?           @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  lineItems EstimateLineItem[]
-  options   EstimateOption[]
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id])
+  property            Property?            @relation(fields: [propertyId], references: [id])
+  job                 Job?                 @relation("EstimateOptionalJob", fields: [jobId], references: [id])
+  linkedJob           Job?                 @relation("JobEstimate")
+  createdBy           User?                @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  lineItems           EstimateLineItem[]
+  options             EstimateOption[]
   customerMemberships CustomerMembership[]
-  leads     Lead[]
-  attributionEvents AttributionEvent[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  leads               Lead[]
+  attributionEvents   AttributionEvent[]
+  importSession       ImportSession?       @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, estimateNumber])
   @@index([companyId])
@@ -1124,22 +1156,22 @@ model Estimate {
 }
 
 model EstimateLineItem {
-  id          String  @id @default(cuid())
-  estimateId  String
-  optionId    String?
+  id              String  @id @default(cuid())
+  estimateId      String
+  optionId        String?
   pricebookItemId String?
-  name        String
-  description String?
-  quantity    Decimal @db.Decimal(12, 3)
-  unitPriceCents Int
-  costCents   Int?
-  taxable     Boolean @default(true)
-  category    String?
-  sortOrder   Int     @default(0)
+  name            String
+  description     String?
+  quantity        Decimal @db.Decimal(12, 3)
+  unitPriceCents  Int
+  costCents       Int?
+  taxable         Boolean @default(true)
+  category        String?
+  sortOrder       Int     @default(0)
 
-  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
-  option   EstimateOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
-  pricebookItem PricebookItem? @relation(fields: [pricebookItemId], references: [id], onDelete: SetNull)
+  estimate      Estimate        @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  option        EstimateOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+  pricebookItem PricebookItem?  @relation(fields: [pricebookItemId], references: [id], onDelete: SetNull)
 
   @@index([estimateId])
   @@index([optionId])
@@ -1150,51 +1182,51 @@ model EstimateLineItem {
 // ============================================================
 
 model Invoice {
-  id             String        @id @default(cuid())
-  companyId      String
-  customerId     String
-  propertyId     String?
-  jobId          String?
-  invoiceNumber  String
-  status         InvoiceStatus @default(DRAFT)
-  issueDate      DateTime      @default(now())
-  dueDate        DateTime?
-  subtotalCents  Int           @default(0)
-  taxCents       Int           @default(0)
-  totalCents     Int           @default(0)
-  amountPaidCents Int          @default(0)
-  balanceCents   Int           @default(0)
-  notes          String?
-  serviceTypeId  String?
-  sourceSystem   String?
-  externalId     String?
-  importSessionId String?
-  importMode     String        @default("LIVE")
-  quickbooksInvoiceId String?
-  quickbooksRealmId   String?
+  id                       String        @id @default(cuid())
+  companyId                String
+  customerId               String
+  propertyId               String?
+  jobId                    String?
+  invoiceNumber            String
+  status                   InvoiceStatus @default(DRAFT)
+  issueDate                DateTime      @default(now())
+  dueDate                  DateTime?
+  subtotalCents            Int           @default(0)
+  taxCents                 Int           @default(0)
+  totalCents               Int           @default(0)
+  amountPaidCents          Int           @default(0)
+  balanceCents             Int           @default(0)
+  notes                    String?
+  serviceTypeId            String?
+  sourceSystem             String?
+  externalId               String?
+  importSessionId          String?
+  importMode               String        @default("LIVE")
+  quickbooksInvoiceId      String?
+  quickbooksRealmId        String?
   quickbooksLastModifiedAt DateTime?
-  lastSyncedAt        DateTime?
-  syncStatus          String?
-  syncError           String?
-  publicToken    String?       @unique
-  sentAt         DateTime?
-  deliveryStatus String        @default("NONE")
-  lastDeliveryError String?
-  lastDeliveryChannel String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  lastSyncedAt             DateTime?
+  syncStatus               String?
+  syncError                String?
+  publicToken              String?       @unique
+  sentAt                   DateTime?
+  deliveryStatus           String        @default("NONE")
+  lastDeliveryError        String?
+  lastDeliveryChannel      String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
-  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company                 Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   billingWatchdogFindings BillingWatchdogFinding[]
-  serviceType ServiceType?    @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
-  customer  Customer          @relation(fields: [customerId], references: [id])
-  property  Property?         @relation(fields: [propertyId], references: [id])
-  job       Job?              @relation(fields: [jobId], references: [id])
-  lineItems InvoiceLineItem[]
-  payments  Payment[]
-  customerMemberships CustomerMembership[]
-  attributionEvents AttributionEvent[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  serviceType             ServiceType?             @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  customer                Customer                 @relation(fields: [customerId], references: [id])
+  property                Property?                @relation(fields: [propertyId], references: [id])
+  job                     Job?                     @relation(fields: [jobId], references: [id])
+  lineItems               InvoiceLineItem[]
+  payments                Payment[]
+  customerMemberships     CustomerMembership[]
+  attributionEvents       AttributionEvent[]
+  importSession           ImportSession?           @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -1209,17 +1241,17 @@ model Invoice {
 }
 
 model InvoiceLineItem {
-  id             String  @id @default(cuid())
-  invoiceId      String
-  name           String
-  description    String?
-  quantity       Decimal @db.Decimal(12, 3)
-  unitPriceCents Int
-  taxable        Boolean @default(true)
-  category       String?
-  sortOrder      Int     @default(0)
-  amountCents    Int?
-  externalId     String?
+  id               String  @id @default(cuid())
+  invoiceId        String
+  name             String
+  description      String?
+  quantity         Decimal @db.Decimal(12, 3)
+  unitPriceCents   Int
+  taxable          Boolean @default(true)
+  category         String?
+  sortOrder        Int     @default(0)
+  amountCents      Int?
+  externalId       String?
   quickbooksItemId String?
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -1229,39 +1261,39 @@ model InvoiceLineItem {
 
 // Payment records — gateway-agnostic; Stripe etc. can plug in later via externalRef
 model Payment {
-  id             String         @id @default(cuid())
-  companyId      String
-  invoiceId      String
-  customerId     String?
-  jobId          String?
-  amountCents    Int
-  method         PaymentMethod  @default(OTHER)
-  status         String         @default("RECORDED") // RECORDED | PENDING | PROCESSING | SUCCEEDED | FAILED | REFUNDED | PARTIALLY_REFUNDED | CONFIRMED
-  provider       String         @default("MANUAL")
-  providerPaymentId String?
-  recordedById   String?
-  reference      String?
-  paidAt         DateTime       @default(now())
-  externalRef    String?
-  notes          String?
-  sourceSystem   String?
-  externalId     String?
-  importSessionId String?
-  importMode     String         @default("LIVE")
-  quickbooksPaymentId String?
-  quickbooksRealmId   String?
+  id                       String        @id @default(cuid())
+  companyId                String
+  invoiceId                String
+  customerId               String?
+  jobId                    String?
+  amountCents              Int
+  method                   PaymentMethod @default(OTHER)
+  status                   String        @default("RECORDED") // RECORDED | PENDING | PROCESSING | SUCCEEDED | FAILED | REFUNDED | PARTIALLY_REFUNDED | CONFIRMED
+  provider                 String        @default("MANUAL")
+  providerPaymentId        String?
+  recordedById             String?
+  reference                String?
+  paidAt                   DateTime      @default(now())
+  externalRef              String?
+  notes                    String?
+  sourceSystem             String?
+  externalId               String?
+  importSessionId          String?
+  importMode               String        @default("LIVE")
+  quickbooksPaymentId      String?
+  quickbooksRealmId        String?
   quickbooksLastModifiedAt DateTime?
-  lastSyncedAt        DateTime?
-  syncStatus          String?
-  syncError           String?
-  refundedCents  Int            @default(0)
-  stripeAccountId String?
-  currency       String         @default("usd")
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  lastSyncedAt             DateTime?
+  syncStatus               String?
+  syncError                String?
+  refundedCents            Int           @default(0)
+  stripeAccountId          String?
+  currency                 String        @default("usd")
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  recordedBy User? @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  recordedBy    User?          @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
   importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, provider, providerPaymentId])
@@ -1274,20 +1306,20 @@ model Payment {
 }
 
 model StripeConnectAccount {
-  id                 String   @id @default(cuid())
-  companyId          String   @unique
-  stripeAccountId    String   @unique
-  onboardingStatus   String   @default("ONBOARDING")
-  chargesEnabled     Boolean  @default(false)
-  payoutsEnabled     Boolean  @default(false)
-  detailsSubmitted   Boolean  @default(false)
-  requirementsDue    String?
-  payoutSchedule     String?
-  bankLast4          String?
-  bankName           String?
-  disabledAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id               String    @id @default(cuid())
+  companyId        String    @unique
+  stripeAccountId  String    @unique
+  onboardingStatus String    @default("ONBOARDING")
+  chargesEnabled   Boolean   @default(false)
+  payoutsEnabled   Boolean   @default(false)
+  detailsSubmitted Boolean   @default(false)
+  requirementsDue  String?
+  payoutSchedule   String?
+  bankLast4        String?
+  bankName         String?
+  disabledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1312,46 +1344,46 @@ model StripeWebhookEvent {
 // ============================================================
 
 model Expense {
-  id              String          @id @default(cuid())
-  companyId       String
-  vendor          String?
-  date            DateTime        @default(now())
-  amountCents     Int
-  taxCents        Int             @default(0)
-  category        ExpenseCategory @default(OTHER)
-  description     String?
-  paymentMethod   PaymentMethod?
-  jobId           String?
-  customerId      String?
-  status          ExpenseStatus   @default(DRAFT)
-  createdById     String
-  receiptId       String?         @unique
-  sourceSystem    String?
-  externalId      String?
-  importSessionId String?
-  importMode      String          @default("LIVE")
-  vendorId        String?
-  accountId       String?
-  transactionType String?
-  quickbooksPurchaseId String?
-  quickbooksVendorId   String?
-  quickbooksRealmId    String?
+  id                       String          @id @default(cuid())
+  companyId                String
+  vendor                   String?
+  date                     DateTime        @default(now())
+  amountCents              Int
+  taxCents                 Int             @default(0)
+  category                 ExpenseCategory @default(OTHER)
+  description              String?
+  paymentMethod            PaymentMethod?
+  jobId                    String?
+  customerId               String?
+  status                   ExpenseStatus   @default(DRAFT)
+  createdById              String
+  receiptId                String?         @unique
+  sourceSystem             String?
+  externalId               String?
+  importSessionId          String?
+  importMode               String          @default("LIVE")
+  vendorId                 String?
+  accountId                String?
+  transactionType          String?
+  quickbooksPurchaseId     String?
+  quickbooksVendorId       String?
+  quickbooksRealmId        String?
   quickbooksLastModifiedAt DateTime?
-  lastSyncedAt         DateTime?
-  syncStatus           String?
-  syncError            String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  lastSyncedAt             DateTime?
+  syncStatus               String?
+  syncError                String?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
 
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  job       Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  vendorRecord Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  account   AccountingAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  createdBy User     @relation("ExpenseCreator", fields: [createdById], references: [id])
-  receipt   Receipt? @relation(fields: [receiptId], references: [id])
-  jobCosts  JobCost[]
-  importSession ImportSession? @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job           Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  customer      Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vendorRecord  Vendor?            @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  account       AccountingAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  createdBy     User               @relation("ExpenseCreator", fields: [createdById], references: [id])
+  receipt       Receipt?           @relation(fields: [receiptId], references: [id])
+  jobCosts      JobCost[]
+  importSession ImportSession?     @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, category])
@@ -1402,12 +1434,12 @@ model Receipt {
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
-  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  uploadedBy User?     @relation("ReceiptUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  job        Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  expense    Expense?
-  jobCosts   JobCost[]
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uploadedBy  User?     @relation("ReceiptUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  vehicle     Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  expense     Expense?
+  jobCosts    JobCost[]
   duplicateOf Receipt?  @relation("ReceiptDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates  Receipt[] @relation("ReceiptDuplicate")
 
@@ -1432,8 +1464,8 @@ model Vehicle {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  receipts Receipt[]
+  company             Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  receipts            Receipt[]
   assignedMemberships Membership[]
 
   @@index([companyId])
@@ -1441,20 +1473,20 @@ model Vehicle {
 }
 
 model JobCost {
-  id           String         @id @default(cuid())
-  companyId    String
-  jobId        String
-  category     JobCostCategory
-  description  String?
-  amountCents  Int
-  sourceType   JobCostSource
-  sourceId     String?
-  receiptId    String?
-  expenseId    String?
-  createdById  String
-  confirmed    Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id          String          @id @default(cuid())
+  companyId   String
+  jobId       String
+  category    JobCostCategory
+  description String?
+  amountCents Int
+  sourceType  JobCostSource
+  sourceId    String?
+  receiptId   String?
+  expenseId   String?
+  createdById String
+  confirmed   Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -1468,49 +1500,49 @@ model JobCost {
 }
 
 model QuickBooksSettings {
-  id                  String                   @id @default(cuid())
-  companyId           String                   @unique
-  invoiceSyncTrigger  QuickBooksInvoiceTrigger @default(MANUAL_ONLY)
-  appClientId         String?
-  appSecretCipher     Bytes?
-  appSecretIv         Bytes?
-  appSecretAuthTag    Bytes?
-  appSecretKeyVersion Int?
-  appEnvironment      String?
-  syncActivated       Boolean                  @default(false)
-  syncStartDate       DateTime?                @db.Date
-  syncEnvironment     String?
-  syncRealmId         String?
-  syncActivatedAt     DateTime?
-  qboCompanyName      String?
-  qboCompanyVerifiedAt DateTime?
-  wizardCompletedAt   DateTime?
+  id                          String                   @id @default(cuid())
+  companyId                   String                   @unique
+  invoiceSyncTrigger          QuickBooksInvoiceTrigger @default(MANUAL_ONLY)
+  appClientId                 String?
+  appSecretCipher             Bytes?
+  appSecretIv                 Bytes?
+  appSecretAuthTag            Bytes?
+  appSecretKeyVersion         Int?
+  appEnvironment              String?
+  syncActivated               Boolean                  @default(false)
+  syncStartDate               DateTime?                @db.Date
+  syncEnvironment             String?
+  syncRealmId                 String?
+  syncActivatedAt             DateTime?
+  qboCompanyName              String?
+  qboCompanyVerifiedAt        DateTime?
+  wizardCompletedAt           DateTime?
   lastSuccessfulInboundSyncAt DateTime?
   lastAttemptedInboundSyncAt  DateTime?
   inboundSyncHealth           String?
   writeBackEnabled            Boolean                  @default(false)
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model QuickBooksMapping {
-  id            String               @id @default(cuid())
-  companyId     String
-  environment   String?
-  realmId       String?
-  ownershipStatus String              @default("LEGACY_UNSCOPED")
-  entityType    String
-  internalId    String
-  quickbooksId  String
-  lastSyncedAt  DateTime?
-  status        QuickBooksSyncStatus @default(SYNCED)
-  lastSyncError String?
-  syncToken     String?
-  metadata      Json?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id              String               @id @default(cuid())
+  companyId       String
+  environment     String?
+  realmId         String?
+  ownershipStatus String               @default("LEGACY_UNSCOPED")
+  entityType      String
+  internalId      String
+  quickbooksId    String
+  lastSyncedAt    DateTime?
+  status          QuickBooksSyncStatus @default(SYNCED)
+  lastSyncError   String?
+  syncToken       String?
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1521,19 +1553,19 @@ model QuickBooksMapping {
 }
 
 model QuickBooksSyncEvent {
-  id            String               @id @default(cuid())
-  companyId     String
-  environment   String?
-  realmId       String?
-  ownershipStatus String              @default("LEGACY_UNSCOPED")
-  entityType    String
-  internalId    String?
-  quickbooksId  String?
-  direction     String               @default("PUSH")
-  status        QuickBooksSyncStatus
-  action        String
-  errorMessage  String?
-  createdAt     DateTime             @default(now())
+  id              String               @id @default(cuid())
+  companyId       String
+  environment     String?
+  realmId         String?
+  ownershipStatus String               @default("LEGACY_UNSCOPED")
+  entityType      String
+  internalId      String?
+  quickbooksId    String?
+  direction       String               @default("PUSH")
+  status          QuickBooksSyncStatus
+  action          String
+  errorMessage    String?
+  createdAt       DateTime             @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1577,19 +1609,19 @@ model QuickBooksSyncRun {
 }
 
 model QuickBooksSyncRunCategory {
-  id              String   @id @default(cuid())
-  runId           String
-  objectType      String
-  availableInQbo  Int      @default(0)
-  alreadyLinked   Int      @default(0)
-  newCount        Int      @default(0)
-  updatedCount    Int      @default(0)
-  duplicateCount  Int      @default(0)
-  conflictCount   Int      @default(0)
-  skippedCount    Int      @default(0)
-  failedCount     Int      @default(0)
-  lastSyncedAt    DateTime?
-  details         Json?
+  id             String    @id @default(cuid())
+  runId          String
+  objectType     String
+  availableInQbo Int       @default(0)
+  alreadyLinked  Int       @default(0)
+  newCount       Int       @default(0)
+  updatedCount   Int       @default(0)
+  duplicateCount Int       @default(0)
+  conflictCount  Int       @default(0)
+  skippedCount   Int       @default(0)
+  failedCount    Int       @default(0)
+  lastSyncedAt   DateTime?
+  details        Json?
 
   run QuickBooksSyncRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
@@ -1598,40 +1630,40 @@ model QuickBooksSyncRunCategory {
 }
 
 model QuickBooksImportReview {
-  id                 String   @id @default(cuid())
-  companyId          String
-  runId              String?
-  environment        String
-  realmId            String
-  objectType         String
-  quickbooksId       String
-  displayName        String
-  confidence         String
-  status             String   @default("OPEN")
-  proposedInternalId String?
-  proposedAction     String   @default("PENDING")
-  reason             String
-  payload            Json
-  matchSignals       Json?
-  searchText         String?
-  reviewFingerprint  String?
-  safeAutoApprove    Boolean  @default(false)
-  autoApprovalTier   String?
-  autoApprovalBlocker String?
-  resolutionType     String?
-  sourceFingerprint  String?
+  id                   String    @id @default(cuid())
+  companyId            String
+  runId                String?
+  environment          String
+  realmId              String
+  objectType           String
+  quickbooksId         String
+  displayName          String
+  confidence           String
+  status               String    @default("OPEN")
+  proposedInternalId   String?
+  proposedAction       String    @default("PENDING")
+  reason               String
+  payload              Json
+  matchSignals         Json?
+  searchText           String?
+  reviewFingerprint    String?
+  safeAutoApprove      Boolean   @default(false)
+  autoApprovalTier     String?
+  autoApprovalBlocker  String?
+  resolutionType       String?
+  sourceFingerprint    String?
   candidateFingerprint String?
-  skippedAt          DateTime?
-  skipCount          Int      @default(0)
-  confidenceScore    Int      @default(0)
-  differenceCount    Int      @default(0)
-  reviewedAt         DateTime?
-  reviewedById       String?
-  errorMessage       String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  skippedAt            DateTime?
+  skipCount            Int       @default(0)
+  confidenceScore      Int       @default(0)
+  differenceCount      Int       @default(0)
+  reviewedAt           DateTime?
+  reviewedById         String?
+  errorMessage         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   run     QuickBooksSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, environment, realmId, objectType, quickbooksId])
@@ -1644,7 +1676,7 @@ model QuickBooksImportReview {
 }
 
 model QuickBooksReviewDecision {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   companyId            String
   environment          String
   realmId              String
@@ -1660,7 +1692,7 @@ model QuickBooksReviewDecision {
   actorId              String
   undoneAt             DateTime?
   undoneById           String?
-  createdAt            DateTime @default(now())
+  createdAt            DateTime  @default(now())
 
   @@index([companyId, environment, realmId, createdAt])
   @@index([reviewId, createdAt])
@@ -1668,19 +1700,19 @@ model QuickBooksReviewDecision {
 }
 
 model QuickBooksMergeReview {
-  id                 String   @id @default(cuid())
-  companyId          String
-  environment        String
-  realmId            String
-  analysisRunId      String?
-  sourceReviewId     String
-  customerAId        String
-  customerBId        String
-  status             String   @default("OPEN")
-  flaggedById        String
-  sourceFingerprint  String
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  companyId         String
+  environment       String
+  realmId           String
+  analysisRunId     String?
+  sourceReviewId    String
+  customerAId       String
+  customerBId       String
+  status            String   @default("OPEN")
+  flaggedById       String
+  sourceFingerprint String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([companyId, environment, realmId, customerAId, customerBId])
   @@index([companyId, status, createdAt])
@@ -1688,23 +1720,23 @@ model QuickBooksMergeReview {
 }
 
 model Vendor {
-  id                 String    @id @default(cuid())
-  companyId          String
-  name               String
-  email              String?
-  phone              String?
-  notes              String?
-  active             Boolean   @default(true)
-  sourceSystem       String?
-  externalId         String?
-  quickbooksVendorId String?
-  quickbooksRealmId  String?
+  id                       String    @id @default(cuid())
+  companyId                String
+  name                     String
+  email                    String?
+  phone                    String?
+  notes                    String?
+  active                   Boolean   @default(true)
+  sourceSystem             String?
+  externalId               String?
+  quickbooksVendorId       String?
+  quickbooksRealmId        String?
   quickbooksLastModifiedAt DateTime?
-  lastSyncedAt       DateTime?
-  syncStatus         String?
-  syncError          String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  lastSyncedAt             DateTime?
+  syncStatus               String?
+  syncError                String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   expenses Expense[]
@@ -1715,20 +1747,20 @@ model Vendor {
 }
 
 model AccountingAccount {
-  id                 String                   @id @default(cuid())
-  companyId          String
-  name               String
-  accountType        String
-  classification     AccountingClassification @default(OTHER)
-  fullyQualifiedName String?
-  active             Boolean                  @default(true)
-  sourceSystem       String?
-  externalId         String?
+  id                  String                   @id @default(cuid())
+  companyId           String
+  name                String
+  accountType         String
+  classification      AccountingClassification @default(OTHER)
+  fullyQualifiedName  String?
+  active              Boolean                  @default(true)
+  sourceSystem        String?
+  externalId          String?
   quickbooksAccountId String?
-  quickbooksRealmId  String?
-  lastSyncedAt       DateTime?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  quickbooksRealmId   String?
+  lastSyncedAt        DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   expenses Expense[]
@@ -1797,16 +1829,16 @@ model IntegrationConnection {
 }
 
 model IntegrationCredential {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   companyId      String
-  connectionId   String   @unique
+  connectionId   String    @unique
   ciphertext     Bytes
   iv             Bytes
   authTag        Bytes
-  keyVersion     Int      @default(1)
+  keyVersion     Int       @default(1)
   tokenExpiresAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
@@ -1846,9 +1878,9 @@ model IntegrationEvent {
   company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, connectionId, externalId])
   @@index([companyId, connectionId])
   @@index([companyId, eventType])
-  @@unique([companyId, connectionId, externalId])
 }
 
 model IntegrationAccount {
@@ -1890,18 +1922,18 @@ model OAuthState {
 }
 
 model WebsiteForm {
-  id          String   @id @default(cuid())
-  companyId   String
-  name        String
-  slug        String
-  fields      Json
-  status      String   @default("ACTIVE")
-  honeypot    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  slug      String
+  fields    Json
+  status    String   @default("ACTIVE")
+  honeypot  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  submissions FormSubmission[]
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  submissions  FormSubmission[]
   landingPages LandingPage[]
 
   @@unique([companyId, slug])
@@ -1909,17 +1941,17 @@ model WebsiteForm {
 }
 
 model LandingPage {
-  id          String   @id @default(cuid())
-  companyId   String
-  formId      String?
-  name        String
-  slug        String
-  headline    String
-  body        String
-  ctaLabel    String   @default("Request service")
-  status      String   @default("DRAFT")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  formId    String?
+  name      String
+  slug      String
+  headline  String
+  body      String
+  ctaLabel  String   @default("Request service")
+  status    String   @default("DRAFT")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   form    WebsiteForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
@@ -1947,64 +1979,65 @@ model TrackingNumber {
 }
 
 model Lead {
-  id                           String     @id @default(cuid())
-  companyId                    String
-  customerId                   String?
-  propertyId                   String?
-  source                       LeadSource @default(MANUAL)
-  sourceDetail                 String?
-  provider                     String?
-  externalLeadId               String?
-  campaignId                   String?
-  campaignName                 String?
-  medium                       String?
-  firstTouch                   String?
-  lastTouch                    String?
-  firstName                    String
-  lastName                     String
-  phone                        String?
-  email                        String?
-  message                      String?
-  receivedAt                   DateTime   @default(now())
-  status                       LeadStatus @default(NEW)
-  assignedUserId               String?
-  bookingStatus                String?
-  estimateId                   String?
-  jobId                        String?
-  convertedAt                  DateTime?
-  lostReason                   String?
-  attributedRevenueCents       Int?
-  attributedGrossProfitCents   Int?
-  firstRespondedAt             DateTime?
-  lastContactAt                DateTime?
-  nextActionAt                 DateTime?
-  nextAction                   String?
-  estimatedOpportunityCents    Int?
-  utmSource                    String?
-  utmMedium                    String?
-  utmCampaign                  String?
-  utmContent                   String?
-  utmTerm                      String?
-  landingPage                  String?
-  referrer                     String?
-  submissionPage               String?
-  visitorId                    String?
-  createdAt                    DateTime   @default(now())
-  updatedAt                    DateTime   @updatedAt
+  id                         String     @id @default(cuid())
+  companyId                  String
+  customerId                 String?
+  propertyId                 String?
+  source                     LeadSource @default(MANUAL)
+  sourceDetail               String?
+  provider                   String?
+  externalLeadId             String?
+  campaignId                 String?
+  campaignName               String?
+  medium                     String?
+  firstTouch                 String?
+  lastTouch                  String?
+  firstName                  String
+  lastName                   String
+  phone                      String?
+  email                      String?
+  message                    String?
+  receivedAt                 DateTime   @default(now())
+  status                     LeadStatus @default(NEW)
+  assignedUserId             String?
+  bookingStatus              String?
+  estimateId                 String?
+  jobId                      String?
+  convertedAt                DateTime?
+  lostReason                 String?
+  attributedRevenueCents     Int?
+  attributedGrossProfitCents Int?
+  firstRespondedAt           DateTime?
+  lastContactAt              DateTime?
+  nextActionAt               DateTime?
+  nextAction                 String?
+  estimatedOpportunityCents  Int?
+  utmSource                  String?
+  utmMedium                  String?
+  utmCampaign                String?
+  utmContent                 String?
+  utmTerm                    String?
+  landingPage                String?
+  referrer                   String?
+  submissionPage             String?
+  visitorId                  String?
+  createdAt                  DateTime   @default(now())
+  updatedAt                  DateTime   @updatedAt
 
-  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer   Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  property   Property?          @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  assignedUser User?            @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  estimate   Estimate?          @relation(fields: [estimateId], references: [id], onDelete: SetNull)
-  job        Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  campaign   Campaign?          @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  activities LeadActivity[]
-  attributionEvents AttributionEvent[]
-  callRecords CallRecord[]
-  formSubmissions FormSubmission[]
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer             Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  property             Property?             @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  assignedUser         User?                 @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  estimate             Estimate?             @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  job                  Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  campaign             Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  activities           LeadActivity[]
+  attributionEvents    AttributionEvent[]
+  callRecords          CallRecord[]
+  formSubmissions      FormSubmission[]
   communicationThreads CommunicationThread[]
 
+  @@unique([companyId, provider, externalLeadId])
   @@index([companyId])
   @@index([companyId, status])
   @@index([companyId, source])
@@ -2012,7 +2045,6 @@ model Lead {
   @@index([companyId, assignedUserId])
   @@index([companyId, email])
   @@index([companyId, phone])
-  @@unique([companyId, provider, externalLeadId])
 }
 
 model LeadActivity {
@@ -2032,21 +2064,21 @@ model LeadActivity {
 }
 
 model AttributionEvent {
-  id              String           @id @default(cuid())
-  companyId       String
-  leadId          String?
-  customerId      String?
-  jobId           String?
-  invoiceId       String?
-  estimateId      String?
-  model           AttributionModel @default(PRIMARY_SOURCE)
-  source          String
-  campaignId      String?
-  revenueCents    Int?
-  costCents       Int?
-  note            String?
-  overriddenById  String?
-  createdAt       DateTime         @default(now())
+  id             String           @id @default(cuid())
+  companyId      String
+  leadId         String?
+  customerId     String?
+  jobId          String?
+  invoiceId      String?
+  estimateId     String?
+  model          AttributionModel @default(PRIMARY_SOURCE)
+  source         String
+  campaignId     String?
+  revenueCents   Int?
+  costCents      Int?
+  note           String?
+  overriddenById String?
+  createdAt      DateTime         @default(now())
 
   company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -2062,22 +2094,22 @@ model AttributionEvent {
 }
 
 model MarketingSpend {
-  id            String   @id @default(cuid())
-  companyId     String
-  source        String
-  campaignName  String?
-  provider      String?
-  periodStart   DateTime
-  periodEnd     DateTime
-  amountCents   Int
-  externalId    String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  companyId    String
+  source       String
+  campaignName String?
+  provider     String?
+  periodStart  DateTime
+  periodEnd    DateTime
+  amountCents  Int
+  externalId   String?
+  createdAt    DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  @@unique([companyId, provider, externalId])
   @@index([companyId, periodStart, periodEnd])
   @@index([companyId, source])
-  @@unique([companyId, provider, externalId])
 }
 
 model Campaign {
@@ -2120,9 +2152,9 @@ model Review {
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   job      Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
+  @@unique([companyId, provider, externalId])
   @@index([companyId])
   @@index([companyId, needsResponse])
-  @@unique([companyId, provider, externalId])
 }
 
 model ReviewRequest {
@@ -2143,7 +2175,7 @@ model ReviewRequest {
 }
 
 model CallRecord {
-  id              String    @id @default(cuid())
+  id              String   @id @default(cuid())
   companyId       String
   direction       String
   trackingNumber  String?
@@ -2160,7 +2192,7 @@ model CallRecord {
   recordingRef    String?
   transcriptRef   String?
   booked          Boolean?
-  createdAt       DateTime  @default(now())
+  createdAt       DateTime @default(now())
 
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -2211,13 +2243,13 @@ model ProviderIdentityMap {
 }
 
 model CommunicationThread {
-  id             String   @id @default(cuid())
-  companyId      String
-  provider       String
-  externalId     String
-  channel        String
-  customerId     String?
-  leadId         String?
+  id                String   @id @default(cuid())
+  companyId         String
+  provider          String
+  externalId        String
+  channel           String
+  customerId        String?
+  leadId            String?
   contactName       String?
   phone             String?
   email             String?
@@ -2228,10 +2260,10 @@ model CommunicationThread {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  company  Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  lead     Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  messages CommunicationMessage[]
+  company          Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer?                     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead             Lead?                         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages         CommunicationMessage[]
   schedulingStates ConversationSchedulingState[]
 
   @@unique([companyId, provider, externalId])
@@ -2284,29 +2316,29 @@ model Automation {
 }
 
 model Insight {
-  id                 String    @id @default(cuid())
-  companyId          String
-  insightType        String
-  category           String
-  severity           String
-  title              String
-  summary            String
-  metric             String?
-  currentValue       String?
-  comparisonValue    String?
-  changePercent      Float?
-  period             String?
-  confidence         String?
-  supportingData     Json?
-  recommendedAction  String?
-  dataSource         String?
-  metricDefinition   String?
-  timeRange          String?
-  calculation        String?
-  createdAt          DateTime  @default(now())
-  expiresAt          DateTime?
-  acknowledgedAt     DateTime?
-  resolvedAt         DateTime?
+  id                String    @id @default(cuid())
+  companyId         String
+  insightType       String
+  category          String
+  severity          String
+  title             String
+  summary           String
+  metric            String?
+  currentValue      String?
+  comparisonValue   String?
+  changePercent     Float?
+  period            String?
+  confidence        String?
+  supportingData    Json?
+  recommendedAction String?
+  dataSource        String?
+  metricDefinition  String?
+  timeRange         String?
+  calculation       String?
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime?
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2315,87 +2347,87 @@ model Insight {
 }
 
 model CompanyIntelligenceSetting {
-  id                 String   @id @default(cuid())
-  companyId          String   @unique
-  dailyBriefEnabled  Boolean  @default(true)
-  insightCategories  String[] @default([])
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  companyId         String   @unique
+  dailyBriefEnabled Boolean  @default(true)
+  insightCategories String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model CompanyAiReceptionistSetting {
-  id                      String   @id @default(cuid())
-  companyId               String   @unique
-  enabled                 Boolean  @default(false)
-  assistantName           String   @default("Regina")
-  autoReplyInboundSms     Boolean  @default(true)
-  autoBookServiceCalls    Boolean  @default(true)
-  allowSameDayBooking     Boolean  @default(true)
-  humanHandoffFallback    Boolean  @default(true)
-  businessHoursBehavior   String   @default("ALWAYS")
-  mode                    String   @default("HIGHLEVEL_REGINA")
-  tone                    String   @default("warm")
-  responseLength          String   @default("short")
-  companyDescription      String?
-  businessHoursText       String?
-  afterHoursBehavior      String   @default("OFFER_CALLBACK")
-  serviceAreaNote         String?
-  servicesOffered         String?
-  emergencyGuidance       String?
-  handoffRules            String?
-  useCustomerFirstName    Boolean  @default(true)
-  allowScheduling         Boolean  @default(true)
-  allowRescheduling       Boolean  @default(true)
-  allowCancellations      Boolean  @default(true)
-  allowJobStatus          Boolean  @default(true)
-  allowInvoiceQuestions   Boolean  @default(true)
-  allowEstimateQuestions  Boolean  @default(true)
-  allowMembershipQuestions Boolean @default(true)
-  allowWaitingQuestions   Boolean  @default(true)
-  knowledgeJson           Json?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  companyId                String   @unique
+  enabled                  Boolean  @default(false)
+  assistantName            String   @default("Regina")
+  autoReplyInboundSms      Boolean  @default(true)
+  autoBookServiceCalls     Boolean  @default(true)
+  allowSameDayBooking      Boolean  @default(true)
+  humanHandoffFallback     Boolean  @default(true)
+  businessHoursBehavior    String   @default("ALWAYS")
+  mode                     String   @default("HIGHLEVEL_REGINA")
+  tone                     String   @default("warm")
+  responseLength           String   @default("short")
+  companyDescription       String?
+  businessHoursText        String?
+  afterHoursBehavior       String   @default("OFFER_CALLBACK")
+  serviceAreaNote          String?
+  servicesOffered          String?
+  emergencyGuidance        String?
+  handoffRules             String?
+  useCustomerFirstName     Boolean  @default(true)
+  allowScheduling          Boolean  @default(true)
+  allowRescheduling        Boolean  @default(true)
+  allowCancellations       Boolean  @default(true)
+  allowJobStatus           Boolean  @default(true)
+  allowInvoiceQuestions    Boolean  @default(true)
+  allowEstimateQuestions   Boolean  @default(true)
+  allowMembershipQuestions Boolean  @default(true)
+  allowWaitingQuestions    Boolean  @default(true)
+  knowledgeJson            Json?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model ReceptionistTurn {
-  id                 String   @id @default(cuid())
-  companyId          String
-  threadId           String
-  inboundMessageId   String
-  customerId         String?
-  propertyId         String?
-  intent             String
-  schedulingState    String?
-  availabilityCount  Int      @default(0)
-  bookingResult      String?
-  outboundSent       Boolean  @default(false)
-  handoffReason      String?
-  errorCode          String?
-  durationMs         Int      @default(0)
-  mode               String?
-  proposedResponse   String?
-  actualResponse     String?
-  confidence         Float?
-  requestedAction    String?
-  extractedFields    Json?
-  verifiedFacts      Json?
-  provider           String?
-  model              String?
-  inputTokens        Int      @default(0)
-  outputTokens       Int      @default(0)
-  costMicrousd       Int      @default(0)
-  shadow             Boolean  @default(false)
-  toolUsed           String?
-  activeWorkflow     String?
-  reviewStatus       String?
-  trainingSources    Json?
-  createdAt          DateTime @default(now())
+  id                String   @id @default(cuid())
+  companyId         String
+  threadId          String
+  inboundMessageId  String
+  customerId        String?
+  propertyId        String?
+  intent            String
+  schedulingState   String?
+  availabilityCount Int      @default(0)
+  bookingResult     String?
+  outboundSent      Boolean  @default(false)
+  handoffReason     String?
+  errorCode         String?
+  durationMs        Int      @default(0)
+  mode              String?
+  proposedResponse  String?
+  actualResponse    String?
+  confidence        Float?
+  requestedAction   String?
+  extractedFields   Json?
+  verifiedFacts     Json?
+  provider          String?
+  model             String?
+  inputTokens       Int      @default(0)
+  outputTokens      Int      @default(0)
+  costMicrousd      Int      @default(0)
+  shadow            Boolean  @default(false)
+  toolUsed          String?
+  activeWorkflow    String?
+  reviewStatus      String?
+  trainingSources   Json?
+  createdAt         DateTime @default(now())
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company         Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   trainingReviews ReceptionistTrainingReview[]
 
   @@unique([companyId, inboundMessageId])
@@ -2405,17 +2437,17 @@ model ReceptionistTurn {
 }
 
 model ReceptionistKnowledgeItem {
-  id         String   @id @default(cuid())
-  companyId  String
-  question   String
-  answer     String
-  category   String   @default("FAQ")
-  notes      String?
-  active     Boolean  @default(true)
-  sortOrder  Int      @default(0)
+  id          String   @id @default(cuid())
+  companyId   String
+  question    String
+  answer      String
+  category    String   @default("FAQ")
+  notes       String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
   createdById String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2423,14 +2455,14 @@ model ReceptionistKnowledgeItem {
 }
 
 model ReceptionistConversationRule {
-  id         String   @id @default(cuid())
-  companyId  String
-  body       String
-  active     Boolean  @default(true)
-  priority   Int      @default(100)
+  id          String   @id @default(cuid())
+  companyId   String
+  body        String
+  active      Boolean  @default(true)
+  priority    Int      @default(100)
   createdById String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2438,37 +2470,37 @@ model ReceptionistConversationRule {
 }
 
 model ReceptionistOpportunityRule {
-  id                   String   @id @default(cuid())
-  companyId            String
-  type                 String
-  title                String
-  triggerText          String
-  verifiedRequirement  String
-  suggestedBehavior    String
-  cta                  String?
-  active               Boolean  @default(true)
-  priority             Int      @default(100)
-  createdById          String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  companyId           String
+  type                String
+  title               String
+  triggerText         String
+  verifiedRequirement String
+  suggestedBehavior   String
+  cta                 String?
+  active              Boolean  @default(true)
+  priority            Int      @default(100)
+  createdById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   events  ReceptionistOpportunityEvent[]
 
   @@index([companyId, active, type])
 }
 
 model ReceptionistApprovedExample {
-  id                 String   @id @default(cuid())
-  companyId          String
-  customerMessage    String
-  preferredResponse  String
-  intent             String   @default("GENERAL_QUESTION")
-  notes              String?
-  active             Boolean  @default(true)
-  createdById        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  companyId         String
+  customerMessage   String
+  preferredResponse String
+  intent            String   @default("GENERAL_QUESTION")
+  notes             String?
+  active            Boolean  @default(true)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -2476,14 +2508,14 @@ model ReceptionistApprovedExample {
 }
 
 model ReceptionistTrainingReview {
-  id            String   @id @default(cuid())
-  companyId     String
-  turnId        String
-  decision      String
-  improvedText  String?
-  savedAs       String?
-  createdById   String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  companyId    String
+  turnId       String
+  decision     String
+  improvedText String?
+  savedAs      String?
+  createdById  String?
+  createdAt    DateTime @default(now())
 
   company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   turn    ReceptionistTurn @relation(fields: [turnId], references: [id], onDelete: Cascade)
@@ -2517,8 +2549,8 @@ model AIConversation {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages       AIMessage[]
   usages         AIUsageEvent[]
   actionRequests AIActionRequest[]
@@ -2613,26 +2645,26 @@ enum AIActionTargetStatus {
 }
 
 model AIActionRequest {
-  id                   String                 @id @default(cuid())
+  id                   String                @id @default(cuid())
   companyId            String
   requestedByUserId    String
   conversationId       String?
   approvedByUserId     String?
   actionKey            String
-  actionVersion        Int                    @default(1)
+  actionVersion        Int                   @default(1)
   level                AIActionLevel
   riskLevel            AIActionRisk
-  status               AIActionRequestStatus  @default(DRAFT)
+  status               AIActionRequestStatus @default(DRAFT)
   title                String
-  summary              String                 @db.Text
+  summary              String                @db.Text
   input                Json
   preview              Json
   criteria             Json?
   estimatedImpactCents Int?
-  targetCount          Int                    @default(0)
-  executedCount        Int                    @default(0)
-  skippedCount         Int                    @default(0)
-  failedCount          Int                    @default(0)
+  targetCount          Int                   @default(0)
+  executedCount        Int                   @default(0)
+  skippedCount         Int                   @default(0)
+  failedCount          Int                   @default(0)
   provider             String?
   executionMode        String?
   idempotencyKey       String
@@ -2640,14 +2672,14 @@ model AIActionRequest {
   expiresAt            DateTime
   approvedAt           DateTime?
   executedAt           DateTime?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  requestedBy User            @relation("AIActionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Cascade)
-  approvedBy  User?           @relation("AIActionApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
-  conversation AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  targets     AIActionTarget[]
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requestedBy  User             @relation("AIActionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  approvedBy   User?            @relation("AIActionApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  conversation AIConversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  targets      AIActionTarget[]
 
   @@unique([companyId, idempotencyKey])
   @@index([companyId, status, createdAt])
@@ -2743,23 +2775,23 @@ model SocialPost {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  company       Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  publications  SocialPostPublication[]
+  company      Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  publications SocialPostPublication[]
 
   @@index([companyId, status])
 }
 
 model SocialPostPublication {
-  id            String    @id @default(cuid())
-  companyId     String
-  postId        String
-  channel       String
-  status        String    @default("PENDING")
-  externalId    String?
-  errorMessage  String?
-  publishedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  companyId    String
+  postId       String
+  channel      String
+  status       String    @default("PENDING")
+  externalId   String?
+  errorMessage String?
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   company Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   post    SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -2815,13 +2847,13 @@ model Playbook {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  serviceTypes ServiceType[]
-  versions PlaybookVersion[]
-  jobs     Job[]
-  snapshots JobPlaybookSnapshot[]
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceTypes  ServiceType[]
+  versions      PlaybookVersion[]
+  jobs          Job[]
+  snapshots     JobPlaybookSnapshot[]
   formTemplates FormTemplate[]
-  automations Automation[]
+  automations   Automation[]
 
   @@index([companyId])
   @@index([companyId, status])
@@ -2837,10 +2869,10 @@ model PlaybookVersion {
   createdById   String?
   createdAt     DateTime @default(now())
 
-  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  playbook Playbook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation("PlaybookVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
-  jobs     Job[]
+  company   Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook  Playbook              @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  createdBy User?                 @relation("PlaybookVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  jobs      Job[]
   snapshots JobPlaybookSnapshot[]
 
   @@unique([playbookId, versionNumber])
@@ -2868,14 +2900,14 @@ model JobPlaybookSnapshot {
 }
 
 model JobWorkflowEvent {
-  id          String   @id @default(cuid())
-  companyId   String
-  jobId       String
-  stepId      String
-  actorId     String?
-  kind        String
-  note        String?
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  companyId String
+  jobId     String
+  stepId    String
+  actorId   String?
+  kind      String
+  note      String?
+  createdAt DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -2885,19 +2917,19 @@ model JobWorkflowEvent {
 }
 
 model JobChecklistItem {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   companyId   String
   jobId       String
   itemId      String
   section     String?
   label       String
-  required    Boolean  @default(false)
-  fieldType   String   @default("CHECKBOX")
-  completed   Boolean  @default(false)
+  required    Boolean   @default(false)
+  fieldType   String    @default("CHECKBOX")
+  completed   Boolean   @default(false)
   value       String?
   completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -3117,7 +3149,7 @@ model ImportMappingProfile {
 }
 
 model ImportResetOperation {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   companyId          String
   initiatedById      String
   sourceSystem       String
@@ -3129,8 +3161,8 @@ model ImportResetOperation {
   blocked            Json
   mixed              Json?
   census             Json?
-  idempotentReplay   Boolean  @default(false)
-  createdAt          DateTime @default(now())
+  idempotentReplay   Boolean   @default(false)
+  createdAt          DateTime  @default(now())
   completedAt        DateTime?
 
   company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -3167,14 +3199,14 @@ model ImportReviewItem {
 // ============================================================
 
 model PricebookCategory {
-  id         String   @id @default(cuid())
-  companyId  String
-  parentId   String?
-  name       String
-  sortOrder  Int      @default(0)
-  archived   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  parentId  String?
+  name      String
+  sortOrder Int      @default(0)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   company  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   parent   PricebookCategory?  @relation("PricebookCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
@@ -3216,9 +3248,12 @@ model PricebookItem {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category   PricebookCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  lineItems  EstimateLineItem[]
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category           PricebookCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  lineItems          EstimateLineItem[]
+  inventoryStocks    InventoryStock[]
+  inventoryMovements InventoryMovement[]
+  jobParts           JobPart[]
 
   @@index([companyId, active])
   @@index([companyId, categoryId])
@@ -3226,6 +3261,107 @@ model PricebookItem {
   @@index([companyId, sku])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, quickbooksItemId])
+}
+
+model InventoryLocation {
+  id           String                @id @default(cuid())
+  companyId    String
+  name         String
+  type         InventoryLocationType @default(WAREHOUSE)
+  membershipId String?
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stocks        InventoryStock[]
+  jobParts      JobPart[]
+  movementsFrom InventoryMovement[] @relation("InventoryMovementFrom")
+  movementsTo   InventoryMovement[] @relation("InventoryMovementTo")
+
+  @@unique([companyId, name])
+  @@index([companyId, active])
+  @@index([companyId, membershipId])
+}
+
+model InventoryStock {
+  id           String   @id @default(cuid())
+  companyId    String
+  partId       String
+  locationId   String
+  onHand       Int      @default(0)
+  reserved     Int      @default(0)
+  minimumStock Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  part     PricebookItem     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  location InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, partId, locationId])
+  @@index([companyId, partId])
+  @@index([companyId, locationId])
+}
+
+model JobPart {
+  id             String        @id @default(cuid())
+  companyId      String
+  jobId          String
+  partId         String
+  locationId     String?
+  quantity       Int
+  status         JobPartStatus @default(NEEDED)
+  unitCostCents  Int
+  unitPriceCents Int?
+  notes          String?
+  createdById    String
+  reservedAt     DateTime?
+  pickedUpAt     DateTime?
+  installedAt    DateTime?
+  canceledAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job       Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  part      PricebookItem      @relation(fields: [partId], references: [id], onDelete: Restrict)
+  location  InventoryLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy User               @relation("JobPartCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, jobId, status])
+  @@index([companyId, partId])
+  @@index([companyId, locationId])
+}
+
+model InventoryMovement {
+  id             String                @id @default(cuid())
+  companyId      String
+  partId         String
+  quantity       Int
+  type           InventoryMovementType
+  fromLocationId String?
+  toLocationId   String?
+  jobId          String?
+  jobPartId      String?
+  actorId        String
+  notes          String?
+  source         String?
+  reference      String?
+  createdAt      DateTime              @default(now())
+
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  part         PricebookItem      @relation(fields: [partId], references: [id], onDelete: Restrict)
+  fromLocation InventoryLocation? @relation("InventoryMovementFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation   InventoryLocation? @relation("InventoryMovementTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+  job          Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  actor        User               @relation("InventoryMovementActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, partId, createdAt])
+  @@index([companyId, fromLocationId, createdAt])
+  @@index([companyId, toLocationId, createdAt])
+  @@index([companyId, jobId])
+  @@index([companyId, jobPartId])
 }
 
 model EstimateOption {
@@ -3264,40 +3400,40 @@ model MembershipPlan {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  memberships  CustomerMembership[]
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships CustomerMembership[]
 
   @@index([companyId, active])
 }
 
 model CustomerMembership {
-  id                String                    @id @default(cuid())
-  companyId         String
-  customerId        String
-  propertyId        String?
-  planId            String
-  soldById          String?
-  sourceJobId       String?
-  sourceEstimateId  String?
-  sourceInvoiceId   String?
-  status            CustomerMembershipStatus  @default(PENDING)
-  priceCents        Int
-  saleDate          DateTime                  @default(now())
-  startDate         DateTime?
-  renewalDate       DateTime?
-  visitsUsed        Int                       @default(0)
-  importMode        String                    @default("LIVE")
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  id               String                   @id @default(cuid())
+  companyId        String
+  customerId       String
+  propertyId       String?
+  planId           String
+  soldById         String?
+  sourceJobId      String?
+  sourceEstimateId String?
+  sourceInvoiceId  String?
+  status           CustomerMembershipStatus @default(PENDING)
+  priceCents       Int
+  saleDate         DateTime                 @default(now())
+  startDate        DateTime?
+  renewalDate      DateTime?
+  visitsUsed       Int                      @default(0)
+  importMode       String                   @default("LIVE")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
-  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  property Property?       @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  plan     MembershipPlan  @relation(fields: [planId], references: [id], onDelete: Restrict)
-  soldBy   User?           @relation("MembershipSoldBy", fields: [soldById], references: [id], onDelete: SetNull)
-  job      Job?            @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
-  estimate Estimate?       @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
-  invoice  Invoice?        @relation(fields: [sourceInvoiceId], references: [id], onDelete: SetNull)
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  property          Property?          @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  plan              MembershipPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  soldBy            User?              @relation("MembershipSoldBy", fields: [soldById], references: [id], onDelete: SetNull)
+  job               Job?               @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
+  estimate          Estimate?          @relation(fields: [sourceEstimateId], references: [id], onDelete: SetNull)
+  invoice           Invoice?           @relation(fields: [sourceInvoiceId], references: [id], onDelete: SetNull)
   maintenanceVisits MaintenanceVisit[]
 
   @@index([companyId, status])
@@ -3306,22 +3442,22 @@ model CustomerMembership {
 }
 
 model CompensationRule {
-  id            String               @id @default(cuid())
-  companyId     String
-  name          String
-  type          CompensationRuleType
-  trigger       CompensationTrigger
-  amountCents   Int?
-  percentBps    Int?
-  minAmountCents Int?
-  jobType       String?
-  pricebookItemId String?
+  id               String               @id @default(cuid())
+  companyId        String
+  name             String
+  type             CompensationRuleType
+  trigger          CompensationTrigger
+  amountCents      Int?
+  percentBps       Int?
+  minAmountCents   Int?
+  jobType          String?
+  pricebookItemId  String?
   membershipPlanId String?
-  active        Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  active           Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
-  company  Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company  Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   versions CompensationRuleVersion[]
   events   CompensationEvent[]
 
@@ -3330,40 +3466,40 @@ model CompensationRule {
 }
 
 model CompensationRuleVersion {
-  id         String   @id @default(cuid())
-  companyId  String
-  ruleId     String
-  snapshot   Json
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  companyId String
+  ruleId    String
+  snapshot  Json
+  createdAt DateTime @default(now())
 
-  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  rule    CompensationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  company Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rule    CompensationRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   events  CompensationEvent[]
 
   @@index([companyId, ruleId])
 }
 
 model CompensationEvent {
-  id                 String             @id @default(cuid())
-  companyId          String
-  userId             String
-  ruleId             String
-  ruleVersionId      String
-  sourceType         String
-  sourceId           String
-  jobId              String?
-  customerId         String?
-  amountCents        Int
-  calculationBasis   String
-  status             CompensationStatus @default(PENDING)
-  earnedAt           DateTime           @default(now())
-  approvedAt         DateTime?
-  paidAt             DateTime?
-  approvedById       String?
-  notes              String?
-  importMode         String             @default("LIVE")
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id               String             @id @default(cuid())
+  companyId        String
+  userId           String
+  ruleId           String
+  ruleVersionId    String
+  sourceType       String
+  sourceId         String
+  jobId            String?
+  customerId       String?
+  amountCents      Int
+  calculationBasis String
+  status           CompensationStatus @default(PENDING)
+  earnedAt         DateTime           @default(now())
+  approvedAt       DateTime?
+  paidAt           DateTime?
+  approvedById     String?
+  notes            String?
+  importMode       String             @default("LIVE")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   company     Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3379,14 +3515,14 @@ model CompensationEvent {
 }
 
 model PerformanceGoal {
-  id         String   @id @default(cuid())
-  companyId  String
-  userId     String?
-  metricKey  String
-  target     Int
-  period     String   @default("WEEK")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String?
+  metricKey String
+  target    Int
+  period    String   @default("WEEK")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3407,11 +3543,11 @@ model WaitingColumn {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   records         WaitingRecord[]
   templates       WaitingTemplate[]
-  fromTransitions WaitingTransition[]  @relation("WaitingTransitionFrom")
-  toTransitions   WaitingTransition[]  @relation("WaitingTransitionTo")
+  fromTransitions WaitingTransition[] @relation("WaitingTransitionFrom")
+  toTransitions   WaitingTransition[] @relation("WaitingTransitionTo")
 
   @@unique([companyId, key])
   @@index([companyId, sortOrder])
@@ -3432,40 +3568,40 @@ model WaitingBoardSetting {
 }
 
 model WaitingRecord {
-  id                     String             @id @default(cuid())
-  companyId              String
-  customerId             String
-  jobId                  String
-  propertyId             String?
-  columnId               String
-  state                  WaitingRecordState @default(ACTIVE)
-  reason                 String
-  notes                  String?            @db.Text
-  priority               JobPriority        @default(NORMAL)
-  metadata               Json?
-  assignedOwnerUserId    String?
-  enteredAt              DateTime           @default(now())
-  lastCustomerUpdateAt   DateTime?
-  nextCustomerUpdateAt   DateTime?
-  expectedResolutionAt   DateTime?
-  resolvedAt             DateTime?
-  actualArrivalAt        DateTime?
-  customerRepliedAt      DateTime?
-  communicationEnabled   Boolean            @default(true)
-  automationEnabled      Boolean            @default(true)
-  cadence                WaitingCadence     @default(EVERY_3_DAYS)
-  customCadenceDays      Int?
+  id                      String             @id @default(cuid())
+  companyId               String
+  customerId              String
+  jobId                   String
+  propertyId              String?
+  columnId                String
+  state                   WaitingRecordState @default(ACTIVE)
+  reason                  String
+  notes                   String?            @db.Text
+  priority                JobPriority        @default(NORMAL)
+  metadata                Json?
+  assignedOwnerUserId     String?
+  enteredAt               DateTime           @default(now())
+  lastCustomerUpdateAt    DateTime?
+  nextCustomerUpdateAt    DateTime?
+  expectedResolutionAt    DateTime?
+  resolvedAt              DateTime?
+  actualArrivalAt         DateTime?
+  customerRepliedAt       DateTime?
+  communicationEnabled    Boolean            @default(true)
+  automationEnabled       Boolean            @default(true)
+  cadence                 WaitingCadence     @default(EVERY_3_DAYS)
+  customCadenceDays       Int?
   lastCommunicationStatus String?
-  lastCommunicationError String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
+  lastCommunicationError  String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer       Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  job            Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  property       Property?               @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  column         WaitingColumn           @relation(fields: [columnId], references: [id], onDelete: Restrict)
-  assignedOwner  User?                   @relation("WaitingRecordOwner", fields: [assignedOwnerUserId], references: [id], onDelete: SetNull)
+  company        Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer       Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job            Job                    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  property       Property?              @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  column         WaitingColumn          @relation(fields: [columnId], references: [id], onDelete: Restrict)
+  assignedOwner  User?                  @relation("WaitingRecordOwner", fields: [assignedOwnerUserId], references: [id], onDelete: SetNull)
   transitions    WaitingTransition[]
   communications WaitingCommunication[]
 
@@ -3553,7 +3689,7 @@ model AppointmentWindow {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
-  company                  Company                         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company                  Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   technicianAvailabilities TechnicianWindowAvailability[]
   overrides                AvailabilityOverride[]
   jobs                     Job[]
@@ -3605,33 +3741,33 @@ model AvailabilityOverride {
 }
 
 model SchedulingPolicy {
-  id                          String   @id @default(cuid())
-  companyId                   String   @unique
-  autoBookingEnabled          Boolean  @default(false)
-  allowSameDay                Boolean  @default(true)
-  allowWeekend                Boolean  @default(false)
-  minNoticeMinutes            Int      @default(120)
-  standardHorizonDays         Int      @default(90)
-  maintenanceHorizonDays      Int      @default(365)
-  maxJobsPerWindow            Int?
-  maxJobsPerDay               Int?
-  emergencyReservePerWindow   Int      @default(0)
-  allowEmergencyReserveUse    Boolean  @default(false)
-  allowTechnicianPreference   Boolean  @default(true)
-  allowOfficeOverride         Boolean  @default(true)
-  autoCancelEnabled           Boolean  @default(false)
-  showTechnicianName          Boolean  @default(false)
-  allowPaidOneTimeMaintenance Boolean  @default(false)
-  confirmationTemplate        String?  @db.Text
-  noAvailabilityTemplate      String?  @db.Text
-  clarificationTemplate       String?  @db.Text
-  maintenanceDuplicateTemplate String? @db.Text
-  noPlanTemplate              String?  @db.Text
-  defaultServiceTypeId        String?
-  maintenanceServiceTypeId    String?
-  proactiveOutreachEnabled    Boolean  @default(false)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  id                           String   @id @default(cuid())
+  companyId                    String   @unique
+  autoBookingEnabled           Boolean  @default(false)
+  allowSameDay                 Boolean  @default(true)
+  allowWeekend                 Boolean  @default(false)
+  minNoticeMinutes             Int      @default(120)
+  standardHorizonDays          Int      @default(90)
+  maintenanceHorizonDays       Int      @default(365)
+  maxJobsPerWindow             Int?
+  maxJobsPerDay                Int?
+  emergencyReservePerWindow    Int      @default(0)
+  allowEmergencyReserveUse     Boolean  @default(false)
+  allowTechnicianPreference    Boolean  @default(true)
+  allowOfficeOverride          Boolean  @default(true)
+  autoCancelEnabled            Boolean  @default(false)
+  showTechnicianName           Boolean  @default(false)
+  allowPaidOneTimeMaintenance  Boolean  @default(false)
+  confirmationTemplate         String?  @db.Text
+  noAvailabilityTemplate       String?  @db.Text
+  clarificationTemplate        String?  @db.Text
+  maintenanceDuplicateTemplate String?  @db.Text
+  noPlanTemplate               String?  @db.Text
+  defaultServiceTypeId         String?
+  maintenanceServiceTypeId     String?
+  proactiveOutreachEnabled     Boolean  @default(false)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
 
   company                Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   defaultServiceType     ServiceType? @relation("DefaultServiceType", fields: [defaultServiceTypeId], references: [id], onDelete: SetNull)
@@ -3639,14 +3775,14 @@ model SchedulingPolicy {
 }
 
 model ServiceTypeSchedulingRule {
-  id                    String   @id @default(cuid())
-  companyId             String
-  serviceTypeId         String
-  autoBookAllowed       Boolean  @default(true)
-  requiresOfficeApproval Boolean @default(false)
-  isMaintenance         Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  companyId              String
+  serviceTypeId          String
+  autoBookAllowed        Boolean  @default(true)
+  requiresOfficeApproval Boolean  @default(false)
+  isMaintenance          Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
@@ -3672,43 +3808,43 @@ model TechnicianServiceEligibility {
 }
 
 model ConversationSchedulingState {
-  id                   String                        @id @default(cuid())
-  companyId            String
-  threadId             String
-  customerId           String?
-  status               ConversationSchedulingStatus  @default(OPEN)
-  requestedDate        DateTime?                     @db.Date
-  requestedDateEnd     DateTime?                     @db.Date
-  requestedDaypart     AppointmentDaypart?
-  requestedWindowId    String?
-  serviceTypeId        String?
-  serviceIntent        String?
-  maintenanceIntent    Boolean                       @default(false)
-  urgency              String?
-  rescheduleIntent     Boolean                       @default(false)
-  cancelIntent         Boolean                       @default(false)
-  lastInboundMessageId String?
-  missingField         String?
-  offeredSlots         Json?
-  propertyId           String?
-  customerConcern      String?
-  intake               Json?
-  suggestedJobId       String?
-  bookedJobId          String?
-  paused               Boolean                       @default(false)
-  lastIntent           String?
-  lastAiAction         String?
-  handoffReason        String?
+  id                    String                       @id @default(cuid())
+  companyId             String
+  threadId              String
+  customerId            String?
+  status                ConversationSchedulingStatus @default(OPEN)
+  requestedDate         DateTime?                    @db.Date
+  requestedDateEnd      DateTime?                    @db.Date
+  requestedDaypart      AppointmentDaypart?
+  requestedWindowId     String?
+  serviceTypeId         String?
+  serviceIntent         String?
+  maintenanceIntent     Boolean                      @default(false)
+  urgency               String?
+  rescheduleIntent      Boolean                      @default(false)
+  cancelIntent          Boolean                      @default(false)
+  lastInboundMessageId  String?
+  missingField          String?
+  offeredSlots          Json?
+  propertyId            String?
+  customerConcern       String?
+  intake                Json?
+  suggestedJobId        String?
+  bookedJobId           String?
+  paused                Boolean                      @default(false)
+  lastIntent            String?
+  lastAiAction          String?
+  handoffReason         String?
   receptionistTurnCount Int                          @default(0)
-  expiresAt            DateTime
-  createdAt            DateTime                      @default(now())
-  updatedAt            DateTime                      @updatedAt
+  expiresAt             DateTime
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
 
-  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  thread  CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  customer Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  window  AppointmentWindow? @relation(fields: [requestedWindowId], references: [id], onDelete: SetNull)
-  bookedJob Job?             @relation(fields: [bookedJobId], references: [id], onDelete: SetNull)
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  thread    CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  customer  Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  window    AppointmentWindow?  @relation(fields: [requestedWindowId], references: [id], onDelete: SetNull)
+  bookedJob Job?                @relation(fields: [bookedJobId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, lastInboundMessageId])
   @@index([companyId, threadId, status])
@@ -3717,24 +3853,24 @@ model ConversationSchedulingState {
 }
 
 model MaintenanceVisit {
-  id             String                 @id @default(cuid())
-  companyId      String
-  membershipId   String
-  customerId     String
-  cycleKey       String
-  label          String
-  dueStart       DateTime               @db.Date
-  dueEnd         DateTime               @db.Date
-  status         MaintenanceVisitStatus @default(UNSCHEDULED)
-  jobId          String?
-  completedAt    DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id           String                 @id @default(cuid())
+  companyId    String
+  membershipId String
+  customerId   String
+  cycleKey     String
+  label        String
+  dueStart     DateTime               @db.Date
+  dueEnd       DateTime               @db.Date
+  status       MaintenanceVisitStatus @default(UNSCHEDULED)
+  jobId        String?
+  completedAt  DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
 
-  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  membership CustomerMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  job        Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  company    Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  membership CustomerMembership  @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job        Job?                @relation(fields: [jobId], references: [id], onDelete: SetNull)
   bookings   SchedulingBooking[]
 
   @@unique([companyId, membershipId, cycleKey])
@@ -3743,25 +3879,25 @@ model MaintenanceVisit {
 }
 
 model SchedulingBooking {
-  id                  String                  @id @default(cuid())
-  companyId           String
-  jobId               String                  @unique
-  windowId            String
-  technicianUserId    String
-  localDate           DateTime                @db.Date
-  slotIndex           Int                     @default(0)
-  source              SchedulingBookingSource @default(MANUAL)
-  idempotencyKey      String
-  inboundMessageId    String?
-  threadId            String?
-  maintenanceVisitId  String?
-  confirmationStatus  String                  @default("PENDING")
-  confirmationError   String?
-  autoAssigned        Boolean                 @default(true)
-  rankingReason       Json?
-  releasedAt          DateTime?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  id                 String                  @id @default(cuid())
+  companyId          String
+  jobId              String                  @unique
+  windowId           String
+  technicianUserId   String
+  localDate          DateTime                @db.Date
+  slotIndex          Int                     @default(0)
+  source             SchedulingBookingSource @default(MANUAL)
+  idempotencyKey     String
+  inboundMessageId   String?
+  threadId           String?
+  maintenanceVisitId String?
+  confirmationStatus String                  @default("PENDING")
+  confirmationError  String?
+  autoAssigned       Boolean                 @default(true)
+  rankingReason      Json?
+  releasedAt         DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job              Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -3788,7 +3924,7 @@ model AgentToolCredential {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   calls   AgentToolCall[]
 
   @@index([companyId, revokedAt])
@@ -3834,47 +3970,47 @@ enum BillingWatchdogFindingStatus {
 }
 
 model BillingWatchdogSettings {
-  companyId                    String   @id
-  startDate                    DateTime @db.Date
-  checkoutGraceMinutes         Int      @default(120)
-  completedInvoiceGraceHours   Int      @default(8)
-  invoiceSendGraceHours        Int      @default(4)
-  accountingSyncGraceHours     Int      @default(24)
-  morningSummaryEnabled        Boolean  @default(false)
-  morningSummaryRoles          Json?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  companyId                  String   @id
+  startDate                  DateTime @db.Date
+  checkoutGraceMinutes       Int      @default(120)
+  completedInvoiceGraceHours Int      @default(8)
+  invoiceSendGraceHours      Int      @default(4)
+  accountingSyncGraceHours   Int      @default(24)
+  morningSummaryEnabled      Boolean  @default(false)
+  morningSummaryRoles        Json?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model BillingWatchdogFinding {
-  id                  String                       @id @default(cuid())
-  companyId           String
-  type                String
-  severity            BillingWatchdogSeverity
-  status              BillingWatchdogFindingStatus @default(OPEN)
-  fingerprint         String
-  jobId               String?
-  invoiceId           String?
-  paymentId           String?
-  customerId          String?
-  technicianId        String?
-  amountAtRiskCents   Int?
-  amountUnknown       Boolean                      @default(false)
-  reason              String                       @db.Text
-  recommendedAction   String
-  metadata            Json?
-  detectedAt          DateTime
-  firstDetectedAt     DateTime
-  lastDetectedAt      DateTime
-  resolvedAt          DateTime?
-  excludedAt          DateTime?
-  excludedById        String?
-  exclusionCode       String?
-  exclusionReason     String?
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  id                String                       @id @default(cuid())
+  companyId         String
+  type              String
+  severity          BillingWatchdogSeverity
+  status            BillingWatchdogFindingStatus @default(OPEN)
+  fingerprint       String
+  jobId             String?
+  invoiceId         String?
+  paymentId         String?
+  customerId        String?
+  technicianId      String?
+  amountAtRiskCents Int?
+  amountUnknown     Boolean                      @default(false)
+  reason            String                       @db.Text
+  recommendedAction String
+  metadata          Json?
+  detectedAt        DateTime
+  firstDetectedAt   DateTime
+  lastDetectedAt    DateTime
+  resolvedAt        DateTime?
+  excludedAt        DateTime?
+  excludedById      String?
+  exclusionCode     String?
+  exclusionReason   String?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
 
   company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)

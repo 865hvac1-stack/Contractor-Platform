@@ -18,6 +18,8 @@ import { JOBS_PAGE_SIZE, jobsListHref, jobsWhere, parseJobsListQuery } from "@/l
 import { JobsSubnav } from "@/components/hub-subnav";
 import { FinanceFilterContext } from "@/components/finance/filter-context";
 import { financeFilterCopy, parseFinanceSearch } from "@/lib/finance/query";
+import { deriveJobOperationalAlerts, loadJobOperationsSummary } from "@/lib/jobs/operations";
+import { formatMoney } from "@/lib/money";
 
 function formatSchedule(start: Date | null, end: Date | null) {
   if (!start) return "Unscheduled";
@@ -76,7 +78,7 @@ export default async function JobsPage({
     serviceType: query.serviceType,
   });
   const skip = ((query.page ?? 1) - 1) * JOBS_PAGE_SIZE;
-  const [total, jobs] = await Promise.all([
+  const [total, jobs, summary] = await Promise.all([
     prisma.job.count({ where }),
     prisma.job.findMany({
       where,
@@ -86,11 +88,15 @@ export default async function JobsPage({
         assignments: { include: { user: true } },
         playbook: { select: { name: true } },
         serviceType: { select: { name: true } },
+        estimates: { select: { status: true, totalCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        invoices: { select: { status: true, totalCents: true, balanceCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
+        waitingRecords: { where: { state: "ACTIVE" }, select: { state: true }, take: 1 },
       },
       orderBy: [{ scheduledStart: "desc" }, { createdAt: "desc" }],
       skip,
       take: JOBS_PAGE_SIZE,
     }),
+    loadJobOperationsSummary(prisma, { companyId: ctx.company.id, access }),
   ]);
   const pages = Math.max(1, Math.ceil(total / JOBS_PAGE_SIZE));
   const returnTo = jobsListHref(query);
@@ -99,7 +105,8 @@ export default async function JobsPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl tracking-tight">Jobs</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Job Operations</p>
+          <h1 className="font-display text-3xl tracking-tight">Active Jobs</h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
             {total.toLocaleString()} job{total === 1 ? "" : "s"}
             {query.q ? ` matching “${query.q}”` : ""}
@@ -114,6 +121,15 @@ export default async function JobsPage({
           New job
         </Link>
       </div>
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" aria-label="Job operations summary">
+        <OperationsMetric label="Today" value={summary.today} />
+        <OperationsMetric label="Scheduled" value={summary.scheduled} />
+        <OperationsMetric label="In Progress" value={summary.inProgress} />
+        <OperationsMetric label="Waiting" value={summary.waiting} tone={summary.waiting ? "attention" : undefined} />
+        <OperationsMetric label="Estimates Pending" value={summary.estimatesPending} />
+        <OperationsMetric label="Completed This Week" value={summary.completedThisWeek} />
+        <OperationsMetric label="Needs Attention" value={summary.needsAttention} tone={summary.needsAttention ? "attention" : undefined} />
+      </section>
       <JobsSubnav />
 
       {(() => {
@@ -176,6 +192,8 @@ export default async function JobsPage({
               const customerName =
                 job.customer.businessName?.trim() ||
                 `${job.customer.firstName} ${job.customer.lastName}`.trim();
+              const alerts = deriveJobOperationalAlerts(job);
+              const value = job.invoices[0]?.totalCents ?? job.estimates[0]?.totalCents ?? null;
               return (
                 <Link
                   key={job.id}
@@ -191,6 +209,16 @@ export default async function JobsPage({
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                     {job.serviceType?.name || job.playbook?.name || job.jobType || formatSchedule(job.scheduledStart, job.scheduledEnd)}
                   </p>
+                  <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                    {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
+                    {value != null ? ` · ${formatMoney(value)}` : ""}
+                    {job.invoices[0] ? ` · ${job.invoices[0].status.replaceAll("_", " ")}` : ""}
+                  </p>
+                  {alerts.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {alerts.slice(0, 2).map((alert) => <JobAlert key={alert} label={alert} />)}
+                    </div>
+                  ) : null}
                 </Link>
               );
             })}
@@ -202,7 +230,10 @@ export default async function JobsPage({
                   <TableHead>Job</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="hidden lg:table-cell">Technician</TableHead>
                   <TableHead className="hidden lg:table-cell">Schedule</TableHead>
+                  <TableHead className="hidden xl:table-cell">Value / Payment</TableHead>
+                  <TableHead className="hidden xl:table-cell">Alerts</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -210,6 +241,8 @@ export default async function JobsPage({
                   const customerName =
                     job.customer.businessName?.trim() ||
                     `${job.customer.firstName} ${job.customer.lastName}`.trim();
+                  const alerts = deriveJobOperationalAlerts(job);
+                  const value = job.invoices[0]?.totalCents ?? job.estimates[0]?.totalCents ?? null;
                   return (
                     <TableRow key={job.id} className="hover:bg-[var(--cy-gray)]">
                       <TableCell>
@@ -232,8 +265,22 @@ export default async function JobsPage({
                       <TableCell>
                         <StatusBadge status={job.status} />
                       </TableCell>
+                      <TableCell className="hidden text-sm lg:table-cell">
+                        {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
+                      </TableCell>
                       <TableCell className="hidden text-sm text-[var(--muted-foreground)] lg:table-cell">
                         {formatSchedule(job.scheduledStart, job.scheduledEnd)}
+                      </TableCell>
+                      <TableCell className="hidden text-sm xl:table-cell">
+                        <p>{value == null ? "—" : formatMoney(value)}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">
+                          {job.invoices[0]?.status.replaceAll("_", " ") || "No invoice"}
+                        </p>
+                      </TableCell>
+                      <TableCell className="hidden xl:table-cell">
+                        <div className="flex max-w-48 flex-wrap gap-1">
+                          {alerts.length ? alerts.slice(0, 2).map((alert) => <JobAlert key={alert} label={alert} />) : <span className="text-xs text-[var(--muted-foreground)]">Clear</span>}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -264,4 +311,25 @@ export default async function JobsPage({
       )}
     </div>
   );
+}
+
+function OperationsMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "attention";
+}) {
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${tone ? "border-amber-200 bg-amber-50" : "border-[var(--border)] bg-white"}`}>
+      <p className="text-xl font-semibold tabular-nums text-[var(--cy-navy)]">{value.toLocaleString()}</p>
+      <p className="text-[11px] font-medium text-[var(--muted-foreground)]">{label}</p>
+    </div>
+  );
+}
+
+function JobAlert({ label }: { label: string }) {
+  return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-900">{label}</span>;
 }

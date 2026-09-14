@@ -12,6 +12,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { isRunningLate, TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 import { formatDateTime, formatTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/money";
+import { mapsUrl } from "@/lib/tech/access";
+import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
 
 function formatWhen(value: Date | string | null) {
   if (!value) return "Not scheduled";
@@ -19,6 +22,23 @@ function formatWhen(value: Date | string | null) {
 }
 
 const STATUS_OPTIONS: JobStatus[] = ["SCHEDULED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELED"];
+
+type PanelContext = {
+  customer: { name: string; phone: string | null; email: string | null; membership: string | null; lastService: string | null };
+  property: { line: string; accessNotes: string | null };
+  job: { jobNumber: string; jobType: string | null; status: string; priority: string; scheduledStart: string | null; scheduledEnd: string | null; source: string | null };
+  technicians: { assigned: Array<{ id: string; name: string }>; importedName: string | null };
+  equipment: Array<{ id: string; name: string; manufacturer: string | null; model: string | null; serialNumber: string | null; installDate: string | null; warrantyExpiresAt: string | null }>;
+  history: { lastService: string | null; recentJobs: Array<{ id: string; jobNumber: string; label: string; status: string; when: string | null }> };
+  financials: { estimateCents: number | null; invoiceCents: number; paidCents: number; balanceCents: number };
+  billing: { label: string; state: string; reason: string } | null;
+  costing: { directCostCents: number; grossProfitCents: number; grossMarginPercent: number | null } | null;
+  parts: Array<{ id: string; name: string; sku: string | null; quantity: number; status: string; location: string | null }>;
+  communications: {
+    lastMessage: { body: string | null; direction: string; channel: string; occurredAt: string; status: string | null } | null;
+    lastCall: { direction: string; startedAt: string; durationSeconds: number | null; answered: boolean | null; missed: boolean | null } | null;
+  };
+};
 
 export function DispatchJobDrawer({
   job,
@@ -41,11 +61,30 @@ export function DispatchJobDrawer({
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "conflict" | "locked"; techId: string } | null>(null);
   const [draftHref, setDraftHref] = useState<string | null>(null);
+  const [context, setContext] = useState<PanelContext | null>(null);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [contextLoading, setContextLoading] = useState(false);
 
   useEffect(() => {
     setError(null);
     setConfirm(null);
     setDraftHref(null);
+    setContext(null);
+    setContextError(null);
+    if (!job?.id) return;
+    const controller = new AbortController();
+    setContextLoading(true);
+    fetch(`/api/dispatch/jobs/${job.id}`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Unable to load job context.");
+        setContext(body);
+      })
+      .catch((loadError) => {
+        if (loadError instanceof Error && loadError.name !== "AbortError") setContextError(loadError.message);
+      })
+      .finally(() => setContextLoading(false));
+    return () => controller.abort();
   }, [job?.id]);
 
   function close() {
@@ -161,6 +200,71 @@ export function DispatchJobDrawer({
           </dl>
           {job.description ? <p className="text-sm text-[var(--cy-navy)]">{job.description}</p> : null}
           {job.accessNotes ? <p className="text-xs text-[var(--muted-foreground)]">Access: {job.accessNotes}</p> : null}
+          {contextLoading ? (
+            <div className="space-y-2" role="status">
+              <div className="h-16 animate-pulse rounded-xl bg-slate-100" />
+              <p className="text-xs text-[var(--muted-foreground)]">Loading Job 360 context…</p>
+            </div>
+          ) : null}
+          {contextError ? (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">
+              {contextError}
+            </p>
+          ) : null}
+          {context ? (
+            <div className="space-y-4">
+              <PanelSection title="Customer & property">
+                <p className="font-medium">{context.customer.name}</p>
+                <p>{context.customer.email || "No email on file"}</p>
+                <p>{context.property.line}</p>
+                {context.customer.membership ? <p className="text-emerald-700">Membership: {context.customer.membership}</p> : null}
+                {context.property.accessNotes ? <p className="text-amber-900">Property note: {context.property.accessNotes}</p> : null}
+              </PanelSection>
+              <PanelSection title="Equipment">
+                {context.equipment.length ? context.equipment.slice(0, 4).map((item) => (
+                  <div key={item.id} className="border-b border-[var(--border)] pb-2 last:border-0 last:pb-0">
+                    <p className="font-medium">{item.name}</p>
+                    <p>{[item.manufacturer, item.model, item.serialNumber ? `S/N ${item.serialNumber}` : null].filter(Boolean).join(" · ") || "No model details"}</p>
+                    {item.warrantyExpiresAt ? <p>Warranty through {formatDateTime(item.warrantyExpiresAt)}</p> : null}
+                  </div>
+                )) : <p>No equipment recorded at this property.</p>}
+              </PanelSection>
+              <PanelSection title="Customer history">
+                <p>Last service: {context.history.lastService ? formatDateTime(context.history.lastService) : "No prior service"}</p>
+                {context.history.recentJobs.map((recent) => (
+                  <Link key={recent.id} href={`/jobs/${recent.id}`} className="block font-medium hover:underline">
+                    {recent.jobNumber} · {recent.label}
+                  </Link>
+                ))}
+              </PanelSection>
+              <PanelSection title="Financial">
+                <div className="grid grid-cols-2 gap-2">
+                  <PanelMetric label="Estimate" value={context.financials.estimateCents} />
+                  <PanelMetric label="Invoiced" value={context.financials.invoiceCents} />
+                  <PanelMetric label="Collected" value={context.financials.paidCents} />
+                  <PanelMetric label="Balance" value={context.financials.balanceCents} />
+                </div>
+                {context.billing ? <p className="mt-2 font-medium">{context.billing.label}</p> : null}
+              </PanelSection>
+              <PanelSection title="Communications">
+                {context.communications.lastMessage ? (
+                  <p>Last message: {context.communications.lastMessage.body || `${context.communications.lastMessage.channel} message`}</p>
+                ) : <p>No customer messages recorded.</p>}
+                {context.communications.lastCall ? (
+                  <p>Last call: {context.communications.lastCall.direction.toLowerCase()} · {formatDateTime(context.communications.lastCall.startedAt)}</p>
+                ) : <p>No calls recorded.</p>}
+              </PanelSection>
+              <PanelSection title="Parts">
+                {context.parts.length ? context.parts.map((part) => (
+                  <p key={part.id}>
+                    <span className="font-medium text-[var(--cy-navy)]">{part.name} · Qty {part.quantity}</span>
+                    {" "}· {part.status.replaceAll("_", " ")}{part.location ? ` · ${part.location}` : ""}
+                  </p>
+                )) : <p>No parts are attached to this job.</p>}
+              </PanelSection>
+              {job.phone ? <CompanySmsForm to={job.phone} customerId={job.customerId} /> : null}
+            </div>
+          ) : null}
 
           {canChangeStatus ? (
             <label className="block text-sm">
@@ -271,6 +375,23 @@ export function DispatchJobDrawer({
               {job.scheduleLocked ? "Unlock time" : "Lock time"}
             </button>
           ) : null}
+          {canChangeStatus && ["SCHEDULED", "DISPATCHED"].includes(job.status) ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const result = await updateJobStatusAction(job.id, "DISPATCHED");
+                  if (!result.ok) setError(result.error);
+                  else onAssigned();
+                })
+              }
+            >
+              Mark On My Way
+            </Button>
+          ) : null}
           {job.phone && isRunningLate(job) ? (
             <button
               type="button"
@@ -304,13 +425,34 @@ export function DispatchJobDrawer({
             </a>
           ) : null}
           <Link href={`/office/customers/${job.customerId}`} className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
-            Open customer
+            Customer 360
           </Link>
+          <a href={mapsUrl(job.address)} target="_blank" rel="noreferrer" className="inline-flex h-11 items-center justify-center rounded-xl border text-sm">
+            Directions
+          </a>
           <Link href={`/jobs/${job.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white">
             Open Job 360
           </Link>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-[var(--border)] bg-[var(--cy-gray)]/40 p-3 text-sm text-[var(--muted-foreground)]">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cy-navy)]">{title}</h3>
+      <div className="space-y-1">{children}</div>
+    </section>
+  );
+}
+
+function PanelMetric({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div>
+      <p className="text-xs">{label}</p>
+      <p className="font-medium text-[var(--cy-navy)]">{value == null ? "—" : formatMoney(value)}</p>
     </div>
   );
 }

@@ -25,6 +25,7 @@ export type DispatchCard = {
   assigneeIds: string[];
   assignees: string[];
   bookedByContractorYou?: boolean;
+  partsStatus: "NONE" | "NEEDED" | "RESERVED" | "READY" | "NOT_AVAILABLE";
 };
 
 export type DispatchLane = {
@@ -52,6 +53,7 @@ export type DispatchBoardData = {
     runningLate: number;
     unassigned: number;
     emergency: number;
+    availableCapacity: number;
   };
   jobTypes: string[];
 };

@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createInventoryLocationAction, receiveInventoryAction } from "@/server/actions/inventory";
 
 const TYPES = ["SERVICE", "PRODUCT", "MATERIAL", "ADD_ON", "MEMBERSHIP", "BUNDLE", "OTHER"] as const;
 
@@ -29,7 +30,7 @@ export default async function PricebookPage({
   const q = params.q ?? "";
   const categoryId = params.category || "";
 
-  const [categories, items] = await Promise.all([
+  const [categories, items, locations] = await Promise.all([
     prisma.pricebookCategory.findMany({
       where: { companyId: ctx.company.id },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -40,16 +41,27 @@ export default async function PricebookPage({
         ...(categoryId ? { categoryId } : {}),
         ...(q ? {} : { active: undefined }),
       },
-      include: { category: true },
+      include: {
+        category: true,
+        inventoryStocks: {
+          include: { location: { select: { id: true, name: true, type: true } } },
+          orderBy: { location: { name: "asc" } },
+        },
+      },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       take: 200,
+    }),
+    prisma.inventoryLocation.findMany({
+      where: { companyId: ctx.company.id, active: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
     }),
   ]);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-3xl tracking-tight">Pricebook</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Parts Bank</p>
+        <h1 className="font-display text-3xl tracking-tight">Pricebook & Inventory</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           Office manages services and products. Technicians add them to estimates from the job.
         </p>
@@ -74,6 +86,40 @@ export default async function PricebookPage({
           Search
         </Button>
       </form>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-[var(--cy-navy)]">Inventory locations</h2>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Tenant-configured warehouses and trucks. Reservations reduce available stock without deducting on-hand quantity.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {locations.map((location) => (
+              <span key={location.id} className="rounded-full bg-[var(--cy-gray)] px-3 py-1 text-xs font-medium">
+                {location.name} · {location.type.toLowerCase()}
+              </span>
+            ))}
+          </div>
+        </div>
+        {locations.length === 0 ? (
+          <p className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-3 text-sm text-[var(--muted-foreground)]">
+            No inventory locations configured. Add a warehouse or truck before receiving stock.
+          </p>
+        ) : null}
+        {canManage ? (
+          <ActionForm action={createInventoryLocationAction} className="mt-4 flex flex-wrap gap-2">
+            <Input name="name" placeholder="Main Warehouse or Truck name" className="max-w-xs" required />
+            <select name="type" className="h-8 rounded-lg border border-input px-2.5 text-sm" defaultValue="WAREHOUSE">
+              <option value="WAREHOUSE">Warehouse</option>
+              <option value="TRUCK">Truck</option>
+              <option value="OTHER">Other</option>
+            </select>
+            <Button type="submit" size="sm">Add location</Button>
+          </ActionForm>
+        ) : null}
+      </section>
 
       {canManage ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -174,8 +220,46 @@ export default async function PricebookPage({
                       Est. cost {formatMoney(item.internalCostCents)}
                     </p>
                   ) : null}
+                  {["MATERIAL", "PRODUCT"].includes(item.type) ? (
+                    <p className={`text-xs font-medium ${
+                      item.inventoryStocks.some((stock) => stock.onHand - stock.reserved < stock.minimumStock)
+                        ? "text-amber-700"
+                        : "text-emerald-700"
+                    }`}>
+                      {item.inventoryStocks.reduce((sum, stock) => sum + stock.onHand, 0)} on hand ·{" "}
+                      {item.inventoryStocks.reduce((sum, stock) => sum + stock.reserved, 0)} reserved ·{" "}
+                      {item.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0)} available
+                      {item.inventoryStocks.some((stock) => stock.onHand - stock.reserved < stock.minimumStock) ? " · LOW STOCK" : ""}
+                    </p>
+                  ) : null}
                 </div>
               </div>
+              {["MATERIAL", "PRODUCT"].includes(item.type) && item.inventoryStocks.length ? (
+                <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                  {item.inventoryStocks.map((stock) => (
+                    <li key={stock.id} className="rounded-lg bg-[var(--cy-gray)] px-3 py-2">
+                      <span className="font-medium">{stock.location.name}</span>: {stock.onHand} on hand · {stock.reserved} reserved · {stock.onHand - stock.reserved} available
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {canManage && ["MATERIAL", "PRODUCT"].includes(item.type) && locations.length ? (
+                <ActionForm action={receiveInventoryAction} className="mt-3 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="partId" value={item.id} />
+                  <label className="text-xs">Location
+                    <select name="locationId" className="mt-1 block h-8 rounded-lg border border-input px-2.5 text-sm" required>
+                      {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs">Receive
+                    <Input name="quantity" type="number" min="1" step="1" className="mt-1 w-24" required />
+                  </label>
+                  <label className="text-xs">Minimum
+                    <Input name="minimumStock" type="number" min="0" step="1" className="mt-1 w-24" defaultValue="0" required />
+                  </label>
+                  <Button type="submit" size="sm" variant="outline">Receive stock</Button>
+                </ActionForm>
+              ) : null}
               {canManage ? (
                 <ActionForm
                   action={updatePricebookItemAction}

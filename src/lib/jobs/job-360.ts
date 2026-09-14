@@ -37,6 +37,9 @@ export type Job360 = {
     internalNotes: string | null;
     customerNotes: string | null;
     scheduledStart: Date | null;
+    scheduledEnd: Date | null;
+    checkedInAt: Date | null;
+    checkedOutAt: Date | null;
     completedAt: Date | null;
     createdAt: Date;
     importMode: string;
@@ -51,12 +54,14 @@ export type Job360 = {
     since: Date | null;
     jobCount: number;
     lastService: Date | null;
+    membership: string | null;
   };
   property: {
     id: string;
     name: string | null;
     address: string;
     line: string;
+    accessNotes: string | null;
   };
   technicians: {
     assigned: { id: string; name: string }[];
@@ -81,6 +86,8 @@ export type Job360 = {
     model: string | null;
     serialNumber: string | null;
     installDate: Date | null;
+    warrantyExpiresAt: Date | null;
+    warrantyNotes: string | null;
   }[];
   photos: Job360Photo[];
   relatedJobs: { id: string; jobNumber: string; label: string; status: string; when: Date | null }[];
@@ -107,7 +114,15 @@ export async function loadJob360(
   const job = await prisma.job.findFirst({
     where: { id: input.jobId, companyId: input.companyId, ...input.access },
     include: {
-      customer: true,
+      customer: {
+        include: {
+          customerMemberships: {
+            where: { status: "ACTIVE" },
+            include: { plan: { select: { name: true } } },
+            take: 1,
+          },
+        },
+      },
       property: true,
       serviceType: { select: { name: true } },
       assignments: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
@@ -246,6 +261,9 @@ export async function loadJob360(
       internalNotes: job.internalNotes,
       customerNotes: job.customerNotes,
       scheduledStart: job.scheduledStart,
+      scheduledEnd: job.scheduledEnd,
+      checkedInAt: job.checkedInAt,
+      checkedOutAt: job.checkedOutAt,
       completedAt: job.completedAt,
       createdAt: job.createdAt,
       importMode: job.importMode,
@@ -260,12 +278,14 @@ export async function loadJob360(
       since,
       jobCount: customerStats._count.id,
       lastService,
+      membership: job.customer.customerMemberships[0]?.plan.name ?? null,
     },
     property: {
       id: job.property.id,
       name: job.property.name,
       address: job.property.address,
       line: `${job.property.address}, ${job.property.city}, ${job.property.state} ${job.property.zip}`,
+      accessNotes: job.property.accessNotes,
     },
     technicians: {
       assigned,
@@ -299,6 +319,8 @@ export async function loadJob360(
       model: row.model,
       serialNumber: row.serialNumber,
       installDate: row.installDate,
+      warrantyExpiresAt: row.warrantyExpiresAt,
+      warrantyNotes: row.warrantyNotes,
     })),
     photos: job.photos.map((photo) => ({
       id: photo.id,

@@ -12,6 +12,8 @@ const KIND_LABEL: Record<string, string> = {
   missing_technician: "Missing technician",
   missing_contact: "Missing contact info",
   missing_address: "Missing address",
+  part_needed: "Part needed",
+  part_not_available: "Part not available",
 };
 
 export function DispatchIssuesPanel({

@@ -159,6 +159,7 @@ export function DispatchBoard({
             active={pulse === "unassigned"}
             onClick={() => setPulse("unassigned")}
           />
+          <SummaryStat label="Available techs" value={board.metrics.availableCapacity} />
         </div>
         <div className="flex items-center gap-2">
           {searchOpen ? (
@@ -226,6 +227,7 @@ export function DispatchBoard({
           onClick={() => setPulse("emergency")}
           tone={board.metrics.emergency ? "emergency" : undefined}
         />
+        <SummaryStat label="Available capacity" value={board.metrics.availableCapacity} />
       </div>
 
       <div className="hidden flex-wrap items-center gap-2 md:flex">
@@ -548,6 +550,14 @@ function PulseChip({
     >
       {value} {label}
     </button>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
+      {value} {label}
+    </span>
   );
 }
 

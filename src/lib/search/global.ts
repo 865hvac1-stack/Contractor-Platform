@@ -9,7 +9,7 @@ import { customerLabel } from "@/lib/tech/today";
 import { scoreAddressMatch, scoreCodeMatch, scoreNameMatch, scorePhoneMatch } from "@/lib/search/rank";
 
 export type GlobalSearchHit = {
-  type: "customer" | "job" | "estimate" | "invoice" | "property" | "lead";
+  type: "customer" | "job" | "estimate" | "invoice" | "property" | "lead" | "part";
   href: string;
   title: string;
   detail: string;
@@ -303,6 +303,49 @@ export async function globalSearch(input: {
         label: "Invoices",
         items: topInvoices,
         moreHref: invoiceHits.length > GROUP_LIMIT ? `/invoices` : null,
+      });
+    }
+  }
+
+  if (can(input.role, "pricebook:view")) {
+    const parts = await prisma.pricebookItem.findMany({
+      where: {
+        companyId: input.companyId,
+        active: true,
+        type: { in: ["MATERIAL", "PRODUCT"] },
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { internalName: { contains: q, mode: "insensitive" } },
+          { sku: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        inventoryStocks: { select: { onHand: true, reserved: true } },
+      },
+      take: 12,
+    });
+    const partHits = parts
+      .map((part) => {
+        const available = part.inventoryStocks.reduce((sum, stock) => sum + stock.onHand - stock.reserved, 0);
+        return {
+          type: "part" as const,
+          href: `/pricebook?q=${encodeURIComponent(part.sku || part.name)}`,
+          title: part.name,
+          detail: `${part.sku ? `SKU ${part.sku} · ` : ""}${available} available`,
+          score: Math.max(scoreNameMatch(q, part.name), scoreCodeMatch(q, part.sku)),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    const topParts = partHits.slice(0, GROUP_LIMIT);
+    if (topParts.length) {
+      groups.push({
+        type: "part",
+        label: "Parts Bank",
+        items: topParts,
+        moreHref: partHits.length > GROUP_LIMIT ? `/pricebook?q=${encodeURIComponent(q)}` : null,
       });
     }
   }
