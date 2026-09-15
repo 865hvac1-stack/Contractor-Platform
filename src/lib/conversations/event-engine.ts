@@ -106,20 +106,31 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     sourceType: joined.sourceType,
     sourceId: joined.sourceId,
   });
-  const execution = await prisma.automationExecution.create({
-    data: {
-      companyId: joined.companyId,
-      automationId: automation.id,
-      eventId: joined.id,
-      customerId: context.customer?.id ?? null,
-      promotionId: automation.promotionId,
-      sourceType: joined.sourceType,
-      sourceId: joined.sourceId,
-      goal: automation.goal,
-      mode: automation.mode,
-      status: "EVALUATING",
-    },
-  });
+  let execution;
+  try {
+    execution = await prisma.automationExecution.create({
+      data: {
+        companyId: joined.companyId,
+        automationId: automation.id,
+        eventId: joined.id,
+        customerId: context.customer?.id ?? null,
+        promotionId: automation.promotionId,
+        sourceType: joined.sourceType,
+        sourceId: joined.sourceId,
+        goal: automation.goal,
+        mode: automation.mode,
+        status: "EVALUATING",
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const duplicate = await prisma.automationExecution.findFirst({
+        where: { companyId: joined.companyId, automationId: automation.id, eventId: joined.id },
+      });
+      if (duplicate) return { handled: true, duplicate: true, executionId: duplicate.id };
+    }
+    throw error;
+  }
   const promotionEligible = promotionAudienceEligible(automation.promotion?.audience, {
     eventType: joined.type as ContractorYouEventType,
     propertyType: context.job?.property.propertyType || context.customer?.properties[0]?.propertyType,
@@ -141,6 +152,43 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
   if (blockReason) {
     await finishBlockedExecution(execution.id, joined.companyId, blockReason);
     return { handled: true, sent: false, executionId: execution.id, reason: blockReason };
+  }
+
+  const existingThread = await prisma.communicationThread.findFirst({
+    where: {
+      companyId: joined.companyId,
+      ...(context.customer?.id ? { customerId: context.customer.id } : { leadId: context.lead?.id }),
+    },
+    orderBy: { lastActivityAt: "desc" },
+  });
+  if (automation.mode === "START_CONVERSATION" && existingThread) {
+    const activeSession = await prisma.conversationGoalSession.findFirst({
+      where: {
+        companyId: joined.companyId,
+        threadId: existingThread.id,
+        state: {
+          in: [
+            "STARTED",
+            "WAITING_FOR_CUSTOMER",
+            "COLLECTING_INFORMATION",
+            "CHECKING_AVAILABILITY",
+            "WAITING_FOR_SLOT_SELECTION",
+            "BOOKING",
+            "HUMAN_TAKEOVER",
+          ],
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (activeSession) {
+      await finishBlockedExecution(execution.id, joined.companyId, "active_conversation_in_progress");
+      return {
+        handled: true,
+        sent: false,
+        executionId: execution.id,
+        reason: "active_conversation_in_progress",
+      };
+    }
   }
 
   const settings = await loadReceptionistSettings(joined.companyId);
@@ -183,13 +231,15 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     return { handled: true, sent: false, executionId: execution.id, reason: "provider_failed" };
   }
 
-  const thread = await prisma.communicationThread.findFirst({
-    where: {
-      companyId: joined.companyId,
-      ...(context.customer?.id ? { customerId: context.customer.id } : { leadId: context.lead?.id }),
-    },
-    orderBy: { lastActivityAt: "desc" },
-  });
+  const thread =
+    existingThread ||
+    (await prisma.communicationThread.findFirst({
+      where: {
+        companyId: joined.companyId,
+        ...(context.customer?.id ? { customerId: context.customer.id } : { leadId: context.lead?.id }),
+      },
+      orderBy: { lastActivityAt: "desc" },
+    }));
   const isConversation = automation.mode === "START_CONVERSATION" && Boolean(automation.goal) && Boolean(thread);
   await prisma.$transaction(async (tx) => {
     await tx.automation.update({ where: { id: automation.id }, data: { lastTriggeredAt: new Date() } });

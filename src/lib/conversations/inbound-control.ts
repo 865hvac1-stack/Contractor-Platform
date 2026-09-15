@@ -1,12 +1,14 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { handoffToOffice } from "@/lib/intelligence/receptionist/handoff";
+import { sendCompanyCommunication } from "@/lib/comms/provider";
 
 const OPT_OUT = new Set(["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
 const HUMAN_ESCALATION =
   /\b(manager|supervisor|human|real person|office|price is ridiculous|dispute|refund|lawyer|attorney|legal action|unsafe|emergency)\b/i;
 const CUSTOMER_REQUEST =
   /\b(can (?:he|she|they|the tech|your tech)|could (?:he|she|they|the tech|your tech)|please|also|make sure|tell (?:him|her|them)|gate code|dog|call before|side entrance|upstairs|downstairs|park)\b/i;
+const AFFIRMATIVE = /^(yes|yes please|yep|yeah|correct|that works|works for me|all set|confirmed|perfect)[.! ]*$/i;
 
 export function isSmsOptOut(body: string) {
   return OPT_OUT.has(body.trim().replace(/[.!]/g, "").toUpperCase());
@@ -126,6 +128,47 @@ export async function applyInboundConversationControls(input: {
     return { handled: true, stopAutoReply: true, reason: "needs_human" as const, session };
   }
 
+  if (session.goal === "CONFIRM_APPOINTMENT" && AFFIRMATIVE.test(body)) {
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.conversationGoalSession.update({
+        where: { id: session.id },
+        data: { state: "GOAL_COMPLETED", completedAt: now },
+      });
+      if (session.executionId) {
+        await tx.automationExecution.update({
+          where: { id: session.executionId },
+          data: { status: "GOAL_COMPLETED", goalCompletedAt: now },
+        });
+      }
+      await tx.communicationThread.update({
+        where: { id: input.threadId },
+        data: { currentGoal: null },
+      });
+      await tx.conversationAuditEvent.create({
+        data: {
+          companyId: input.companyId,
+          threadId: input.threadId,
+          executionId: session.executionId,
+          event: "CONVERSATION_GOAL_COMPLETED",
+          decision: "APPOINTMENT_CONFIRMED",
+          details: { messageId: input.messageId },
+        },
+      });
+    });
+    if (input.phone) {
+      await sendCompanyCommunication({
+        companyId: input.companyId,
+        channel: "SMS",
+        to: input.phone,
+        body: "Perfect — you’re all set. We’ll send you a heads-up when your technician is on the way.",
+        customerId,
+        origin: "CONTRACTORYOU_AUTOMATION",
+      });
+    }
+    return { handled: true, stopAutoReply: true, reason: "appointment_confirmed" as const, session };
+  }
+
   if (
     session.goal === "ANSWER_PRE_ARRIVAL_QUESTIONS" &&
     session.jobId &&
@@ -162,7 +205,17 @@ export async function applyInboundConversationControls(input: {
         },
       });
     });
-    return { handled: true, stopAutoReply: false, reason: "customer_request_added" as const, session };
+    if (input.phone) {
+      await sendCompanyCommunication({
+        companyId: input.companyId,
+        channel: "SMS",
+        to: input.phone,
+        body: "Absolutely. I added that as a customer request for your technician. They’ll confirm anything that could change the scope or price.",
+        customerId,
+        origin: "CONTRACTORYOU_AUTOMATION",
+      });
+    }
+    return { handled: true, stopAutoReply: true, reason: "customer_request_added" as const, session };
   }
 
   return { handled: true, stopAutoReply: false, reason: "goal_continues" as const, session };

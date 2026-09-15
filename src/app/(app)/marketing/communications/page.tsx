@@ -19,7 +19,7 @@ const COMM_FILTERS = [
   { id: "human", label: "Human Active" },
   { id: "unread", label: "Unread" },
   { id: "jobs-today", label: "Jobs Today" },
-  { id: "new-leads", label: "New Leads" },
+  { id: "needs-response", label: "New Leads" },
   { id: "missed", label: "Missed Calls" },
 ] as const;
 
@@ -62,7 +62,7 @@ export default async function CommunicationsPage({
       ...(filter === "human" ? { handlingState: "HUMAN_ACTIVE" } : {}),
       ...(filter === "unread" ? { unread: true } : {}),
       ...(filter === "jobs-today" ? { goalSessions: { some: { jobId: { in: jobsToday.map((job) => job.id) } } } } : {}),
-      ...(filter === "new-leads" ? { leadId: { not: null }, lead: { firstRespondedAt: null } } : {}),
+      ...(filter === "needs-response" ? { leadId: { not: null }, lead: { firstRespondedAt: null } } : {}),
     },
     orderBy: { lastActivityAt: "desc" },
     take: 80,
