@@ -87,6 +87,7 @@ const TOOL_PERMISSIONS: Record<string, Permission | Permission[]> = {
   getBusinessHealth: "intelligence:view",
   getOperatingNotes: "intelligence:view",
   getWaitingBoard: "jobs:view",
+  getTechnicianIntelligence: "technician_intelligence:view",
   getImportedFinancials: "accounting:view",
 };
 
@@ -355,6 +356,12 @@ export const TOOL_DEFINITIONS = [
     parameters: {},
   },
   {
+    name: "getTechnicianIntelligence",
+    description:
+      "Read-only, tenant-scoped technician qualifications, owner skill ratings, call preferences, and cached job-type performance. Never invent abilities or bypass required qualifications.",
+    parameters: { question: { type: "string" }, userId: { type: "string" } },
+  },
+  {
     name: "getImportedFinancials",
     description:
       "Tenant-scoped imported QuickBooks financial totals only. Never invent numbers. If Chart of Accounts is unmapped, say profit is unavailable.",
@@ -404,6 +411,7 @@ export async function runIntelligenceTool(
     "getCloseRate",
     "getMembershipConversion",
     "getCustomerSummary",
+    "getTechnicianIntelligence",
   ]);
   if (can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "reports:view") && !fieldSafeTools.has(name)) {
     return deny("That company information is not available in the field.");
@@ -944,6 +952,100 @@ export async function runIntelligenceTool(
         ok: true,
         data: { missingCosts: pack.missingCosts, unreviewedReceipts: pack.unreviewedReceipts },
         grounding: { sources: ["invoices", "job_costs", "receipts"] },
+      };
+    }
+    case "getTechnicianIntelligence": {
+      const requested = typeof args.userId === "string" ? args.userId : null;
+      const fieldOnly = can(ctx.role, "jobs:assigned_only") && !can(ctx.role, "performance:view_team");
+      if (fieldOnly && requested && requested !== ctx.userId) {
+        return deny("You can only view your own Technician Intelligence.");
+      }
+      const words = String(args.question || "").toLowerCase();
+      const categoryNeedle =
+        /no cool|not cooling/.test(words) ? "no cooling"
+          : /heat pump/.test(words) ? "heat pump"
+            : /commercial/.test(words) ? "commercial"
+              : /maintenance|tune.?up/.test(words) ? "maintenance"
+                : /\biaq\b|air quality/.test(words) ? "indoor air quality"
+                  : null;
+      const profiles = await prisma.technicianIntelligenceProfile.findMany({
+        where: {
+          companyId: ctx.companyId,
+          ...(fieldOnly ? { technicianId: ctx.userId } : requested ? { technicianId: requested } : {}),
+        },
+        include: {
+          technician: { select: { id: true, firstName: true, lastName: true } },
+          skillRatings: {
+            include: { skill: { select: { name: true, categoryId: true } } },
+            orderBy: { rating: "desc" },
+          },
+          qualifications: {
+            include: { definition: { select: { name: true } } },
+          },
+          preferences: {
+            include: { category: { select: { name: true } } },
+          },
+          performance: {
+            where: { window: "ALL_TIME" },
+            include: { category: { select: { name: true } } },
+          },
+        },
+        take: 50,
+      });
+      const rows = profiles.map((profile) => ({
+        technician: {
+          id: profile.technician.id,
+          name: `${profile.technician.firstName} ${profile.technician.lastName}`,
+        },
+        smartDispatchReady: profile.status === "READY" && profile.smartDispatchEligible,
+        strongestSkills: profile.skillRatings
+          .filter((rating) => rating.rating >= 4 && (!categoryNeedle || rating.skill.name.toLowerCase().includes(categoryNeedle)))
+          .slice(0, 5)
+          .map((rating) => ({ name: rating.skill.name, ownerRating: rating.rating })),
+        qualifications: profile.qualifications.map((qualification) => ({
+          name: qualification.definition.name,
+          status:
+            qualification.status === "ACTIVE" &&
+            qualification.expirationDate &&
+            qualification.expirationDate < new Date()
+              ? "EXPIRED"
+              : qualification.status,
+          expirationDate: qualification.expirationDate,
+        })),
+        preferences: profile.preferences.map((preference) => ({
+          callType: preference.category.name,
+          preference: preference.preference,
+        })),
+        performance: profile.performance
+          .filter((metric) => !categoryNeedle || metric.category.name.toLowerCase().includes(categoryNeedle))
+          .map((metric) => ({
+            callType: metric.category.name,
+            completedJobs: metric.completedJobs,
+            confidence: metric.confidence,
+            callbackRate: metric.completedJobs
+              ? Math.round((metric.callbackCount / metric.completedJobs) * 1000) / 10
+              : null,
+            firstTimeCompletionRate: metric.completedJobs
+              ? Math.round((metric.firstTimeCompletionCount / metric.completedJobs) * 1000) / 10
+              : null,
+          })),
+      }));
+      return {
+        ok: true,
+        data: {
+          rows,
+          note: rows.length
+            ? "Owner ratings and ContractorYou performance are separate. Required qualifications are hard constraints."
+            : "No Technician Intelligence profiles are configured yet.",
+        },
+        grounding: {
+          sources: [
+            "technician_intelligence_profiles",
+            "technician_skill_ratings",
+            "technician_qualifications",
+            "technician_performance_aggregates",
+          ],
+        },
       };
     }
     case "getTechnicianScorecard":

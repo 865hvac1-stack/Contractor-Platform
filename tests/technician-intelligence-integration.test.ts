@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 import { calculateTechnicianCategoryPerformance, refreshTechnicianPerformance } from "@/lib/technician-intelligence/performance";
 import { calculateFamiliarity, getTechnicianJobFit } from "@/lib/technician-intelligence/job-fit";
 import { writeAudit } from "@/lib/audit";
+import { runIntelligenceTool } from "@/lib/intelligence/tools";
+import { toolsForQuestion } from "@/lib/intelligence/intent";
 
 const prisma = new PrismaClient();
 
@@ -370,5 +372,19 @@ describe("Technician Intelligence persistence and job-fit integration", () => {
       },
     });
     expect(audit?.actorId).toBe(ids.owner);
+  });
+
+  it("exposes safe read-only intelligence through the existing Regina tool layer", async () => {
+    expect(toolsForQuestion("Who is qualified and strongest on no-cools?")).toContain(
+      "getTechnicianIntelligence"
+    );
+    const result = await runIntelligenceTool(
+      { companyId: ids.companyA, userId: ids.owner, role: "COMPANY_OWNER" },
+      "getTechnicianIntelligence",
+      { question: "Who is strongest on no-cools?" }
+    );
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(result.data)).toContain("Johnny Smith");
+    expect(JSON.stringify(result.data)).not.toContain("managerNote");
   });
 });

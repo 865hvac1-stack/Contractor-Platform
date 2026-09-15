@@ -68,6 +68,9 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
   }
   if (/customer|call back|repeat/.test(q)) tools.add("getOpportunities");
   if (/trend|better|worse|compared|down|up/.test(q)) tools.add("getTrend");
+  if (/qualified|qualification|certification|strongest|best tech|preferred call|development call|callback rate|first.?time completion|worked at|worked on this equipment/.test(q)) {
+    tools.add("getTechnicianIntelligence");
+  }
   if (/scorecard|technician|best tech|average ticket|close rate|membership/.test(q)) {
     tools.add("getTechnicianScorecard");
     tools.add("getTeamPerformance");
