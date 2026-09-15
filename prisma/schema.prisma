@@ -1123,6 +1123,8 @@ model Job {
   @@index([companyId, propertyId])
   @@index([companyId, playbookId])
   @@index([companyId, serviceTypeId])
+  @@index([companyId, serviceTypeId, completedAt])
+  @@index([companyId, jobType, completedAt])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, importSessionId])
   @@index([companyId, scheduleLocked])
