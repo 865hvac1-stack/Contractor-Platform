@@ -12,6 +12,7 @@ import { GOAL_ACTIONS } from "@/lib/conversations/custom-automations";
 
 const automationEditorSchema = z.object({
   automationId: z.string().cuid(),
+  name: z.string().min(1).max(160),
   mode: z.enum(["SEND_MESSAGE", "START_CONVERSATION"]),
   goal: z.string().max(100).optional(),
   channel: z.literal("SMS"),
@@ -94,6 +95,7 @@ export async function updateConversationAutomationAction(
     const ctx = await requirePermission("marketing:manage");
     const parsed = automationEditorSchema.safeParse({
       automationId: formData.get("automationId"),
+      name: formData.get("name"),
       mode: formData.get("mode"),
       goal: formData.get("goal"),
       channel: formData.get("channel"),
@@ -132,6 +134,7 @@ export async function updateConversationAutomationAction(
     await prisma.automation.update({
       where: { id: automation.id },
       data: {
+        name: parsed.data.name,
         mode: parsed.data.mode,
         action: parsed.data.mode === "START_CONVERSATION" ? "START_REGINA_CONVERSATION" : "SEND_MESSAGE",
         goal: parsed.data.mode === "START_CONVERSATION" ? parsed.data.goal || automation.goal : automation.goal,

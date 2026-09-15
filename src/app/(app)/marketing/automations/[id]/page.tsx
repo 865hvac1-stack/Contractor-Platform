@@ -84,6 +84,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
         className="space-y-5 rounded-2xl border bg-white p-5"
       >
         <input type="hidden" name="automationId" value={automation.id} />
+        <div className="space-y-2"><Label htmlFor="name">Name</Label><input id="name" name="name" defaultValue={automation.name} disabled={!canManage} className={selectClass} /></div>
         {automation.sourceRequest ? <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-[var(--cy-orange)]">You asked ContractorYou</p><p className="mt-2 text-sm text-[var(--cy-navy)]">“{automation.sourceRequest}”</p></div> : null}
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="When" value={friendly(automation.trigger)} />
