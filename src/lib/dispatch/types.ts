@@ -25,6 +25,9 @@ export type DispatchCard = {
   assigneeIds: string[];
   assignees: string[];
   bookedByContractorYou?: boolean;
+  project?: { id: string; projectNumber: string; name: string } | null;
+  projectPhase?: { name: string } | null;
+  projectVisitPurpose?: string | null;
   partsStatus: "NONE" | "NEEDED" | "RESERVED" | "READY" | "NOT_AVAILABLE";
 };
 
