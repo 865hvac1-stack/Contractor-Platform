@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
-import { can } from "@/lib/permissions";
+import { can, isFieldRole } from "@/lib/permissions";
 import { confidenceForSampleSize, readiness } from "@/lib/technician-intelligence/core";
 import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -23,7 +23,7 @@ export default async function TeamIntelligencePage({
 }) {
   const ctx = await requirePermission("technician_intelligence:view");
   const query = await searchParams;
-  const canViewTeam = can(ctx.role, "performance:view_team");
+  const canViewTeam = !isFieldRole(ctx.role);
   const [memberships, categories, qualificationDefinitions, requirements, skillsForConfiguration, serviceTypes, categoryMappings] = await Promise.all([
     prisma.membership.findMany({
     where: {

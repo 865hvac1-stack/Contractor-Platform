@@ -37,6 +37,7 @@ export async function resolveJobCategory(input: {
   serviceTypeKey?: string | null;
   serviceTypeName?: string | null;
   jobType?: string | null;
+  fallbackToOther?: boolean;
 }) {
   if (input.serviceTypeId) {
     const mapped = await prisma.technicianJobCategoryMapping.findFirst({
@@ -58,7 +59,7 @@ export async function resolveJobCategory(input: {
       const values = [category.key, category.name, ...category.aliases].map(normalizeJobLabel);
       return labels.some((label) => values.includes(label));
     }) ??
-    categories.find((category) => category.key === "OTHER") ??
+    (input.fallbackToOther !== false ? categories.find((category) => category.key === "OTHER") : null) ??
     null
   );
 }
@@ -78,25 +79,33 @@ export async function calculateTechnicianCategoryPerformance(input: {
 
   const range = windowRange(input.window, input.now);
   const normalizedLabels = [category.key, category.name, ...category.aliases].map(normalizeJobLabel);
+  const sourceLabels = [category.key, category.name, ...category.aliases];
   const mappingServiceTypeIds = category.mappings.map((mapping) => mapping.serviceTypeId).filter(Boolean) as string[];
 
   const jobs = await prisma.job.findMany({
     where: {
       companyId: input.companyId,
       status: "COMPLETED",
+      importMode: "LIVE",
       completedAt: {
         ...(range.start ? { gte: range.start } : {}),
         lte: range.end,
       },
       assignments: { some: { userId: input.technicianId } },
+      OR: [
+        ...(mappingServiceTypeIds.length ? [{ serviceTypeId: { in: mappingServiceTypeIds } }] : []),
+        ...sourceLabels.map((label) => ({ jobType: { equals: label, mode: "insensitive" as const } })),
+        ...sourceLabels.map((label) => ({ serviceType: { key: { equals: label, mode: "insensitive" as const } } })),
+        ...sourceLabels.map((label) => ({ serviceType: { name: { equals: label, mode: "insensitive" as const } } })),
+      ],
     },
     include: {
       serviceType: { select: { key: true, name: true } },
       invoices: {
-        where: { status: { notIn: ["DRAFT", "VOID"] } },
+        where: { status: { notIn: ["DRAFT", "VOID"] }, importMode: "LIVE" },
         select: { totalCents: true },
       },
-      estimates: { select: { status: true } },
+      estimates: { where: { importMode: "LIVE" }, select: { status: true } },
       technicianJobRelationshipsOriginal: {
         where: { type: "CALLBACK" },
         select: { id: true },

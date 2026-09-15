@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Award, CheckCircle2, RefreshCw, ShieldAlert, Sparkles, TrendingUp } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
-import { can } from "@/lib/permissions";
+import { can, isFieldRole } from "@/lib/permissions";
 import {
   averageOrNull,
   qualificationState,
@@ -41,7 +41,7 @@ export default async function TechnicianIntelligenceProfilePage({
   )
     ? requestedWindow!
     : "ALL_TIME";
-  const canViewTeam = can(ctx.role, "performance:view_team");
+  const canViewTeam = !isFieldRole(ctx.role);
   if (!canViewTeam && technicianId !== ctx.user.id) notFound();
   const canManage = can(ctx.role, "technician_intelligence:manage");
   const showConfidential = can(ctx.role, "technician_intelligence:confidential");

@@ -88,6 +88,25 @@ describe("Technician Intelligence core", () => {
     expect(fit.reasons.some((reason) => reason.code === "EXPIRED_REQUIRED_CERTIFICATION")).toBe(true);
   });
 
+  it.each(["PENDING", "INACTIVE"])("blocks a required qualification in %s state", (state) => {
+    const fit = evaluateJobFit({
+      ...baseFit,
+      requiredQualifications: [{ id: "epa", name: "EPA Universal", state }],
+    });
+    expect(fit.eligible).toBe(false);
+    expect(fit.reasons).toContainEqual(
+      expect.objectContaining({ code: "REQUIRED_QUALIFICATION_NOT_ACTIVE", kind: "BLOCKER" })
+    );
+  });
+
+  it("blocks auto-recommendation when the job category is unmapped", () => {
+    const fit = evaluateJobFit({ ...baseFit, categoryMapped: false });
+    expect(fit.eligible).toBe(false);
+    expect(fit.reasons).toContainEqual(
+      expect.objectContaining({ code: "UNMAPPED_JOB_CATEGORY", kind: "BLOCKER" })
+    );
+  });
+
   it("uses preferred calls as a positive soft signal", () => {
     const fit = evaluateJobFit({ ...baseFit, preference: "PREFERRED" });
     expect(fit.eligible).toBe(true);

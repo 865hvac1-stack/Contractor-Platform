@@ -22,6 +22,13 @@ export async function saveTechnicianEvaluationAction(
       select: { id: true },
     });
     if (skills.length !== new Set(skillIds).size) return fail("One or more skills are unavailable.");
+    if (!skillIds.length) return fail("Rate at least one field skill.");
+    const submittedRatings = new Map(
+      skillIds.map((skillId) => [skillId, Number(formData.get(`rating:${skillId}`))])
+    );
+    if ([...submittedRatings.values()].some((rating) => !Number.isInteger(rating) || rating < 1 || rating > 5)) {
+      return fail("Every submitted skill rating must be from 1 to 5.");
+    }
 
     const existing = await prisma.technicianIntelligenceProfile.findUnique({
       where: { companyId_technicianId: { companyId: ctx.company.id, technicianId } },
@@ -47,8 +54,7 @@ export async function saveTechnicianEvaluationAction(
         },
       });
       for (const skill of skills) {
-        const rating = Number(formData.get(`rating:${skill.id}`));
-        if (!Number.isInteger(rating) || rating < 1 || rating > 5) continue;
+        const rating = submittedRatings.get(skill.id)!;
         await tx.technicianSkillRating.upsert({
           where: { profileId_skillId: { profileId: result.id, skillId: skill.id } },
           update: {

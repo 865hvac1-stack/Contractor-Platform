@@ -481,6 +481,8 @@ model User {
   technicianQualificationsCreated TechnicianQualification[]        @relation("TechnicianQualificationCreator")
   technicianPreferencesChanged    TechnicianCallPreference[]       @relation("TechnicianPreferenceActor")
   technicianIntelligenceOverrides TechnicianIntelligenceOverride[] @relation("TechnicianIntelligenceOverrideActor")
+  technicianSkillRatingsUpdated    TechnicianSkillRating[]           @relation("TechnicianSkillRatingUpdater")
+  technicianJobRelationshipsCreated TechnicianJobRelationship[]      @relation("TechnicianJobRelationshipCreator")
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -801,6 +803,7 @@ model ServiceType {
   invoices                Invoice[]
   schedulingRules         ServiceTypeSchedulingRule[]
   technicianEligibilities TechnicianServiceEligibility[]
+  technicianCategoryMappings TechnicianJobCategoryMapping[]
   defaultForPolicies      SchedulingPolicy[]             @relation("DefaultServiceType")
   maintenanceForPolicies  SchedulingPolicy[]             @relation("MaintenanceServiceType")
 
@@ -4731,6 +4734,7 @@ model TechnicianJobCategory {
   requirements TechnicianJobTypeRequirement[]
   preferences  TechnicianCallPreference[]
   performance  TechnicianPerformanceAggregate[]
+  overrides    TechnicianIntelligenceOverride[]
 
   @@unique([companyId, key])
   @@index([companyId, active, sortOrder])
@@ -4746,6 +4750,7 @@ model TechnicianJobCategoryMapping {
 
   company  Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   category TechnicianJobCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  serviceType ServiceType?       @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, serviceTypeId])
   @@unique([companyId, sourceLabel])
@@ -4786,6 +4791,7 @@ model TechnicianSkillRating {
   company Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   profile TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   skill   TechnicianSkillDefinition     @relation(fields: [skillId], references: [id], onDelete: Restrict)
+  updatedBy User                         @relation("TechnicianSkillRatingUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
 
   @@unique([profileId, skillId])
   @@index([companyId, skillId, rating])
@@ -4912,6 +4918,7 @@ model TechnicianIntelligenceOverride {
 
   company   Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   profile   TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category  TechnicianJobCategory?        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   changedBy User                          @relation("TechnicianIntelligenceOverrideActor", fields: [changedById], references: [id], onDelete: Restrict)
 
   @@index([companyId, profileId, active])
@@ -4931,6 +4938,7 @@ model TechnicianJobRelationship {
   company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   originalJob Job     @relation("TechnicianOriginalJob", fields: [originalJobId], references: [id], onDelete: Cascade)
   relatedJob  Job     @relation("TechnicianRelatedJob", fields: [relatedJobId], references: [id], onDelete: Cascade)
+  createdBy   User    @relation("TechnicianJobRelationshipCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@unique([companyId, originalJobId, relatedJobId, type])
   @@index([companyId, originalJobId, type])

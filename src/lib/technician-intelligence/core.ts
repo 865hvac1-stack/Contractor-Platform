@@ -52,6 +52,8 @@ export type FitReasonCode =
   | "REQUIRED_QUALIFICATIONS_MET"
   | "MISSING_REQUIRED_QUALIFICATION"
   | "EXPIRED_REQUIRED_CERTIFICATION"
+  | "REQUIRED_QUALIFICATION_NOT_ACTIVE"
+  | "UNMAPPED_JOB_CATEGORY"
   | "STRONG_OWNER_SKILL_RATING"
   | "HIGH_JOB_TYPE_EXPERIENCE"
   | "HIGH_FIRST_TIME_COMPLETION"
@@ -74,6 +76,7 @@ export type JobFitInput = {
   technicianActive: boolean;
   smartDispatchEligible: boolean;
   serviceTypeEligible?: boolean;
+  categoryMapped?: boolean;
   requiredQualifications: Array<{
     id: string;
     name: string;
@@ -108,6 +111,13 @@ export function evaluateJobFit(input: JobFitInput) {
       kind: "BLOCKER",
     });
   }
+  if (input.categoryMapped === false) {
+    reasons.push({
+      code: "UNMAPPED_JOB_CATEGORY",
+      label: "Call type needs an intelligence category mapping before auto-recommendation",
+      kind: "BLOCKER",
+    });
+  }
 
   for (const requirement of input.requiredQualifications) {
     if (requirement.state === "MISSING") {
@@ -120,6 +130,12 @@ export function evaluateJobFit(input: JobFitInput) {
       reasons.push({
         code: "EXPIRED_REQUIRED_CERTIFICATION",
         label: `Required qualification expired: ${requirement.name}`,
+        kind: "BLOCKER",
+      });
+    } else if (requirement.state !== "ACTIVE") {
+      reasons.push({
+        code: "REQUIRED_QUALIFICATION_NOT_ACTIVE",
+        label: `Required qualification is not active: ${requirement.name}`,
         kind: "BLOCKER",
       });
     }

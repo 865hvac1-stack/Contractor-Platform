@@ -49,6 +49,7 @@ export async function getTechnicianJobFit(input: {
     serviceTypeKey: job.serviceType?.key,
     serviceTypeName: job.serviceType?.name,
     jobType: job.jobType,
+    fallbackToOther: false,
   });
   const [requirements, familiarity, actualServiceEligibility] = await Promise.all([
     category
@@ -100,6 +101,7 @@ export async function getTechnicianJobFit(input: {
     technicianActive: membership.status === "ACTIVE",
     smartDispatchEligible: profile?.smartDispatchEligible ?? true,
     serviceTypeEligible: actualServiceEligibility?.eligible !== false,
+    categoryMapped: Boolean(category),
     requiredQualifications,
     ownerSkillRating,
     preference: preference?.preference ?? null,
