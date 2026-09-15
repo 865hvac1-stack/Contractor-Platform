@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   saveJobTypeRequirementAction,
+  saveJobCategoryMappingAction,
   saveTechnicianQualificationDefinitionAction,
   saveTechnicianSkillDefinitionAction,
 } from "@/server/actions/technician-intelligence";
@@ -23,7 +24,7 @@ export default async function TeamIntelligencePage({
   const ctx = await requirePermission("technician_intelligence:view");
   const query = await searchParams;
   const canViewTeam = can(ctx.role, "performance:view_team");
-  const [memberships, categories, qualificationDefinitions, requirements, skillsForConfiguration] = await Promise.all([
+  const [memberships, categories, qualificationDefinitions, requirements, skillsForConfiguration, serviceTypes, categoryMappings] = await Promise.all([
     prisma.membership.findMany({
     where: {
       companyId: ctx.company.id,
@@ -72,6 +73,13 @@ export default async function TeamIntelligencePage({
     prisma.technicianSkillDefinition.findMany({
       where: { companyId: ctx.company.id },
       orderBy: [{ group: "asc" }, { sortOrder: "asc" }],
+    }),
+    prisma.serviceType.findMany({
+      where: { companyId: ctx.company.id, active: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.technicianJobCategoryMapping.findMany({
+      where: { companyId: ctx.company.id, serviceTypeId: { not: null } },
     }),
   ]);
 
@@ -264,6 +272,28 @@ export default async function TeamIntelligencePage({
                   <Button type="submit" size="sm" variant="outline">{skill.active ? "Deactivate" : "Restore"}</Button>
                 </ActionForm>
               ))}
+            </div>
+          </details>
+          <details className="mt-4 border-t pt-4">
+            <summary className="cursor-pointer font-medium text-[var(--cy-navy)]">Map existing service types</summary>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Keep customer-facing service names intact while mapping them to canonical intelligence call types.
+            </p>
+            <div className="mt-4 grid gap-2 lg:grid-cols-2">
+              {serviceTypes.map((serviceType) => {
+                const mapping = categoryMappings.find((item) => item.serviceTypeId === serviceType.id);
+                return (
+                  <ActionForm key={serviceType.id} action={saveJobCategoryMappingAction} className="flex gap-2 rounded-xl border p-3">
+                    <input type="hidden" name="serviceTypeId" value={serviceType.id} />
+                    <span className="min-w-36 flex-1 text-sm font-medium">{serviceType.name}</span>
+                    <select name="categoryId" defaultValue={mapping?.categoryId || ""} className={selectClass}>
+                      <option value="">Not mapped</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                    <Button type="submit" size="sm" variant="outline">Save</Button>
+                  </ActionForm>
+                );
+              })}
             </div>
           </details>
         </section>

@@ -315,6 +315,48 @@ export async function saveTechnicianQualificationDefinitionAction(
   }
 }
 
+export async function saveJobCategoryMappingAction(
+  _previous: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const ctx = await requirePermission("technician_intelligence:manage");
+    const serviceTypeId = text(formData, "serviceTypeId");
+    const categoryId = optional(formData, "categoryId");
+    const serviceType = await prisma.serviceType.findFirst({
+      where: { id: serviceTypeId, companyId: ctx.company.id },
+    });
+    if (!serviceType) return fail("Service type not found.");
+    if (categoryId && !await prisma.technicianJobCategory.findFirst({ where: { id: categoryId, companyId: ctx.company.id } })) {
+      return fail("Call type not found.");
+    }
+    const existing = await prisma.technicianJobCategoryMapping.findUnique({
+      where: { companyId_serviceTypeId: { companyId: ctx.company.id, serviceTypeId } },
+    });
+    if (!categoryId) {
+      if (existing) await prisma.technicianJobCategoryMapping.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.technicianJobCategoryMapping.upsert({
+        where: { companyId_serviceTypeId: { companyId: ctx.company.id, serviceTypeId } },
+        update: { categoryId },
+        create: { companyId: ctx.company.id, serviceTypeId, categoryId },
+      });
+    }
+    await writeAudit({
+      companyId: ctx.company.id,
+      actorId: ctx.user.id,
+      action: "technician_intelligence.job_category_mapping_updated",
+      entityType: "TechnicianJobCategoryMapping",
+      entityId: existing?.id,
+      metadata: { serviceTypeId, before: existing?.categoryId ?? null, after: categoryId },
+    });
+    revalidatePath("/team/intelligence");
+    return { ok: true, message: `${serviceType.name} mapping saved.` };
+  } catch (error) {
+    return fail(message(error));
+  }
+}
+
 export async function refreshTechnicianPerformanceAction(
   _previous: ActionResult | null,
   formData: FormData
