@@ -94,6 +94,7 @@ export function DispatchJobCard({
         {job.jobType || JOB_KIND_LABEL[job.kind]}
         {job.city ? ` · ${job.city}` : ""}
       </p>
+      {job.project ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--cy-orange)]">Project Visit · {job.project.name}{job.projectPhase ? ` · ${job.projectPhase.name}` : ""}</p> : null}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <StatusBadge status={job.status} className="text-[10px]" />
         {job.membership ? (

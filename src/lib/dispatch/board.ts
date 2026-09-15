@@ -33,6 +33,8 @@ const jobInclude = {
     include: { column: { select: { key: true } } },
     take: 3,
   },
+  project: { select: { id: true, projectNumber: true, name: true } },
+  projectPhase: { select: { name: true } },
 } as const;
 
 export type DispatchIssueKind =
@@ -155,6 +157,9 @@ export function toDispatchCard(job: {
   scheduleLocked: boolean;
   routeOrder: number | null;
   bookedByContractorYou?: boolean;
+  projectVisitPurpose?: string | null;
+  project?: { id: string; projectNumber: string; name: string } | null;
+  projectPhase?: { name: string } | null;
   customerId: string;
   customer: {
     firstName: string;
@@ -199,6 +204,9 @@ export function toDispatchCard(job: {
     assigneeIds: job.assignments.map((row) => row.userId),
     assignees: job.assignments.map((row) => `${row.user.firstName} ${row.user.lastName}`.trim()),
     bookedByContractorYou: Boolean(job.bookedByContractorYou),
+    project: job.project,
+    projectPhase: job.projectPhase,
+    projectVisitPurpose: job.projectVisitPurpose ?? null,
     partsStatus: partsStatus(
       job.jobParts ?? [],
       Boolean(job.waitingRecords?.some((row) => row.column.key === "WAITING_ON_PART"))

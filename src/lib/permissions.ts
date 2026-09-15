@@ -64,7 +64,16 @@ export type Permission =
   | "routing:optimize"
   | "payments:manage"
   | "payments:refund"
-  | "payments:view_payouts";
+  | "payments:view_payouts"
+  | "projects:view"
+  | "projects:manage"
+  | "projects:financial_view"
+  | "projects:financial_manage"
+  | "project_labor:clock"
+  | "project_labor:manage"
+  | "project_labor_cost:view"
+  | "project_labor_cost:manage"
+  | "project_assets:manage";
 
 const ALL_COMPANY: Permission[] = [
   "company:manage",
@@ -126,6 +135,15 @@ const ALL_COMPANY: Permission[] = [
   "payments:manage",
   "payments:refund",
   "payments:view_payouts",
+  "projects:view",
+  "projects:manage",
+  "projects:financial_view",
+  "projects:financial_manage",
+  "project_labor:clock",
+  "project_labor:manage",
+  "project_labor_cost:view",
+  "project_labor_cost:manage",
+  "project_assets:manage",
 ];
 
 export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
@@ -176,6 +194,13 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "compensation:view_own",
     "performance:view_own",
     "performance:view_team",
+    "projects:view",
+    "projects:manage",
+    "projects:financial_view",
+    "projects:financial_manage",
+    "project_labor:clock",
+    "project_labor:manage",
+    "project_assets:manage",
   ],
   DISPATCHER: [
     "customers:view",
@@ -194,6 +219,8 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "intelligence:view",
     "inventory:view",
     "inventory:use",
+    "projects:view",
+    "projects:manage",
   ],
   SALES: [
     "customers:manage",
@@ -213,6 +240,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "memberships:manage",
     "performance:view_own",
     "compensation:view_own",
+    "projects:view",
   ],
   TECHNICIAN: [
     "jobs:view",
@@ -240,6 +268,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "memberships:manage",
     "compensation:view_own",
     "performance:view_own",
+    "projects:view",
+    "project_labor:clock",
+    "project_assets:manage",
   ],
   INSTALLER: [
     "jobs:view",
@@ -255,6 +286,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "receipts:manage",
     "inventory:view",
     "inventory:use",
+    "projects:view",
+    "project_labor:clock",
+    "project_assets:manage",
   ],
   MANAGER: [
     "customers:view",
@@ -295,6 +329,14 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "performance:view_own",
     "performance:view_team",
     "receptionist:train",
+    "projects:view",
+    "projects:manage",
+    "projects:financial_view",
+    "projects:financial_manage",
+    "project_labor:clock",
+    "project_labor:manage",
+    "project_labor_cost:view",
+    "project_assets:manage",
   ],
 };
 

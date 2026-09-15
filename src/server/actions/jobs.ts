@@ -246,6 +246,34 @@ export async function updateJobStatusAction(
           });
         }
       }
+      if (target.status !== "COMPLETED") {
+        const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+        await emitDomainEvent({
+          companyId: ctx.company.id,
+          type: "JOB_COMPLETED",
+          sourceType: "Job",
+          sourceId: updated.id,
+          customerId: updated.customerId,
+          jobId: updated.id,
+          idempotencyKey: `job-completed:${updated.id}`,
+        }).catch(() => null);
+        if (updated.projectId) {
+          await emitDomainEvent({
+            companyId: ctx.company.id,
+            type: "PROJECT_VISIT_COMPLETED",
+            sourceType: "Project",
+            sourceId: updated.projectId,
+            customerId: updated.customerId,
+            jobId: updated.id,
+            idempotencyKey: `project-visit-completed:${updated.id}`,
+            payload: { projectId: updated.projectId, phaseId: updated.projectPhaseId },
+          }).catch(() => null);
+          await prisma.projectActivity.create({
+            data: { companyId: ctx.company.id, projectId: updated.projectId, phaseId: updated.projectPhaseId, actorId: ctx.user.id, event: "VISIT_COMPLETED", summary: `${updated.projectVisitPurpose || updated.jobNumber} completed`, details: { jobId: updated.id } },
+          });
+          revalidatePath(`/projects/${updated.projectId}`);
+        }
+      }
     }
 
     revalidatePath(`/jobs/${jobId}`);

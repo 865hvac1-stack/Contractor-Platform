@@ -60,6 +60,14 @@ export default async function JobDetailPage({
     access,
   });
   if (!view) notFound();
+  const projectContext = await prisma.job.findFirst({
+    where: { id: view.job.id, companyId: ctx.company.id, projectId: { not: null } },
+    select: {
+      projectVisitPurpose: true,
+      project: { select: { id: true, projectNumber: true, name: true } },
+      projectPhase: { select: { name: true } },
+    },
+  });
 
   const workflow = await loadJobWorkflowView(ctx.company.id, view.job.id);
   const canAct =
@@ -118,6 +126,12 @@ export default async function JobDetailPage({
 
   return (
     <div className="space-y-8">
+      {projectContext?.project ? (
+        <div className="flex flex-col gap-2 rounded-2xl border border-orange-200 bg-orange-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--cy-orange)]">Project Visit</p><p className="font-medium text-[var(--cy-navy)]">{projectContext.projectVisitPurpose || projectContext.projectPhase?.name || "Project work"} · {projectContext.project.name}</p></div>
+          <Link href={`/projects/${projectContext.project.id}`} className="text-sm font-semibold text-[var(--cy-orange)] hover:underline">Open Project 360 →</Link>
+        </div>
+      ) : null}
       <Job360View
         view={view}
         backHref={backHref}

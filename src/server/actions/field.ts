@@ -404,6 +404,22 @@ export async function overrideCompleteJobAction(jobId: string, reason: string): 
       jobId: job.id,
       idempotencyKey: `job-completed:${job.id}`,
     }).catch(() => null);
+    if (job.projectId) {
+      await emitDomainEvent({
+        companyId: ctx.company.id,
+        type: "PROJECT_VISIT_COMPLETED",
+        sourceType: "Project",
+        sourceId: job.projectId,
+        customerId: job.customerId,
+        jobId: job.id,
+        idempotencyKey: `project-visit-completed:${job.id}`,
+        payload: { projectId: job.projectId, phaseId: job.projectPhaseId },
+      }).catch(() => null);
+      await prisma.projectActivity.create({
+        data: { companyId: ctx.company.id, projectId: job.projectId, phaseId: job.projectPhaseId, actorId: ctx.user.id, event: "VISIT_COMPLETED", summary: `${job.projectVisitPurpose || job.jobNumber} completed with override`, details: { jobId: job.id } },
+      });
+      revalidatePath(`/projects/${job.projectId}`);
+    }
     revalidateJob(job.id);
     return { ok: true };
   } catch (e) {

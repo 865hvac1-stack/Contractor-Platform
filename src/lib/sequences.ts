@@ -2,12 +2,13 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 
-export type SequenceKind = "JOB" | "ESTIMATE" | "INVOICE";
+export type SequenceKind = "JOB" | "ESTIMATE" | "INVOICE" | "PROJECT";
 
 const DEFAULTS: Record<SequenceKind, { prefix: string; padding: number }> = {
   JOB: { prefix: "JOB", padding: 5 },
   ESTIMATE: { prefix: "EST", padding: 5 },
   INVOICE: { prefix: "INV", padding: 5 },
+  PROJECT: { prefix: "PRJ", padding: 5 },
 };
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -43,6 +44,13 @@ async function highestExistingSerial(db: Db, companyId: string, kind: SequenceKi
       select: { jobNumber: true },
     });
     return rows.reduce((max, row) => Math.max(max, parseDocumentSerial(row.jobNumber, prefix) ?? 0), 0);
+  }
+  if (kind === "PROJECT") {
+    const rows = await db.project.findMany({
+      where: { companyId, projectNumber: { startsWith: `${prefix}-` } },
+      select: { projectNumber: true },
+    });
+    return rows.reduce((max, row) => Math.max(max, parseDocumentSerial(row.projectNumber, prefix) ?? 0), 0);
   }
   const rows = await db.estimate.findMany({
     where: { companyId, estimateNumber: { startsWith: `${prefix}-` } },

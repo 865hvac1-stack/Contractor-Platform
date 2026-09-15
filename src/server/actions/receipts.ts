@@ -36,6 +36,8 @@ export async function uploadReceiptAction(
     const requestedAssignment = String(formData.get("assignment") || "");
     const vehicleId = String(formData.get("vehicleId") || "") || null;
     const rawJobId = String(formData.get("jobId") || "") || null;
+    const projectId = String(formData.get("projectId") || "") || null;
+    const projectPhaseId = String(formData.get("projectPhaseId") || "") || null;
     const assignment: ReceiptAssignment =
       requestedAssignment === "VEHICLE"
         ? "VEHICLE"
@@ -52,6 +54,14 @@ export async function uploadReceiptAction(
     if (vehicleId) {
       const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicleId, companyId: ctx.company.id } });
       if (!vehicle) return { ok: false, error: "That vehicle is not in your company." };
+    }
+    if (projectId) {
+      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id } });
+      if (!project) return { ok: false, error: "That project is not in your company." };
+      if (projectPhaseId) {
+        const phase = await prisma.projectPhase.findFirst({ where: { id: projectPhaseId, projectId, companyId: ctx.company.id } });
+        if (!phase) return { ok: false, error: "That phase is not part of the project." };
+      }
     }
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileHash = createHash("sha256").update(buffer).digest("hex");
@@ -86,6 +96,8 @@ export async function uploadReceiptAction(
         processingStatus: "REVIEW_REQUIRED",
         assignment,
         jobId,
+        projectId,
+        projectPhaseId,
         vehicleId,
         vendor: suggestion.vendor,
         receiptDate: suggestion.date ? new Date(suggestion.date) : null,
@@ -113,6 +125,10 @@ export async function uploadReceiptAction(
     });
     revalidatePath("/receipts");
     const returnTo = String(formData.get("returnTo") || "");
+    if (returnTo.startsWith("/projects/")) {
+      revalidatePath(returnTo);
+      redirect(returnTo);
+    }
     if (returnTo.startsWith("/tech")) {
       revalidatePath(returnTo);
       redirect(returnTo);
@@ -139,6 +155,8 @@ export async function reviewReceiptAction(
     const assignment = (String(formData.get("assignment") || "UNASSIGNED") as ReceiptAssignment) || "UNASSIGNED";
     const jobId = String(formData.get("jobId") || "") || null;
     const vehicleId = String(formData.get("vehicleId") || "") || null;
+    const projectId = String(formData.get("projectId") || receipt.projectId || "") || null;
+    const projectPhaseId = String(formData.get("projectPhaseId") || receipt.projectPhaseId || "") || null;
     if (assignment === "JOB" && jobId) {
       const job = await prisma.job.findFirst({ where: { id: jobId, companyId: ctx.company.id } });
       if (!job) return { ok: false, error: "Choose a job from your company." };
@@ -146,6 +164,13 @@ export async function reviewReceiptAction(
     if (assignment === "VEHICLE" && vehicleId) {
       const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicleId, companyId: ctx.company.id } });
       if (!vehicle) return { ok: false, error: "Choose a truck from your company." };
+    }
+    if (projectId) {
+      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id } });
+      if (!project) return { ok: false, error: "Choose a project from your company." };
+      if (projectPhaseId && !await prisma.projectPhase.findFirst({ where: { id: projectPhaseId, projectId, companyId: ctx.company.id } })) {
+        return { ok: false, error: "Choose a phase from that project." };
+      }
     }
     const amount = Math.round(parseFloat(String(formData.get("total") || "0")) * 100);
     if (!amount) return { ok: false, error: "Enter the receipt total." };
@@ -169,6 +194,8 @@ export async function reviewReceiptAction(
         assignment,
         jobId: assignment === "JOB" ? jobId : null,
         vehicleId: assignment === "VEHICLE" ? vehicleId : null,
+        projectId,
+        projectPhaseId,
         notes: String(formData.get("notes") || "").trim() || null,
         processingStatus: confirm ? "CONFIRMED" : "REVIEW_REQUIRED",
         confirmedAt: confirm ? new Date() : null,
@@ -219,9 +246,38 @@ export async function reviewReceiptAction(
           expenseId: expense.id,
           confirmed: true,
         });
+      } else if (projectId) {
+        await prisma.projectCost.upsert({
+          where: { companyId_idempotencyKey: { companyId: ctx.company.id, idempotencyKey: `receipt:${receipt.id}` } },
+          create: {
+            companyId: ctx.company.id,
+            projectId,
+            phaseId: projectPhaseId,
+            receiptId: receipt.id,
+            description: vendor || description || "Confirmed project receipt",
+            category,
+            amountCents: amount,
+            status: "ACTUAL",
+            vendor,
+            incurredAt: dateRaw ? new Date(dateRaw) : new Date(),
+            sourceType: "RECEIPT",
+            sourceId: receipt.id,
+            idempotencyKey: `receipt:${receipt.id}`,
+            createdById: ctx.user.id,
+          },
+          update: {
+            phaseId: projectPhaseId,
+            description: vendor || description || "Confirmed project receipt",
+            category,
+            amountCents: amount,
+            vendor,
+            incurredAt: dateRaw ? new Date(dateRaw) : new Date(),
+          },
+        });
       }
     }
     revalidatePath("/receipts");
+    if (projectId) revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/receipts/${receipt.id}`);
     if (jobId) revalidatePath(`/jobs/${jobId}`);
     return { ok: true };

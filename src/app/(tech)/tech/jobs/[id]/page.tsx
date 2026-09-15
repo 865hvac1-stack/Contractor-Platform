@@ -57,6 +57,8 @@ export default async function TechJobWorkspacePage({
         property: { include: { equipment: { orderBy: { createdAt: "desc" } } } },
         playbook: { select: { name: true } },
         assignments: { include: { user: { select: { firstName: true, lastName: true } } } },
+        project: { select: { id: true, projectNumber: true, name: true } },
+        projectPhase: { select: { name: true } },
         estimates: {
           include: {
             options: { orderBy: { sortOrder: "asc" }, include: { lineItems: true } },
@@ -181,6 +183,14 @@ export default async function TechJobWorkspacePage({
           {full.playbook?.name || full.jobType || "Job"} · {fieldStatusLabel(full.status)}
         </p>
       </div>
+
+      {full.project ? (
+        <section className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">Project Visit</p>
+          <p className="mt-1 font-medium text-[var(--cy-navy)]">{full.projectVisitPurpose || full.projectPhase?.name || "Project work"} · {full.project.name}</p>
+          <Link href={`/projects/${full.project.id}`} className="mt-2 inline-block text-sm font-semibold text-[var(--cy-orange)]">Open Project 360 →</Link>
+        </section>
+      ) : null}
 
       {customerRequests.length ? (
         <section className="rounded-2xl border-2 border-orange-300 bg-orange-50 p-4">

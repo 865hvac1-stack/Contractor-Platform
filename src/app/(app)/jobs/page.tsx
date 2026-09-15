@@ -125,6 +125,8 @@ export default async function JobsPage({
         assignments: { include: { user: true } },
         playbook: { select: { name: true } },
         serviceType: { select: { name: true } },
+        project: { select: { id: true, projectNumber: true, name: true } },
+        projectPhase: { select: { name: true } },
         estimates: { select: { status: true, totalCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         invoices: { select: { status: true, totalCents: true, balanceCents: true }, orderBy: { createdAt: "desc" }, take: 1 },
         waitingRecords: { where: { state: "ACTIVE" }, select: { state: true }, take: 1 },
@@ -296,6 +298,7 @@ export default async function JobsPage({
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                     {job.serviceType?.name || job.playbook?.name || job.jobType || formatSchedule(job.scheduledStart, job.scheduledEnd)}
                   </p>
+                  {job.project ? <p className="mt-1 text-xs font-semibold text-[var(--cy-orange)]">PROJECT VISIT · {job.project.name} · {job.projectPhase?.name || "Project work"}</p> : null}
                   <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                     {job.assignments.map((assignment) => `${assignment.user.firstName} ${assignment.user.lastName}`).join(", ") || "Unassigned"}
                     {` · ${jobFinancialLabel(job)}`}
@@ -342,6 +345,7 @@ export default async function JobsPage({
                         <p className="text-xs text-[var(--muted-foreground)]">
                           {job.serviceType?.name || job.playbook?.name || job.jobType || job.property.address}
                         </p>
+                        {job.project ? <p className="text-xs font-semibold text-[var(--cy-orange)]">PROJECT VISIT · {job.project.name}</p> : null}
                       </TableCell>
                       <TableCell>
                         <Link href={`/jobs/${job.id}?from=${encodeURIComponent(returnTo)}`} className="hover:underline">

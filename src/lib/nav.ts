@@ -19,6 +19,7 @@ import {
   UserCog,
   CircleHelp,
   ListChecks,
+  FolderKanban,
   type LucideIcon,
 } from "lucide-react";
 import type { CompanyRole } from "@prisma/client";
@@ -36,6 +37,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true, permission: "dashboard:view" },
   { href: "/jobs", label: "Jobs & Dispatch", icon: CalendarDays, permission: "jobs:view" },
   { href: "/customers", label: "Customers", icon: Users, permission: "customers:view" },
+  { href: "/projects", label: "Projects", icon: FolderKanban, permission: "projects:view" },
   { href: "/money", label: "Money", icon: Wallet, permission: "invoices:view" },
   { href: "/marketing", label: "Marketing", icon: Megaphone, exact: true, permission: "marketing:view" },
 ];
@@ -114,6 +116,7 @@ export function isPrimaryHubPath(pathname: string) {
   if (pathname === "/dashboard") return true;
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) return true;
   if (pathname === "/customers" || pathname.startsWith("/customers/")) return true;
+  if (pathname === "/projects" || pathname.startsWith("/projects/")) return true;
   if (JOBS_HUB_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return true;
   if (MONEY_HUB_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return true;
   if (pathname.startsWith("/marketing")) return true;
