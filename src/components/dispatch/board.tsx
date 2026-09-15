@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { assignJobToTechnicianAction } from "@/server/actions/dispatch";
+import { previewSmartAssignmentAction } from "@/server/actions/smart-dispatch";
 import { DispatchJobCard } from "@/components/dispatch/job-card";
 import { DispatchJobDrawer } from "@/components/dispatch/job-drawer";
 import { DispatchIssuesPanel } from "@/components/dispatch/issues-panel";
 import { DispatchAskBar } from "@/components/dispatch/ai-bar";
+import { DispatchMapView } from "@/components/dispatch/map-view";
 import { RouteOptimizePanel } from "@/components/dispatch/route-optimize";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,12 +18,6 @@ import { TECH_STATE_LABEL } from "@/lib/dispatch/validate";
 import type { DispatchBoardData, DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 import { formatTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
-
-function hoursLabel(minutes: number) {
-  if (!minutes) return "0 scheduled hrs";
-  const hours = Math.round((minutes / 60) * 10) / 10;
-  return `${hours} scheduled hrs`;
-}
 
 function nextLabel(value: Date | string | null) {
   if (!value) return null;
@@ -41,6 +37,7 @@ export function DispatchBoard({
   suggestions,
   initialPulse = "all",
   initialJobId,
+  mapsBrowserKey = "",
 }: {
   date: string;
   isToday: boolean;
@@ -54,6 +51,7 @@ export function DispatchBoard({
   suggestions: string[];
   initialPulse?: DispatchPulse;
   initialJobId?: string;
+  mapsBrowserKey?: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<DispatchCard | null>(() => {
@@ -71,13 +69,22 @@ export function DispatchBoard({
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [layout, setLayout] = useState<"today" | "map" | "split">("today");
+  const [unassignedOpen, setUnassignedOpen] = useState(board.unassigned.length > 0);
   const [routeHint, setRouteHint] = useState(false);
+  const [dropPreview, setDropPreview] = useState<{
+    jobId: string;
+    techId: string;
+    title: string;
+    detail: string;
+    recommendedId: string | null;
+  } | null>(null);
   const [density, setDensity] = useState<"compact" | "comfortable">("compact");
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{
     jobId: string;
     techId: string | null;
-    kind: "conflict" | "locked";
+    kind: "conflict" | "locked" | "ineligible";
     message: string;
   } | null>(null);
   const [pending, start] = useTransition();
@@ -120,22 +127,22 @@ export function DispatchBoard({
   const cities = useMemo(() => uniqueCities(allJobs), [allJobs]);
   const filteredEmpty =
     unassigned.length === 0 && technicians.every((lane) => lane.jobs.length === 0) && allJobs.length > 0;
-  const showSidePanel = board.technicians.length <= 2;
+  const showSidePanel = false;
 
   function assign(
     jobId: string,
     technicianUserId: string | null,
-    flags?: { confirmConflict?: boolean; confirmLocked?: boolean }
+    flags?: { confirmConflict?: boolean; confirmLocked?: boolean; confirmIneligible?: boolean; recommendedTechnicianId?: string | null }
   ) {
     if (!canAssign) return;
     start(async () => {
       setError(null);
       const result = await assignJobToTechnicianAction({ jobId, technicianUserId, ...flags });
-      if (!result.ok && (result.conflict || result.locked)) {
+      if (!result.ok && (result.conflict || result.locked || result.ineligible)) {
         setConfirm({
           jobId,
           techId: technicianUserId,
-          kind: result.conflict ? "conflict" : "locked",
+          kind: result.conflict ? "conflict" : result.locked ? "locked" : "ineligible",
           message: result.error || "This assignment needs confirmation.",
         });
         return;
@@ -145,7 +152,39 @@ export function DispatchBoard({
         return;
       }
       setConfirm(null);
+      setDropPreview(null);
       router.refresh();
+    });
+  }
+
+  function requestAssign(jobId: string, technicianUserId: string | null) {
+    if (!technicianUserId) {
+      assign(jobId, null);
+      return;
+    }
+    start(async () => {
+      const preview = await previewSmartAssignmentAction({ jobId, technicianUserId });
+      if (!preview.ok || !preview.focused) {
+        assign(jobId, technicianUserId);
+        return;
+      }
+      const focused = preview.focused;
+      setDropPreview({
+        jobId,
+        techId: technicianUserId,
+        recommendedId: preview.match.best?.technicianId ?? null,
+        title: `Assign to ${focused.name}?`,
+        detail: [
+          focused.score ? `${focused.score.display} match` : focused.blockers[0]?.label,
+          focused.driveLabel,
+          focused.eligible ? "Qualified" : focused.blockers[0]?.label,
+          focused.nextJobImpactMinutes && focused.nextJobImpactMinutes > 0
+            ? `Adds ${focused.nextJobImpactMinutes} min of later-route risk`
+            : "Next appointment protected",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
     });
   }
 
@@ -254,7 +293,27 @@ export function DispatchBoard({
           onClick={() => selectPulse("emergency")}
           tone={board.metrics.emergency ? "emergency" : undefined}
         />
-        <SummaryStat label="Available capacity" value={board.metrics.availableCapacity} active={capacityFocus} onClick={() => setCapacityFocus((value) => !value)} />
+        <SummaryStat label="Open slots" value={board.metrics.availableCapacity} active={capacityFocus} onClick={() => setCapacityFocus((value) => !value)} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Dispatch views">
+        {(["today", "map", "split"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            role="tab"
+            aria-selected={layout === item}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-sm font-semibold capitalize",
+              layout === item ? "bg-[var(--cy-navy)] text-white" : "bg-white text-[var(--cy-navy)]"
+            )}
+            onClick={() => setLayout(item)}
+          >
+            {item}
+          </button>
+        ))}
+        <button type="button" className="rounded-full px-3 py-1.5 text-sm" onClick={() => setUnassignedOpen((value) => !value)}>
+          Unassigned {unassigned.length}
+        </button>
       </div>
 
       <div className="hidden flex-wrap items-center gap-2 md:flex">
@@ -378,7 +437,7 @@ export function DispatchBoard({
       {confirm ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
           <p className="font-semibold text-amber-950">
-            {confirm.kind === "conflict" ? "Schedule conflict" : "Locked appointment"}
+            {confirm.kind === "conflict" ? "Schedule conflict" : confirm.kind === "locked" ? "Locked appointment" : "Not eligible"}
           </p>
           <p className="text-amber-900">{confirm.message}</p>
           <div className="mt-2 flex gap-2">
@@ -392,6 +451,7 @@ export function DispatchBoard({
                 assign(confirm.jobId, confirm.techId, {
                   confirmConflict: confirm.kind === "conflict",
                   confirmLocked: confirm.kind === "locked",
+                  confirmIneligible: confirm.kind === "ineligible",
                 })
               }
             >
@@ -401,81 +461,78 @@ export function DispatchBoard({
         </div>
       ) : null}
 
-      <div className={cn("hidden min-h-[28rem] flex-1 gap-3 md:grid", showSidePanel ? "md:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]" : "md:grid-cols-1")}>
-        <div className="flex h-[calc(100dvh-15.5rem)] min-h-[28rem] gap-3 overflow-x-auto pb-2">
-          <Lane
-            title="Unassigned"
-            count={unassigned.length}
-            subtitle={
-              unassigned.length
-                ? `${unassigned.filter((job) => job.priority === "URGENT" || job.kind === "emergency").length} emergency`
-                : "Clear"
-            }
-            dashed
-            onDrop={(jobId) => assign(jobId, null)}
-          >
-            {unassigned.length === 0 ? (
-              <p className="px-1 text-sm text-[var(--muted-foreground)]">No unassigned jobs.</p>
-            ) : (
-              <ul className="space-y-2">
-                {unassigned.map((job) => (
-                  <DispatchJobCard
-                    key={job.id}
-                    job={job}
-                    density={density}
-                    selected={selected?.id === job.id}
-                    onSelect={setSelected}
-                  />
-                ))}
-              </ul>
-            )}
-          </Lane>
-          {technicians.length === 0 ? (
-            <p className="self-center text-sm text-[var(--muted-foreground)]">No active technicians.</p>
-          ) : (
-            technicians.map((lane) => (
-              <TechnicianColumn
-                key={lane.userId}
-                lane={lane}
+      {dropPreview ? (
+        <div className="rounded-2xl border border-[var(--cy-navy)]/20 bg-white px-4 py-3 shadow-sm">
+          <p className="font-semibold text-[var(--cy-navy)]">{dropPreview.title}</p>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">{dropPreview.detail}</p>
+          <div className="mt-3 flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setDropPreview(null)}>Cancel</Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                assign(dropPreview.jobId, dropPreview.techId, {
+                  recommendedTechnicianId: dropPreview.recommendedId,
+                })
+              }
+            >
+              Assign
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {(layout === "map" || layout === "split") ? (
+        <div className={cn("min-h-[28rem] flex-1 gap-3", layout === "split" ? "hidden md:grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" : "")}>
+          {layout === "split" ? (
+            <div className="hidden h-[calc(100dvh-14rem)] min-h-[28rem] gap-3 overflow-x-auto md:flex">
+              <TechnicianLanes
+                unassigned={unassigned}
+                unassignedOpen={unassignedOpen}
+                technicians={technicians}
                 date={date}
                 isToday={isToday}
                 density={density}
                 selectedId={selected?.id}
                 onSelect={setSelected}
-                onDrop={(techId, jobId) => assign(jobId, techId)}
+                onDrop={requestAssign}
                 canOptimize={canOptimize && routingConfigured}
               />
-            ))
-          )}
+            </div>
+          ) : null}
+          <DispatchMapView
+            browserKey={mapsBrowserKey}
+            jobs={allJobs.filter((job) => job.status !== "CANCELED")}
+            technicians={board.technicians}
+            selectedJobId={selected?.id}
+            selectedTechId={techId === "all" ? null : techId}
+            onSelectJob={setSelected}
+            onSelectTech={setTechId}
+          />
+        </div>
+      ) : null}
+
+      <div className={cn("min-h-[28rem] flex-1 gap-3", layout === "map" ? "hidden" : "hidden md:block")}>
+        <div className="flex h-[calc(100dvh-14rem)] min-h-[28rem] gap-3 overflow-x-auto pb-2">
+          <TechnicianLanes
+            unassigned={unassigned}
+            unassignedOpen={unassignedOpen}
+            technicians={technicians}
+            date={date}
+            isToday={isToday}
+            density={density}
+            selectedId={selected?.id}
+            onSelect={setSelected}
+            onDrop={requestAssign}
+            canOptimize={canOptimize && routingConfigured}
+          />
         </div>
         {filteredEmpty ? (
           <p className="mt-2 text-sm text-[var(--muted-foreground)]">No jobs match these filters.</p>
         ) : null}
-        {showSidePanel ? (
-          <div className="h-[calc(100dvh-15.5rem)] min-h-[28rem] min-w-0">
-            {selected ? (
-              <DispatchJobDrawer
-                job={selected}
-                technicians={board.technicians}
-                canAssign={canAssign}
-                canLock={canLock}
-                canChangeStatus={canChangeStatus}
-                onClose={() => setSelected(null)}
-                onAssigned={() => router.refresh()}
-                inline
-              />
-            ) : (
-              <DispatchIntelligencePanel
-                board={board}
-                capacityFocus={capacityFocus}
-                onSelectJob={(jobId) => setSelected(allJobs.find((job) => job.id === jobId) ?? null)}
-              />
-            )}
-          </div>
-        ) : null}
       </div>
 
-      <div className="space-y-3 md:hidden">
+      <div className={cn("space-y-3 md:hidden", layout === "map" && "hidden")}>
         {unassigned.length > 0 ? (
           <section className="rounded-2xl border border-[var(--border)] bg-white p-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--cy-navy)]">
@@ -575,8 +632,73 @@ export function DispatchBoard({
         />
       ) : null}
 
-      {canAsk ? <DispatchAskBar suggestions={suggestions} /> : null}
+      {canAsk ? <DispatchAskBar suggestions={suggestions} jobId={selected?.id} customerId={selected?.customerId} /> : null}
     </div>
+  );
+}
+
+function TechnicianLanes({
+  unassigned,
+  unassignedOpen,
+  technicians,
+  date,
+  isToday,
+  density,
+  selectedId,
+  onSelect,
+  onDrop,
+  canOptimize,
+}: {
+  unassigned: DispatchCard[];
+  unassignedOpen: boolean;
+  technicians: DispatchLane[];
+  date: string;
+  isToday: boolean;
+  density: "compact" | "comfortable";
+  selectedId?: string;
+  onSelect: (job: DispatchCard) => void;
+  onDrop: (jobId: string, technicianUserId: string | null) => void;
+  canOptimize: boolean;
+}) {
+  return (
+    <>
+      {unassignedOpen ? (
+        <Lane
+          title="Unassigned"
+          count={unassigned.length}
+          subtitle={unassigned.length ? "Needs assignment" : "Clear"}
+          dashed
+          onDrop={(jobId) => onDrop(jobId, null)}
+        >
+          {unassigned.length === 0 ? (
+            <p className="px-1 text-sm text-[var(--muted-foreground)]">No unassigned jobs.</p>
+          ) : (
+            <ul className="space-y-2">
+              {unassigned.map((job) => (
+                <DispatchJobCard key={job.id} job={job} density={density} selected={selectedId === job.id} onSelect={onSelect} />
+              ))}
+            </ul>
+          )}
+        </Lane>
+      ) : null}
+      {technicians.length === 0 ? (
+        <p className="self-center text-sm text-[var(--muted-foreground)]">No active technicians.</p>
+      ) : (
+        technicians.map((lane) => (
+          <TechnicianColumn
+            key={lane.userId}
+            lane={lane}
+            date={date}
+            isToday={isToday}
+            density={density}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onDrop={(techId, jobId) => onDrop(jobId, techId)}
+            canOptimize={canOptimize}
+          />
+        ))
+      )}
+    </>
   );
 }
 
@@ -639,73 +761,6 @@ function SummaryStat({
   );
 }
 
-function DispatchIntelligencePanel({
-  board,
-  capacityFocus,
-  onSelectJob,
-}: {
-  board: DispatchBoardData;
-  capacityFocus: boolean;
-  onSelectJob: (jobId: string) => void;
-}) {
-  const allJobs = [...board.unassigned, ...board.technicians.flatMap((lane) => lane.jobs)];
-  const partsReady = allJobs.filter((job) => job.partsStatus === "READY" || job.partsStatus === "RESERVED").length;
-  const partsMissing = allJobs.filter((job) => job.partsStatus === "NOT_AVAILABLE").length;
-  const issueJobs = board.issues.filter((issue) => issue.jobId).slice(0, 5);
-  return (
-    <aside className="h-full overflow-y-auto rounded-2xl border border-[var(--border)] bg-white p-4" aria-labelledby="dispatch-intelligence-title">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Dispatch 360</p>
-      <h2 id="dispatch-intelligence-title" className="text-lg font-semibold text-[var(--cy-navy)]">Dispatch Intelligence</h2>
-      <p className="mt-1 text-xs text-[var(--muted-foreground)]">Select a job for its full operational panel.</p>
-
-      <PanelBlock title="Needs attention">
-        {issueJobs.length ? (
-          issueJobs.map((issue) => (
-            <button
-              key={issue.id}
-              type="button"
-              onClick={() => issue.jobId && onSelectJob(issue.jobId)}
-              className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-[var(--cy-gray)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cy-orange)]"
-            >
-              <span className="block text-sm font-medium text-[var(--cy-navy)]">{issue.subtitle}</span>
-              <span className="text-xs text-[var(--muted-foreground)]">{issue.title}</span>
-            </button>
-          ))
-        ) : (
-          <p className="text-sm font-medium text-emerald-700">All clear</p>
-        )}
-      </PanelBlock>
-
-      <PanelBlock title="Parts readiness">
-        <p className="text-sm text-[var(--cy-navy)]">{partsReady} job{partsReady === 1 ? "" : "s"} ready or reserved</p>
-        <p className={cn("text-sm", partsMissing ? "font-medium text-rose-700" : "text-[var(--muted-foreground)]")}>
-          {partsMissing} job{partsMissing === 1 ? "" : "s"} missing a required part
-        </p>
-      </PanelBlock>
-
-      <PanelBlock title="Capacity" active={capacityFocus}>
-        {board.technicians.length ? board.technicians.map((lane) => (
-          <div key={lane.userId} className="flex items-start justify-between gap-2 text-sm">
-            <span className="font-medium text-[var(--cy-navy)]">{lane.name}</span>
-            <span className="text-right text-[var(--muted-foreground)]">
-              {lane.nextAvailable ? nextLabel(lane.nextAvailable) : TECH_STATE_LABEL[lane.state]}
-            </span>
-          </div>
-        )) : <p className="text-sm text-[var(--muted-foreground)]">No active technicians.</p>}
-      </PanelBlock>
-    </aside>
-  );
-}
-
-function PanelBlock({ title, children, active }: { title: string; children: React.ReactNode; active?: boolean }) {
-  return (
-    <section className={cn("mt-4 rounded-xl border p-3", active ? "border-[var(--cy-orange)] bg-orange-50/40" : "border-[var(--border)] bg-[var(--cy-gray)]/35")}>
-      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-navy)]">{title}</h3>
-      <div className="space-y-1">{children}</div>
-    </section>
-  );
-}
-
 function Lane({
   title,
   count,
@@ -725,7 +780,7 @@ function Lane({
 }) {
   return (
     <section
-      className={`flex w-[300px] shrink-0 flex-col overflow-y-auto rounded-2xl border bg-white ${
+      className={`flex w-[340px] shrink-0 flex-col overflow-y-auto rounded-2xl border bg-white ${
         dashed ? "border-dashed border-[var(--cy-navy)]/25" : "border-[var(--border)]"
       }`}
       onDragOver={(event) => event.preventDefault()}
@@ -770,7 +825,7 @@ function TechnicianColumn({
     <Lane
       title={lane.name}
       count={lane.jobCount}
-      subtitle={`${lane.jobCount} jobs · ${hoursLabel(lane.scheduledMinutes)}${nextLabel(lane.nextAvailable) ? ` · ${nextLabel(lane.nextAvailable)}` : ""}`}
+      subtitle={`${TECH_STATE_LABEL[lane.state]}${nextLabel(lane.nextAvailable) ? ` · ${nextLabel(lane.nextAvailable)}` : ""} · ${lane.jobCount} jobs${lane.locationLabel ? ` · ${lane.locationLabel}` : ""}`}
       onDrop={(jobId) => onDrop(lane.userId, jobId)}
       leading={
         <div className="mb-1.5 flex items-center gap-2">

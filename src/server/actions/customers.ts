@@ -341,12 +341,26 @@ export async function updateCustomerProfileAction(
     if (propertyId && address && city && state && zip) {
       const property = await prisma.property.findFirst({
         where: { id: propertyId, companyId: ctx.company.id, customerId: customer.id },
-        select: { id: true },
       });
       if (!property) return { ok: false, error: "Property not found." };
+      const { invalidatePropertyGeocode } = await import("@/lib/maps/geocode-property");
+      const previous = [property.address, property.city, property.state, property.zip].join(" ");
+      const next = [address, city, state, zip].join(" ");
       await prisma.property.update({
         where: { id: property.id },
-        data: { address, city, state, zip },
+        data: invalidatePropertyGeocode(previous, next)
+          ? {
+              address,
+              city,
+              state,
+              zip,
+              latitude: null,
+              longitude: null,
+              geocodingStatus: "NONE",
+              geocodedAt: null,
+              geocodeError: null,
+            }
+          : { address, city, state, zip },
       });
     }
     await writeAudit({

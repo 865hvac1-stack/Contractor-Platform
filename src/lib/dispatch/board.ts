@@ -5,6 +5,7 @@ import { fieldStatusLabel, propertyAddress } from "@/lib/tech/access";
 import { operationalRecordWhere } from "@/lib/imports/modes";
 import { classifyDispatchJob } from "@/lib/dispatch/job-type";
 import { isRunningLate, scheduledMinutes, technicianBoardState } from "@/lib/dispatch/validate";
+import { resolveTechnicianLocation } from "@/lib/maps/technician-location";
 import type { DispatchCard } from "@/lib/dispatch/types";
 
 const jobInclude = {
@@ -34,6 +35,7 @@ const jobInclude = {
     include: { column: { select: { key: true } } },
     take: 3,
   },
+  customerRequests: { orderBy: { createdAt: "desc" as const }, take: 1, select: { body: true } },
   project: { select: { id: true, projectNumber: true, name: true } },
   projectPhase: { select: { name: true } },
 } as const;
@@ -104,7 +106,7 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
   ]);
 
   const cards = [...jobs, ...unassigned].map(toDispatchCard);
-  const byTech = technicians.map((member) => {
+  const byTech = await Promise.all(technicians.map(async (member) => {
     const laneJobs = cards
       .filter((job) => job.assigneeIds.includes(member.user.id))
       .sort((a, b) => {
@@ -114,6 +116,7 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
       });
     const minutes = laneJobs.reduce((sum, job) => sum + scheduledMinutes(job), 0);
     const next = nextAvailableAt(laneJobs);
+    const location = await resolveTechnicianLocation({ companyId, technicianId: member.user.id });
     return {
       userId: member.user.id,
       name: `${member.user.firstName} ${member.user.lastName}`.trim(),
@@ -126,8 +129,12 @@ export async function getDispatchBoard(companyId: string, day = new Date()) {
       scheduledMinutes: minutes,
       nextAvailable: next,
       state: technicianBoardState(laneJobs),
+      locationLabel: location.label,
+      locationFreshness: location.freshness,
+      latitude: location.point?.lat ?? null,
+      longitude: location.point?.lng ?? null,
     };
-  });
+  }));
 
   const issues = buildIssues(cards, byTech);
   return {
@@ -162,6 +169,7 @@ export function toDispatchCard(job: {
   project?: { id: string; projectNumber: string; name: string } | null;
   projectPhase?: { name: string } | null;
   customerId: string;
+  propertyId?: string;
   customer: {
     firstName: string;
     lastName: string;
@@ -170,7 +178,17 @@ export function toDispatchCard(job: {
     email?: string | null;
     customerMemberships: { plan: { name: string } }[];
   };
-  property: { address: string; city: string; state: string; zip: string; accessNotes: string | null };
+  property: {
+    id?: string;
+    address: string;
+    city: string;
+    state: string;
+    zip: string;
+    accessNotes: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    geocodingStatus?: string | null;
+  };
   assignments: { userId: string; user: { id: string; firstName: string; lastName: string } }[];
   jobParts?: Array<{
     quantity: number;
@@ -178,11 +196,14 @@ export function toDispatchCard(job: {
     part: { inventoryStocks: Array<{ onHand: number; reserved: number }> };
   }>;
   waitingRecords?: Array<{ column: { key: string } }>;
+  customerRequests?: Array<{ body: string }>;
+  checkedInAt?: Date | null;
 }): DispatchCard {
   const kind = classifyDispatchJob({ jobType: job.jobType, priority: job.priority, description: job.description });
   return {
     id: job.id,
     customerId: job.customerId,
+    propertyId: job.propertyId ?? job.property?.id,
     jobNumber: job.jobNumber,
     jobType: job.jobType,
     kind,
@@ -200,6 +221,9 @@ export function toDispatchCard(job: {
     email: job.customer.email ?? null,
     address: propertyAddress(job.property),
     city: job.property.city,
+    latitude: job.property.latitude ?? null,
+    longitude: job.property.longitude ?? null,
+    geocodingStatus: job.property.geocodingStatus ?? null,
     accessNotes: job.property.accessNotes,
     membership: job.customer.customerMemberships[0]?.plan.name ?? null,
     assigneeIds: job.assignments.map((row) => row.userId),
@@ -212,6 +236,8 @@ export function toDispatchCard(job: {
       job.jobParts ?? [],
       Boolean(job.waitingRecords?.some((row) => row.column.key === "WAITING_ON_PART"))
     ),
+    customerRequest: job.customerRequests?.[0]?.body ?? null,
+    checkedInAt: job.checkedInAt ?? null,
   };
 }
 

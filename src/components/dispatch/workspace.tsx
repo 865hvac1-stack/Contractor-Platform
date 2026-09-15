@@ -8,6 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { getDispatchBoard } from "@/lib/dispatch/board";
 import type { DispatchPulse } from "@/lib/dispatch/filters";
 import { suggestedQuestions } from "@/lib/intelligence/intent";
+import { mapsBrowserKey } from "@/lib/maps/keys";
+import { geocodeBoardProperties } from "@/lib/maps/geocode-property";
 import { can } from "@/lib/permissions";
 import { routingConfigured } from "@/lib/routing/provider";
 import { requirePermission } from "@/lib/tenant";
@@ -26,7 +28,14 @@ export async function DispatchWorkspace({
   const day = new Date(`${date}T12:00:00`);
   const today = format(new Date(), "yyyy-MM-dd");
   const isToday = date === today;
-  const board = await getDispatchBoard(ctx.company.id, day);
+  let board = await getDispatchBoard(ctx.company.id, day);
+  const missing = [...board.unassigned, ...board.technicians.flatMap((lane) => lane.jobs)]
+    .map((job) => job.propertyId)
+    .filter((id): id is string => Boolean(id));
+  if (missing.length) {
+    await geocodeBoardProperties({ companyId: ctx.company.id, propertyIds: missing, limit: 8 });
+    board = await getDispatchBoard(ctx.company.id, day);
+  }
   const prevDay = new Date(day);
   prevDay.setDate(prevDay.getDate() - 1);
   const nextDay = new Date(day);
@@ -47,7 +56,13 @@ export async function DispatchWorkspace({
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--cy-orange)]">Operations</p>
           <h1 className="font-display text-3xl tracking-tight text-[var(--cy-navy)]">Jobs &amp; Dispatch</h1>
-          <p className="mt-1 text-sm text-[var(--muted-foreground)]">Dispatch Board · today&apos;s work by technician and time.</p>
+          <p className="mt-1 text-sm text-[var(--cy-navy)]">
+            {format(day, "EEE, MMM d")}
+            <span className="text-[var(--muted-foreground)]">
+              {" "}
+              · {board.metrics.jobs} scheduled · {board.metrics.inProgress} in progress · {board.issues.length} needs attention · {board.metrics.availableCapacity} open slots
+            </span>
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-1 md:gap-2">
           <Link
@@ -101,6 +116,7 @@ export async function DispatchWorkspace({
         suggestions={suggestedQuestions(ctx.role, null, "dispatch")}
         initialPulse={initialPulse}
         initialJobId={search.job}
+        mapsBrowserKey={mapsBrowserKey()}
       />
     </div>
   );

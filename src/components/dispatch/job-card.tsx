@@ -67,7 +67,9 @@ export function DispatchJobCard({
         JOB_KIND_ACCENT[job.kind]
       } ${selected ? "ring-2 ring-[var(--cy-orange)]/40" : ""} ${
         density === "compact" ? "px-2.5 py-2" : "p-3"
-      } ${late ? "bg-rose-50/70" : ""}`}
+      } ${late ? "bg-rose-50/70" : ""} ${job.status === "COMPLETED" ? "opacity-70" : ""} ${
+        job.status === "IN_PROGRESS" ? "bg-orange-50/80 ring-1 ring-[var(--cy-orange)]/30" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-semibold tabular-nums text-[var(--cy-navy)]">{formatTime(job.scheduledStart)}</p>
@@ -118,6 +120,12 @@ export function DispatchJobCard({
                   ? "Part reserved"
                   : "Parts ready"}
           </span>
+        ) : null}
+        {job.customerRequest ? (
+          <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-900">Customer request</span>
+        ) : null}
+        {job.geocodingStatus && job.geocodingStatus !== "OK" ? (
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">Location needs review</span>
         ) : null}
       </div>
     </article>

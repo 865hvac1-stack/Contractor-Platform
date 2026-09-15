@@ -42,6 +42,11 @@ export function toolsForQuestion(question: string, jobId?: string | null, custom
     tools.add("getLeadMetrics");
     tools.add("getMarketingPerformance");
   }
+  if (/who should take|best tech|smart dispatch|drive time|closer|qualified|no-?cool/.test(q)) {
+    tools.add("getTechnicianIntelligence");
+    tools.add("getDispatchWorkload");
+    if (jobId) tools.add("getJobSummary");
+  }
   if (/job|playbook|paperwork|required|still need/.test(q)) {
     tools.add("getJobSummary");
     tools.add("getPlaybookStatus");
@@ -128,6 +133,14 @@ export function suggestedQuestions(role: string, jobId?: string | null, workspac
     ];
   }
   if (workspace === "dispatch") {
+    if (jobId) {
+      return [
+        "Who should take this call?",
+        "Can anyone get here sooner?",
+        "Will this assignment make the next call late?",
+        "Who has worked on this equipment before?",
+      ];
+    }
     return [
       "Who is running late?",
       "Which technician has room today?",

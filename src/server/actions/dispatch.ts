@@ -27,7 +27,9 @@ export async function assignJobToTechnicianAction(input: {
   scheduledStart?: string | null;
   confirmLocked?: boolean;
   confirmConflict?: boolean;
-}): Promise<ActionResult & { conflict?: boolean; locked?: boolean; warning?: string }> {
+  confirmIneligible?: boolean;
+  recommendedTechnicianId?: string | null;
+}): Promise<ActionResult & { conflict?: boolean; locked?: boolean; ineligible?: boolean; warning?: string }> {
   try {
     const ctx = await requirePermission("schedule:manage");
     const job = await prisma.job.findFirst({ where: { id: input.jobId, companyId: ctx.company.id } });
@@ -46,6 +48,22 @@ export async function assignJobToTechnicianAction(input: {
         },
       });
       if (!member) return { ok: false, error: "That technician is not on this company." };
+      if (!input.confirmIneligible) {
+        const { isTechnicianEligibleForJob } = await import("@/lib/technician-intelligence/job-fit");
+        const eligibility = await isTechnicianEligibleForJob({
+          companyId: ctx.company.id,
+          technicianId: input.technicianUserId,
+          jobId: job.id,
+        });
+        if (!eligibility.eligible) {
+          return {
+            ok: false,
+            error: eligibility.reasons[0]?.label || "This technician is not eligible for this job.",
+            ineligible: true,
+            warning: "NOT ELIGIBLE",
+          };
+        }
+      }
     }
 
     const previous = await prisma.jobAssignment.findMany({
@@ -113,7 +131,17 @@ export async function assignJobToTechnicianAction(input: {
         to: input.technicianUserId,
         confirmLocked: Boolean(input.confirmLocked),
         confirmConflict: Boolean(input.confirmConflict),
+        confirmIneligible: Boolean(input.confirmIneligible),
+        recommendedTechnicianId: input.recommendedTechnicianId ?? null,
       },
+    });
+    const { recordAssignmentDecision } = await import("@/lib/smart-dispatch/recommend");
+    await recordAssignmentDecision({
+      companyId: ctx.company.id,
+      jobId: job.id,
+      actorId: ctx.user.id,
+      assignedTechnicianId: input.technicianUserId,
+      recommendedTechnicianId: input.recommendedTechnicianId ?? null,
     });
     if (data.scheduledStart) {
       const { resolveWaitingRecordsForScheduledJob } = await import("@/lib/waiting/records");
@@ -198,6 +226,13 @@ export async function previewRouteAction(technicianUserId: string, dayIso?: stri
         savedSeconds: preview.current.durationSeconds - preview.suggested.durationSeconds,
       },
     });
+    const { recordSmartDispatchEvent, SMART_DISPATCH_EVENTS } = await import("@/lib/smart-dispatch/events");
+    await recordSmartDispatchEvent({
+      companyId: ctx.company.id,
+      kind: SMART_DISPATCH_EVENTS.ROUTE_PROPOSED,
+      technicianId: technicianUserId,
+      payload: { savedSeconds: preview.current.durationSeconds - preview.suggested.durationSeconds },
+    });
     return { ok: true as const, preview };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false as const, error: e.message };
@@ -254,6 +289,13 @@ export async function applyRouteAction(input: {
         jobIds: input.orderedIds,
         provider: "google_directions",
       },
+    });
+    const { recordSmartDispatchEvent, SMART_DISPATCH_EVENTS } = await import("@/lib/smart-dispatch/events");
+    await recordSmartDispatchEvent({
+      companyId: ctx.company.id,
+      kind: SMART_DISPATCH_EVENTS.ROUTE_APPLIED,
+      technicianId: input.technicianUserId,
+      payload: { jobIds: input.orderedIds },
     });
     revalidateDispatch();
     return { ok: true };

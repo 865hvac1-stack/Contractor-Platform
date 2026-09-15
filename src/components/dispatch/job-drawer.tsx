@@ -14,6 +14,7 @@ import type { DispatchCard, DispatchLane } from "@/lib/dispatch/types";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/money";
 import { CompanySmsForm } from "@/components/highlevel/company-sms-form";
+import { SmartMatchPanel } from "@/components/dispatch/smart-match-panel";
 
 function formatWhen(value: Date | string | null) {
   if (!value) return "Not scheduled";
@@ -64,7 +65,8 @@ export function DispatchJobDrawer({
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: "conflict" | "locked"; techId: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "conflict" | "locked" | "ineligible"; techId: string } | null>(null);
+  const [recommendedId, setRecommendedId] = useState<string | null>(null);
   const [draftHref, setDraftHref] = useState<string | null>(null);
   const [context, setContext] = useState<PanelContext | null>(null);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export function DispatchJobDrawer({
     onClose();
   }
 
-  function assign(technicianUserId: string | null, flags?: { confirmConflict?: boolean; confirmLocked?: boolean }) {
+  function assign(technicianUserId: string | null, flags?: { confirmConflict?: boolean; confirmLocked?: boolean; confirmIneligible?: boolean }, recommendedTechnicianId?: string | null) {
     if (!job || !canAssign) return;
     start(async () => {
       setError(null);
@@ -108,6 +110,8 @@ export function DispatchJobDrawer({
         technicianUserId,
         confirmConflict: flags?.confirmConflict,
         confirmLocked: flags?.confirmLocked,
+        confirmIneligible: flags?.confirmIneligible,
+        recommendedTechnicianId: recommendedTechnicianId ?? recommendedId,
       });
       if (!result.ok && result.conflict && technicianUserId) {
         setConfirm({ kind: "conflict", techId: technicianUserId });
@@ -116,6 +120,11 @@ export function DispatchJobDrawer({
       }
       if (!result.ok && result.locked && technicianUserId) {
         setConfirm({ kind: "locked", techId: technicianUserId });
+        setError(result.error);
+        return;
+      }
+      if (!result.ok && result.ineligible && technicianUserId) {
+        setConfirm({ kind: "ineligible", techId: technicianUserId });
         setError(result.error);
         return;
       }
@@ -198,7 +207,23 @@ export function DispatchJobDrawer({
               <dd className="mt-0.5 font-medium text-[var(--cy-navy)]">{job.trade || "—"}</dd>
             </div>
           </dl>
-          {job.description ? <p className="text-sm text-[var(--cy-navy)]">{job.description}</p> : null}
+          {job.geocodingStatus && job.geocodingStatus !== "OK" ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">LOCATION NEEDS REVIEW</p>
+          ) : null}
+          {job.customerRequest ? (
+            <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-950">
+              <span className="font-semibold">Customer request. </span>
+              {job.customerRequest}
+            </p>
+          ) : null}
+          <SmartMatchPanel
+            jobId={job.id}
+            canAssign={canAssign}
+            onAssign={(technicianId, recommendedTechnicianId) => {
+              setRecommendedId(recommendedTechnicianId);
+              assign(technicianId, undefined, recommendedTechnicianId);
+            }}
+          />
           {job.accessNotes ? <p className="text-xs text-[var(--muted-foreground)]">Access: {job.accessNotes}</p> : null}
           {contextLoading ? (
             <div className="space-y-2" role="status">
@@ -326,9 +351,9 @@ export function DispatchJobDrawer({
 
           {confirm ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-              <p className="font-semibold text-amber-950">
-                {confirm.kind === "conflict" ? "Schedule conflict" : "Locked appointment"}
-              </p>
+                  <p className="font-semibold text-amber-950">
+                    {confirm.kind === "conflict" ? "Schedule conflict" : confirm.kind === "locked" ? "Locked appointment" : "Not eligible"}
+                  </p>
               <p className="mt-1 text-amber-900">{error}</p>
               <div className="mt-3 flex gap-2">
                 <Button
@@ -347,6 +372,7 @@ export function DispatchJobDrawer({
                     assign(confirm.techId, {
                       confirmConflict: confirm.kind === "conflict",
                       confirmLocked: confirm.kind === "locked",
+                      confirmIneligible: confirm.kind === "ineligible",
                     })
                   }
                 >
@@ -436,6 +462,11 @@ export function DispatchJobDrawer({
           <Link href={`/jobs/${job.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--cy-navy)] text-sm font-medium text-white">
             Open Job 360
           </Link>
+          {job.project ? (
+            <Link href={`/projects/${job.project.id}`} className="col-span-2 inline-flex h-11 items-center justify-center rounded-xl border text-sm">
+              Open Project 360
+            </Link>
+          ) : null}
         </div>
       </aside>
   );

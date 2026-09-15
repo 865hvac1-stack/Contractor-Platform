@@ -35,8 +35,11 @@ export function scheduledMinutes(job: TimedJob) {
   return Math.max(0, Math.round((end - start) / 60000));
 }
 
-export function technicianBoardState(jobs: { status: string }[]) {
+export function technicianBoardState(jobs: { status: string; scheduledStart?: Date | string | null }[]) {
   if (jobs.some((job) => job.status === "IN_PROGRESS")) return "ON_JOB" as const;
+  if (jobs.some((job) => isRunningLate({ scheduledStart: job.scheduledStart ?? null, status: job.status }))) {
+    return "AT_RISK" as const;
+  }
   if (jobs.some((job) => job.status === "DISPATCHED")) return "EN_ROUTE" as const;
   const active = jobs.filter((job) => job.status !== "CANCELED");
   if (active.length > 0 && active.every((job) => job.status === "COMPLETED")) return "DONE_FOR_DAY" as const;
@@ -64,5 +67,6 @@ export const TECH_STATE_LABEL = {
   AVAILABLE: "Available",
   ON_JOB: "On job",
   EN_ROUTE: "En route",
+  AT_RISK: "At risk",
   DONE_FOR_DAY: "Done for day",
 } as const;

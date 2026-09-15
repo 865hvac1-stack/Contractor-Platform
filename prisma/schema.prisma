@@ -483,6 +483,7 @@ model User {
   technicianIntelligenceOverrides TechnicianIntelligenceOverride[] @relation("TechnicianIntelligenceOverrideActor")
   technicianSkillRatingsUpdated    TechnicianSkillRating[]           @relation("TechnicianSkillRatingUpdater")
   technicianJobRelationshipsCreated TechnicianJobRelationship[]      @relation("TechnicianJobRelationshipCreator")
+  technicianLocations               TechnicianLocation[]
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -725,6 +726,11 @@ model Company {
   technicianPerformanceAggregates    TechnicianPerformanceAggregate[]
   technicianIntelligenceOverrides    TechnicianIntelligenceOverride[]
   technicianJobRelationships         TechnicianJobRelationship[]
+  technicianLocations                TechnicianLocation[]
+  routeMatrixCaches                  RouteMatrixCache[]
+  smartDispatchRecommendations       SmartDispatchRecommendation[]
+  smartDispatchEvents                SmartDispatchEvent[]
+  dispatchPolicyJson                 Json?
 
   @@index([status])
   @@index([industry])
@@ -906,6 +912,14 @@ model Property {
   assessedValueCents    Int?
   latitude              Float?
   longitude             Float?
+  geocodingStatus       String?      @default("NONE")
+  geocodedAt            DateTime?
+  geocodingProvider     String?
+  geocodedFormattedAddress String?
+  geocodingConfidence   String?
+  geocodePlaceId        String?
+  lastGeocodeAttemptAt  DateTime?
+  geocodeError          String?
   photoPath             String?
   photoSource           String?
   photoCaption          String?
@@ -942,6 +956,7 @@ model Property {
   @@index([companyId, importSessionId])
   @@index([companyId, sourceSystem, externalId])
   @@index([companyId, zip])
+  @@index([companyId, geocodingStatus])
 }
 
 model Equipment {
@@ -1113,6 +1128,8 @@ model Job {
   projectLaborEntries                ProjectLaborEntry[]
   technicianJobRelationshipsOriginal TechnicianJobRelationship[]   @relation("TechnicianOriginalJob")
   technicianJobRelationshipsRelated  TechnicianJobRelationship[]   @relation("TechnicianRelatedJob")
+  smartDispatchRecommendations       SmartDispatchRecommendation[]
+  smartDispatchEvents                SmartDispatchEvent[]
 
   @@unique([companyId, jobNumber])
   @@unique([companyId, schedulingIdempotencyKey])
@@ -1154,6 +1171,80 @@ model RouteOptimizationRun {
 
   @@index([companyId, technicianUserId, day])
   @@index([companyId, createdAt])
+}
+
+model TechnicianLocation {
+  id                   String   @id @default(cuid())
+  companyId            String
+  technicianId         String
+  latitude             Float
+  longitude            Float
+  accuracyMeters       Float?
+  capturedAt           DateTime
+  receivedAt           DateTime @default(now())
+  source               String
+  heading              Float?
+  speedMetersPerSecond Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  technician User    @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, technicianId])
+  @@index([companyId, capturedAt])
+}
+
+model RouteMatrixCache {
+  id              String   @id @default(cuid())
+  companyId       String
+  originKey       String
+  destKey         String
+  durationSeconds Int
+  distanceMeters  Int
+  provider        String
+  trafficAware    Boolean  @default(false)
+  computedAt      DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, originKey, destKey, trafficAware])
+  @@index([companyId, computedAt])
+}
+
+model SmartDispatchRecommendation {
+  id                      String   @id @default(cuid())
+  companyId               String
+  jobId                   String
+  recommendedTechnicianId String?
+  recommendedScore        Int?
+  candidateJson           Json
+  reasonCodes             String[] @default([])
+  dispatcherDecision      String?
+  assignedTechnicianId    String?
+  actorId                 String?
+  createdAt               DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, jobId, createdAt])
+}
+
+model SmartDispatchEvent {
+  id           String   @id @default(cuid())
+  companyId    String
+  kind         String
+  jobId        String?
+  technicianId String?
+  payload      Json?
+  createdAt    DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  job     Job?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, kind, createdAt])
+  @@index([companyId, jobId])
 }
 
 model JobAssignment {

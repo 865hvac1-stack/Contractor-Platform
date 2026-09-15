@@ -4,6 +4,7 @@ import type { DispatchJobKind } from "@/lib/dispatch/job-type";
 export type DispatchCard = {
   id: string;
   customerId: string;
+  propertyId?: string;
   jobNumber: string;
   jobType: string | null;
   kind: DispatchJobKind;
@@ -21,6 +22,9 @@ export type DispatchCard = {
   email: string | null;
   address: string;
   city: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  geocodingStatus?: string | null;
   accessNotes: string | null;
   membership: string | null;
   assigneeIds: string[];
@@ -30,6 +34,8 @@ export type DispatchCard = {
   projectPhase?: { name: string } | null;
   projectVisitPurpose?: string | null;
   partsStatus: "NONE" | "NEEDED" | "RESERVED" | "READY" | "NOT_AVAILABLE";
+  customerRequest?: string | null;
+  checkedInAt?: Date | string | null;
 };
 
 export type DispatchLane = {
@@ -43,7 +49,12 @@ export type DispatchLane = {
   jobCount: number;
   scheduledMinutes: number;
   nextAvailable: Date | string | null;
-  state: "AVAILABLE" | "ON_JOB" | "EN_ROUTE" | "DONE_FOR_DAY";
+  state: "AVAILABLE" | "ON_JOB" | "EN_ROUTE" | "DONE_FOR_DAY" | "AT_RISK";
+  projectedDriveMinutes?: number | null;
+  locationLabel?: string;
+  locationFreshness?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type DispatchBoardData = {
@@ -60,6 +71,9 @@ export type DispatchBoardData = {
     availableCapacity: number;
   };
   jobTypes: string[];
+  mapsBrowserKey?: string;
+  routingConfigured?: boolean;
+  geocodingConfigured?: boolean;
 };
 
 export type { DispatchIssue };

@@ -1,3 +1,5 @@
+import { mapsServerKey } from "@/lib/maps/keys";
+
 export type RouteStop = {
   id: string;
   address: string;
@@ -31,7 +33,7 @@ export type RoutingProvider = {
 };
 
 export function routingApiKey() {
-  return process.env.GOOGLE_MAPS_API_KEY?.trim() || process.env.GOOGLE_ROUTES_API_KEY?.trim() || "";
+  return mapsServerKey();
 }
 
 export function routingConfigured() {
@@ -114,7 +116,7 @@ export function googleRoutingProvider(): RoutingProvider {
 
 export class RoutingNotConfiguredError extends Error {
   constructor() {
-    super("Route optimization is not configured. Set GOOGLE_MAPS_API_KEY on the server.");
+    super("Route optimization is not configured. Set GOOGLE_MAPS_SERVER_API_KEY on the server.");
     this.name = "RoutingNotConfiguredError";
   }
 }

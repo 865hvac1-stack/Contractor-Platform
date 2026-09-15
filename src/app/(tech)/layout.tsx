@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser, getTenantContext } from "@/lib/auth";
 import { isFieldRole } from "@/lib/permissions";
 import { TechShell } from "@/components/tech-shell";
+import { TechnicianLocationBeacon } from "@/components/tech/location-beacon";
 
 export default async function TechLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
@@ -17,6 +18,7 @@ export default async function TechLayout({ children }: { children: React.ReactNo
       userName={`${tenant.user.firstName} ${tenant.user.lastName}`}
       isDemo={tenant.company.isDemo}
     >
+      <TechnicianLocationBeacon />
       {children}
     </TechShell>
   );

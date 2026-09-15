@@ -394,27 +394,54 @@ async function proposeAssignments(ctx: ActionContext, input: Record<string, unkn
   });
   const counts = new Map<string, number>();
   for (const row of load) counts.set(row.userId, (counts.get(row.userId) ?? 0) + 1);
-  const targets: ActionTargetDraft[] = jobs.map((job) => {
-    const ranked = [...techs].sort((a, b) => (counts.get(a.userId) ?? 0) - (counts.get(b.userId) ?? 0));
-    const pick = ranked[0];
-    const name = pick ? `${pick.user.firstName} ${pick.user.lastName}` : null;
-    if (pick) counts.set(pick.userId, (counts.get(pick.userId) ?? 0) + 1);
-    return {
-      recordType: "JOB" as const,
-      recordId: job.id,
-      customerName: customerDisplayName(job.customer),
-      reason: pick
-        ? `${name} has the lightest ${when} board among available technicians${job.jobType ? ` and can take ${job.jobType}` : ""}.`
-        : "No active technician is available to recommend.",
-      payload: {
-        technicianUserId: pick?.userId ?? null,
-        technicianName: name,
-        jobNumber: job.jobNumber,
-        jobType: job.jobType,
-        scheduledStart: job.scheduledStart,
-      },
-    };
-  });
+  const targets: ActionTargetDraft[] = [];
+  for (const job of jobs) {
+    try {
+      const { recommendTechniciansForJob } = await import("@/lib/smart-dispatch/recommend");
+      const match = await recommendTechniciansForJob({
+        companyId: ctx.companyId,
+        jobId: job.id,
+        persist: false,
+      });
+      const pick = match.best;
+      targets.push({
+        recordType: "JOB" as const,
+        recordId: job.id,
+        customerName: customerDisplayName(job.customer),
+        reason: pick
+          ? `${pick.name} is the Smart Dispatch recommendation${pick.score ? ` (${pick.score.display})` : ""}${pick.driveLabel ? ` · ${pick.driveLabel}` : ""}. ${pick.reasons.find((reason) => reason.kind === "POSITIVE")?.label ?? ""}`.trim()
+          : "No eligible technician is available to recommend.",
+        payload: {
+          technicianUserId: pick?.technicianId ?? null,
+          technicianName: pick?.name ?? null,
+          jobNumber: job.jobNumber,
+          jobType: job.jobType,
+          scheduledStart: job.scheduledStart,
+          score: pick?.score?.total ?? null,
+        },
+      });
+    } catch {
+      const ranked = [...techs].sort((a, b) => (counts.get(a.userId) ?? 0) - (counts.get(b.userId) ?? 0));
+      const pick = ranked[0];
+      const name = pick ? `${pick.user.firstName} ${pick.user.lastName}` : null;
+      if (pick) counts.set(pick.userId, (counts.get(pick.userId) ?? 0) + 1);
+      targets.push({
+        recordType: "JOB" as const,
+        recordId: job.id,
+        customerName: customerDisplayName(job.customer),
+        reason: pick
+          ? `${name} has the lightest ${when} board among available technicians${job.jobType ? ` and can take ${job.jobType}` : ""}.`
+          : "No active technician is available to recommend.",
+        payload: {
+          technicianUserId: pick?.userId ?? null,
+          technicianName: name,
+          jobNumber: job.jobNumber,
+          jobType: job.jobType,
+          scheduledStart: job.scheduledStart,
+        },
+      });
+    }
+  }
   return prepareResult({
     executeActionKey: "job.assign",
     title: "Proposed dispatch changes",
