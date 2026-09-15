@@ -370,7 +370,7 @@ async function customAutomationConditionBlock(input: {
   if (onlyIf.includes("SOURCE_STILL_ACTIVE")) {
     if (input.sourceType === "Job") {
       const source = await prisma.job.findFirst({ where: { id: input.sourceId, companyId: input.companyId }, select: { status: true } });
-      if (!source || source.status === "CANCELLED") return "source_no_longer_active";
+      if (!source || source.status === "CANCELED") return "source_no_longer_active";
     }
     if (input.sourceType === "Estimate") {
       const source = await prisma.estimate.findFirst({ where: { id: input.sourceId, companyId: input.companyId }, select: { status: true } });
