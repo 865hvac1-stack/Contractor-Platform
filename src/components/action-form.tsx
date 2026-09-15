@@ -49,7 +49,7 @@ export function ActionForm({
       {state && state.ok && (state.message || successMessage) ? (
         <p className="mt-3 whitespace-pre-wrap text-sm text-emerald-700">{state.message || successMessage}</p>
       ) : null}
-      {pending ? <p className="sr-only">Saving…</p> : null}
+      {pending ? <p className="mt-3 text-sm font-medium text-[var(--cy-navy)]" aria-live="polite">Saving…</p> : null}
     </form>
   );
 }

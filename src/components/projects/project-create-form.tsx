@@ -18,8 +18,15 @@ type CustomerOption = {
 export function ProjectCreateForm({ customers, managers }: { customers: CustomerOption[]; managers: Array<{ id: string; label: string }> }) {
   const [type, setType] = useState<(typeof PROJECT_TYPES)[number]>("NEW_CONSTRUCTION");
   const [customerId, setCustomerId] = useState(customers[0]?.id || "");
+  const [propertyId, setPropertyId] = useState(customers[0]?.properties[0]?.id || "");
   const [phases, setPhases] = useState<string[]>(PROJECT_PHASE_TEMPLATES.NEW_CONSTRUCTION);
   const selected = useMemo(() => customers.find((customer) => customer.id === customerId), [customers, customerId]);
+
+  function chooseCustomer(nextId: string) {
+    setCustomerId(nextId);
+    const nextCustomer = customers.find((customer) => customer.id === nextId);
+    setPropertyId(nextCustomer?.properties[0]?.id || "");
+  }
 
   function chooseType(next: (typeof PROJECT_TYPES)[number]) {
     setType(next);
@@ -47,8 +54,8 @@ export function ProjectCreateForm({ customers, managers }: { customers: Customer
         <Step number="2" title="Project information" help="Create quickly. Add details progressively in Project 360." />
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label="Project name"><Input name="name" required placeholder="Smith Residence — Lot 42" /></Field>
-          <Field label="Customer / Builder / GC"><select name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} className={selectClass}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.label}</option>)}</select></Field>
-          <Field label="Property / project address"><select name="propertyId" className={selectClass}>{selected?.properties.map((property) => <option key={property.id} value={property.id}>{property.label}</option>)}</select></Field>
+          <Field label="Customer / Builder / GC"><select name="customerId" value={customerId} onChange={(event) => chooseCustomer(event.target.value)} className={selectClass}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.label}</option>)}</select></Field>
+          <Field label="Property / project address">{selected?.properties.length ? <select key={customerId} name="propertyId" value={propertyId} onChange={(event) => setPropertyId(event.target.value)} className={selectClass}>{selected.properties.map((property) => <option key={property.id} value={property.id}>{property.label}</option>)}</select> : <p className="text-sm text-rose-700">This customer has no property on file. Add an address first.</p>}</Field>
           <Field label="Builder / GC name"><Input name="builderName" placeholder="ABC Builders" /></Field>
           <Field label="Primary contact"><Input name="primaryContactName" /></Field>
           <Field label="Contact phone"><Input name="primaryContactPhone" /></Field>
