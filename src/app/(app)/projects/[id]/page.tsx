@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Camera, Clock3, FileText, Plus, Receipt, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Camera, Clock3, Plus, Receipt, Users } from "lucide-react";
 import { requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
 import {
   addManualProjectLaborAction, addProjectBillingMilestoneAction, addProjectChangeOrderAction, addProjectContactAction,
-  addProjectCostAction, addProjectIssueAction, addProjectMaterialAction, addProjectPhaseAction, allocateProjectMaterialToVisitAction,
+  addProjectCostAction, addProjectIssueAction, addProjectMaterialAction, addProjectPhaseAction,
   completeProjectAction, correctProjectLaborAction, endProjectWorkAction, linkProjectInvoiceAction,
   markBillingMilestoneReadyAction, requestProjectMaterialAction, resolveProjectIssueAction,
   scheduleProjectVisitAction, setInternalJobCostRateAction, setProjectNextStepAction,

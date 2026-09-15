@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, FolderKanban, Plus } from "lucide-react";
+import { FolderKanban, Plus } from "lucide-react";
 import { requirePermission } from "@/lib/tenant";
 import { can } from "@/lib/permissions";
 import { loadProjectsDashboard } from "@/lib/projects/load";
