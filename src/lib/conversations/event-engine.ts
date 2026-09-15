@@ -170,6 +170,7 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     sourceType: joined.sourceType,
     sourceId: joined.sourceId,
     customerId: context.customer?.id,
+    promotionActive: promotionIsActive(automation.promotion),
   });
   if (customConditionBlock) {
     await finishBlockedExecution(execution.id, joined.companyId, customConditionBlock);
@@ -300,6 +301,11 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
         status: isConversation ? "WAITING_FOR_CUSTOMER" : "COMPLETED",
         decision: "SENT",
         firstMessage: body,
+        attemptCount: 1,
+        nextFollowUpAt:
+          isConversation && automation.maxAttempts > 1 && automation.followUpDelayMinutes
+            ? new Date(Date.now() + automation.followUpDelayMinutes * 60_000)
+            : null,
         goalCompletedAt: isConversation ? null : new Date(),
       },
     });
@@ -351,10 +357,12 @@ async function customAutomationConditionBlock(input: {
   sourceType: string;
   sourceId: string;
   customerId?: string;
+  promotionActive: boolean;
 }) {
   const record = input.conditions && typeof input.conditions === "object" && !Array.isArray(input.conditions)
     ? input.conditions as Record<string, unknown> : {};
   const onlyIf = Array.isArray(record.onlyIf) ? record.onlyIf.map(String) : [];
+  if (onlyIf.includes("PROMOTION_ACTIVE") && !input.promotionActive) return "promotion_not_active";
   if (onlyIf.includes("CUSTOMER_HAS_NOT_BOOKED") && input.customerId) {
     const booking = await prisma.job.findFirst({
       where: {

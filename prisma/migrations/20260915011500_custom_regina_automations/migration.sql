@@ -12,7 +12,12 @@ ALTER TABLE "Automation"
 
 ALTER TABLE "AutomationExecution"
   ADD COLUMN "configSnapshot" JSONB,
-  ADD COLUMN "scheduledFor" TIMESTAMP(3);
+  ADD COLUMN "scheduledFor" TIMESTAMP(3),
+  ADD COLUMN "attemptCount" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "nextFollowUpAt" TIMESTAMP(3);
 
 CREATE INDEX "AutomationExecution_status_scheduledFor_idx"
   ON "AutomationExecution"("status", "scheduledFor");
+
+CREATE INDEX "AutomationExecution_status_nextFollowUpAt_idx"
+  ON "AutomationExecution"("status", "nextFollowUpAt");

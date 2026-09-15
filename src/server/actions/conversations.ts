@@ -26,6 +26,7 @@ const automationEditorSchema = z.object({
   allowedActions: z.array(z.string()).max(12),
   stopConditions: z.array(z.string()).min(1).max(12),
   isCompanyTemplate: z.boolean().optional(),
+  conditions: z.array(z.enum(["CUSTOMER_NOT_OPTED_OUT", "SOURCE_STILL_ACTIVE", "CUSTOMER_HAS_NOT_BOOKED", "PROMOTION_ACTIVE"])).max(6),
 });
 
 const promotionSchema = z
@@ -107,12 +108,16 @@ export async function updateConversationAutomationAction(
       allowedActions: formData.getAll("allowedActions"),
       stopConditions: formData.getAll("stopConditions"),
       isCompanyTemplate: formData.get("isCompanyTemplate") === "true",
+      conditions: formData.getAll("conditions"),
     });
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message || "Invalid automation." };
     const automation = await prisma.automation.findFirst({
       where: { id: parsed.data.automationId, companyId: ctx.company.id },
     });
     if (!automation) return { ok: false, error: "Automation not found." };
+    if ((parsed.data.maxAttempts || 1) > 1 && !parsed.data.followUpDelayMinutes) {
+      return { ok: false, error: "Choose how long Regina should wait before a follow-up." };
+    }
     const goalActions = new Set(GOAL_ACTIONS[parsed.data.goal || automation.goal || ""] || []);
     const allowedActions = parsed.data.allowedActions.filter((action) => goalActions.has(action));
     if (parsed.data.mode === "START_CONVERSATION" && !allowedActions.length) {
@@ -142,6 +147,7 @@ export async function updateConversationAutomationAction(
         allowedActions,
         stopConditions: parsed.data.stopConditions,
         isCompanyTemplate: parsed.data.isCompanyTemplate,
+        conditions: { onlyIf: parsed.data.conditions },
         version: automation.enabled ? { increment: 1 } : undefined,
       },
     });

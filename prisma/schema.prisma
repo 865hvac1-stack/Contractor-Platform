@@ -2437,6 +2437,8 @@ model AutomationExecution {
   firstMessage    String?   @db.Text
   configSnapshot  Json?
   scheduledFor    DateTime?
+  attemptCount    Int       @default(0)
+  nextFollowUpAt  DateTime?
   messageId       String?
   failure         String?
   startedAt       DateTime  @default(now())
@@ -2459,6 +2461,7 @@ model AutomationExecution {
   @@unique([companyId, automationId, eventId])
   @@index([companyId, status, startedAt])
   @@index([status, scheduledFor])
+  @@index([status, nextFollowUpAt])
   @@index([companyId, customerId, startedAt])
   @@index([companyId, threadId, status])
 }

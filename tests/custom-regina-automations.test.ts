@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deterministicInterpretation,
+  INDUSTRY_STARTER_PACKS,
   minimumActions,
   REGINA_NEVER,
 } from "@/lib/conversations/custom-automations";
@@ -31,5 +32,11 @@ describe("custom Regina automation interpretation", () => {
     expect(REGINA_NEVER).toContain("Change pricing or totals");
     expect(REGINA_NEVER).toContain("Issue refunds");
     expect(REGINA_NEVER).toContain("Promise unavailable appointment times");
+  });
+
+  it("provides industry-neutral starter pack recommendations as draft templates", () => {
+    expect(INDUSTRY_STARTER_PACKS.HVAC).toContain("MAINTENANCE_DUE");
+    expect(INDUSTRY_STARTER_PACKS.ROOFING).toContain("UNSOLD_ESTIMATE_FOLLOW_UP");
+    expect(INDUSTRY_STARTER_PACKS.POOL_SERVICE).toContain("PAST_CUSTOMER_REACTIVATION");
   });
 });

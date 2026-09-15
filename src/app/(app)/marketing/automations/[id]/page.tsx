@@ -36,6 +36,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   const canManage = can(ctx.role, "marketing:manage");
   const readiness = await automationReadiness(automation);
   const relevantActions = GOAL_ACTIONS[automation.goal || ""] || ["CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"];
+  const selectedConditions = conditionList(automation.conditions);
   const preview = renderFirstMessage(automation.firstMessage || "", {
     customerFirstName: "Sarah",
     companyName: ctx.company.businessName,
@@ -144,6 +145,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
           </div>
         </div>
         <section className="rounded-xl border p-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cy-navy)]">Regina can do</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">Only actions supported for this business goal are shown. Use the minimum Regina needs.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{relevantActions.map((action) => <label key={action} className="flex items-start gap-2 rounded-lg bg-[var(--cy-gray)] p-3 text-sm"><input type="checkbox" name="allowedActions" value={action} defaultChecked={automation.allowedActions.includes(action)} disabled={!canManage} className="mt-1" /><span>{ACTION_LABELS[action] || friendly(action)}</span></label>)}</div></section>
+        <section className="rounded-xl border p-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cy-navy)]">Only if</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">These conditions are rechecked when delayed outreach becomes due.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{CONDITION_OPTIONS.map((condition) => <label key={condition} className="flex items-start gap-2 text-sm"><input type="checkbox" name="conditions" value={condition} defaultChecked={selectedConditions.includes(condition)} disabled={!canManage} className="mt-1" />{friendly(condition)}</label>)}</div></section>
         <ListField title="Regina will not" values={REGINA_NEVER} />
         <section className="rounded-xl border p-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cy-navy)]">Stop when</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{STOP_OPTIONS.map((stop) => <label key={stop} className="flex items-start gap-2 text-sm"><input type="checkbox" name="stopConditions" value={stop} defaultChecked={automation.stopConditions.includes(stop)} disabled={!canManage} className="mt-1" />{friendly(stop)}</label>)}</div></section>
         <section className="rounded-xl border p-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--cy-navy)]">If the customer does not reply</p><div className="mt-3 grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="maxAttempts">Maximum outreach attempts</Label><select id="maxAttempts" name="maxAttempts" defaultValue={automation.maxAttempts} className={selectClass}><option value="1">1 — no follow-up</option><option value="2">2 — one follow-up</option><option value="3">3 — two follow-ups</option></select></div><div className="space-y-2"><Label htmlFor="followUpDelayMinutes">Wait before follow-up</Label><select id="followUpDelayMinutes" name="followUpDelayMinutes" defaultValue={automation.followUpDelayMinutes || 1440} className={selectClass}><option value="1440">24 hours</option><option value="4320">3 days</option><option value="10080">1 week</option></select></div></div><p className="mt-2 text-xs text-[var(--muted-foreground)]">Sending remains deterministic. Regina may suggest wording but cannot add attempts.</p></section>
@@ -229,3 +231,10 @@ const STOP_OPTIONS = [
   "GOAL_COMPLETED", "CUSTOMER_DECLINED", "CUSTOMER_OPTED_OUT", "HUMAN_TAKEOVER",
   "SOURCE_CANCELLED", "ESTIMATE_APPROVED", "INVOICE_PAID", "PROMOTION_EXPIRED", "MAXIMUM_ATTEMPTS_REACHED",
 ];
+const CONDITION_OPTIONS = ["CUSTOMER_NOT_OPTED_OUT", "SOURCE_STILL_ACTIVE", "CUSTOMER_HAS_NOT_BOOKED", "PROMOTION_ACTIVE"];
+
+function conditionList(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const onlyIf = (value as Record<string, unknown>).onlyIf;
+  return Array.isArray(onlyIf) ? onlyIf.map(String) : [];
+}
