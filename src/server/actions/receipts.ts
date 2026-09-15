@@ -16,6 +16,7 @@ import { suggestReceiptFields } from "@/lib/receipts/extract";
 import { expenseToJobCostCategory } from "@/lib/costing/categories";
 import { recordJobCost } from "@/lib/costing/record";
 import type { ExpenseCategory, PaymentMethod, ReceiptAssignment } from "@prisma/client";
+import { projectAccessFilter } from "@/lib/projects/core";
 
 function uploadRoot() {
   return process.env.UPLOAD_DIR || "./uploads";
@@ -56,7 +57,7 @@ export async function uploadReceiptAction(
       if (!vehicle) return { ok: false, error: "That vehicle is not in your company." };
     }
     if (projectId) {
-      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id } });
+      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id, ...projectAccessFilter(ctx.role, ctx.user.id) } });
       if (!project) return { ok: false, error: "That project is not in your company." };
       if (projectPhaseId) {
         const phase = await prisma.projectPhase.findFirst({ where: { id: projectPhaseId, projectId, companyId: ctx.company.id } });
@@ -166,7 +167,7 @@ export async function reviewReceiptAction(
       if (!vehicle) return { ok: false, error: "Choose a truck from your company." };
     }
     if (projectId) {
-      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id } });
+      const project = await prisma.project.findFirst({ where: { id: projectId, companyId: ctx.company.id, ...projectAccessFilter(ctx.role, ctx.user.id) } });
       if (!project) return { ok: false, error: "Choose a project from your company." };
       if (projectPhaseId && !await prisma.projectPhase.findFirst({ where: { id: projectPhaseId, projectId, companyId: ctx.company.id } })) {
         return { ok: false, error: "Choose a phase from that project." };

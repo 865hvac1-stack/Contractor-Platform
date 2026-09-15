@@ -26,6 +26,7 @@ function revalidateJob(jobId: string) {
   revalidatePath("/jobs");
   revalidatePath("/jobs");
   revalidatePath("/pricebook");
+  revalidatePath("/projects/[id]", "page");
 }
 
 export async function addJobPartAction(
@@ -117,6 +118,10 @@ export async function reserveJobPartAction(
         where: { id: row.id },
         data: { status: "RESERVED", locationId, reservedAt: new Date() },
       });
+      await tx.projectMaterial.updateMany({
+        where: { companyId: ctx.company.id, linkedJobPartId: row.id },
+        data: { status: "ALLOCATED" },
+      });
       await tx.inventoryMovement.create({
         data: {
           companyId: ctx.company.id,
@@ -154,7 +159,10 @@ export async function pickUpJobPartAction(
     if (!row || row.status !== "RESERVED") return { ok: false, error: "Only a reserved part can be marked picked up." };
     const job = await accessibleJob(ctx.company.id, ctx.user.id, ctx.role, row.jobId);
     if (!job) return { ok: false, error: "Job not found or unavailable." };
-    await prisma.jobPart.update({ where: { id }, data: { status: "PICKED_UP", pickedUpAt: new Date() } });
+    await prisma.$transaction([
+      prisma.jobPart.update({ where: { id }, data: { status: "PICKED_UP", pickedUpAt: new Date() } }),
+      prisma.projectMaterial.updateMany({ where: { companyId: ctx.company.id, linkedJobPartId: id }, data: { status: "LOADED" } }),
+    ]);
     await writeAudit({
       companyId: ctx.company.id,
       actorId: ctx.user.id,
@@ -212,6 +220,10 @@ export async function installJobPartAction(
       await tx.jobPart.update({
         where: { id: row.id },
         data: { status: "INSTALLED", installedAt: new Date() },
+      });
+      await tx.projectMaterial.updateMany({
+        where: { companyId: ctx.company.id, linkedJobPartId: row.id },
+        data: { status: "INSTALLED" },
       });
       await tx.inventoryMovement.create({
         data: {
@@ -360,6 +372,10 @@ export async function cancelJobPartAction(
       await tx.jobPart.update({
         where: { id: row.id },
         data: { status: "CANCELED", canceledAt: new Date() },
+      });
+      await tx.projectMaterial.updateMany({
+        where: { companyId: ctx.company.id, linkedJobPartId: row.id },
+        data: { status: "RETURNED" },
       });
       return { ok: true as const, jobId: row.jobId, alreadyCanceled: false };
     });

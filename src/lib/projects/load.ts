@@ -42,7 +42,9 @@ export async function loadProject360(input: { companyId: string; projectId: stri
   const actualLaborCents = project.laborEntries.reduce((sum, row) => sum + (row.internalLaborCostCents || 0), 0);
   const actualLaborMinutes = project.laborEntries.reduce((sum, row) => sum + (row.totalMinutes || 0), 0);
   const actualDirectCostCents = project.costs.filter((row) => row.status === "ACTUAL").reduce((sum, row) => sum + row.amountCents, 0);
-  const committedDirectCostCents = project.costs.filter((row) => row.status === "COMMITTED").reduce((sum, row) => sum + row.amountCents, 0);
+  const committedDirectCostCents =
+    project.costs.filter((row) => row.status === "COMMITTED").reduce((sum, row) => sum + row.amountCents, 0) +
+    project.changeOrders.filter((row) => row.status === "APPROVED").reduce((sum, row) => sum + row.estimatedCostChangeCents, 0);
   const actualVisitCostCents = visitCosts.reduce((sum, row) => sum + row.amountCents, 0);
   const actualInstalledMaterialCents = project.materials
     .filter((row) => row.status === "INSTALLED" && !row.linkedJobPartId && row.costTreatment === "INVENTORY_ALLOCATION")
@@ -50,6 +52,15 @@ export async function loadProject360(input: { companyId: string; projectId: stri
   const committedMaterialCents = project.materials
     .filter((row) => ["ORDERED", "RECEIVED", "ALLOCATED", "LOADED"].includes(row.status) && !row.linkedJobPartId)
     .reduce((sum, row) => sum + row.unitCostCents * row.quantity, 0);
+  const totalBudgetCents =
+    (project.laborBudgetCostCents || 0) +
+    (project.equipmentBudgetCents || 0) +
+    (project.materialsBudgetCents || 0) +
+    (project.otherBudgetCents || 0);
+  const knownCostAndCommitments =
+    actualLaborCents + actualDirectCostCents + actualVisitCostCents + actualInstalledMaterialCents +
+    committedDirectCostCents + committedMaterialCents;
+  const projectedRemainingCostCents = Math.max(0, totalBudgetCents - knownCostAndCommitments);
   const billedCents = project.invoices.reduce((sum, row) => sum + row.totalCents, 0);
   const collectedCents = project.invoices.reduce((sum, row) => sum + row.amountPaidCents, 0);
   const financials = calculateProjectFinancials({
@@ -61,6 +72,7 @@ export async function loadProject360(input: { companyId: string; projectId: stri
     actualInstalledMaterialCents,
     committedDirectCostCents,
     committedMaterialCents,
+    projectedRemainingCostCents,
     billedCents,
     collectedCents,
   });
@@ -69,6 +81,7 @@ export async function loadProject360(input: { companyId: string; projectId: stri
     status: project.status,
     targetCompletion: project.targetCompletion,
     projectedMarginBps: financials.projectedMarginBps,
+    projectValueCents: financials.currentValueCents,
     minimumMarginBps: project.minimumMarginBps,
     laborBudgetMinutes: project.laborBudgetMinutes,
     actualLaborMinutes,

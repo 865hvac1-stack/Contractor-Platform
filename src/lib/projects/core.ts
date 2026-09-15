@@ -30,6 +30,7 @@ export type ProjectFinancialInput = {
   actualInstalledMaterialCents: number;
   committedDirectCostCents: number;
   committedMaterialCents: number;
+  projectedRemainingCostCents: number;
   billedCents: number;
   collectedCents: number;
 };
@@ -42,13 +43,14 @@ export function calculateProjectFinancials(input: ProjectFinancialInput) {
     input.actualVisitCostCents +
     input.actualInstalledMaterialCents;
   const committedCostCents = input.committedDirectCostCents + input.committedMaterialCents;
-  const projectedFinalCostCents = costToDateCents + committedCostCents;
+  const projectedFinalCostCents = costToDateCents + committedCostCents + input.projectedRemainingCostCents;
   const projectedGrossProfitCents = currentValueCents - projectedFinalCostCents;
   const projectedMarginBps = currentValueCents > 0 ? Math.round(projectedGrossProfitCents * 10_000 / currentValueCents) : 0;
   return {
     currentValueCents,
     costToDateCents,
     committedCostCents,
+    projectedRemainingCostCents: input.projectedRemainingCostCents,
     projectedFinalCostCents,
     projectedGrossProfitCents,
     projectedMarginBps,
@@ -63,6 +65,7 @@ export type ProjectHealthInput = {
   status: string;
   targetCompletion: Date | null;
   projectedMarginBps: number;
+  projectValueCents: number;
   minimumMarginBps: number;
   laborBudgetMinutes: number | null;
   actualLaborMinutes: number;
@@ -84,7 +87,7 @@ export function calculateProjectHealth(input: ProjectHealthInput, now = new Date
   if (input.unbilledReadyMilestones) reasons.push(`${input.unbilledReadyMilestones} milestone${input.unbilledReadyMilestones === 1 ? " is" : "s are"} ready to bill`);
   if (input.pastDueInvoices) reasons.push(`${input.pastDueInvoices} invoice${input.pastDueInvoices === 1 ? " is" : "s are"} past due`);
   if (input.materialBlockers) reasons.push(`${input.materialBlockers} material blocker${input.materialBlockers === 1 ? "" : "s"}`);
-  if (input.projectedMarginBps < input.minimumMarginBps) reasons.push("Projected margin is below target");
+  if (input.projectValueCents > 0 && input.projectedMarginBps < input.minimumMarginBps) reasons.push("Projected margin is below target");
   return {
     status: reasons.some((reason) => /critical|past target|blocked|below target/i.test(reason))
       ? "AT_RISK"

@@ -23,6 +23,7 @@ import {
   projectAccessFilter,
 } from "@/lib/projects/core";
 import { emitDomainEvent } from "@/lib/conversations/event-engine";
+import { zonedLocalDateTime } from "@/lib/scheduling/time";
 import type { ActionResult } from "@/server/actions/auth";
 
 const ALLOWED_ASSETS = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -40,6 +41,10 @@ export async function createProjectAction(_prev: ActionResult | null, formData: 
       prisma.property.findFirst({ where: { id: propertyId, customerId, companyId: ctx.company.id } }),
     ]);
     if (!customer || !property) return fail("Customer or property is not in your company.");
+    const projectManagerId = optional(formData, "projectManagerId");
+    if (projectManagerId && !await prisma.membership.findFirst({ where: { companyId: ctx.company.id, userId: projectManagerId, status: "ACTIVE" } })) {
+      return fail("Project manager is not active in your company.");
+    }
     const requestedPhases = formData.getAll("phases").map(String).map((value) => value.trim()).filter(Boolean);
     const phases = requestedPhases.length ? requestedPhases : PROJECT_PHASE_TEMPLATES[type as keyof typeof PROJECT_PHASE_TEMPLATES];
     const projectNumber = await nextNumber(ctx.company.id, "PROJECT", "PRJ");
@@ -55,7 +60,7 @@ export async function createProjectAction(_prev: ActionResult | null, formData: 
           builderName: optional(formData, "builderName"),
           primaryContactName: optional(formData, "primaryContactName"),
           primaryContactPhone: optional(formData, "primaryContactPhone"),
-          projectManagerId: optional(formData, "projectManagerId"),
+          projectManagerId,
           originalContractCents: money(formData, "originalContract"),
           laborBudgetMinutes: hoursToMinutes(formData.get("laborBudgetHours")),
           laborBudgetCostCents: optionalMoney(formData, "laborBudgetCost"),
@@ -110,6 +115,13 @@ export async function updateProjectPhaseAction(_prev: ActionResult | null, formD
         await tx.project.update({ where: { id: phase.projectId }, data: { status: "IN_PROGRESS", actualStart: phase.project.actualStart || now } });
       } else if (status === "WAITING" || status === "BLOCKED") {
         await tx.project.update({ where: { id: phase.projectId }, data: { status: "WAITING" } });
+      } else if (status === "COMPLETE") {
+        const nextPhase = await tx.projectPhase.findFirst({ where: { projectId: phase.projectId, sortOrder: { gt: phase.sortOrder }, status: "NOT_STARTED" }, orderBy: { sortOrder: "asc" } });
+        if (nextPhase) await tx.projectPhase.update({ where: { id: nextPhase.id }, data: { status: "READY" } });
+        await tx.project.update({
+          where: { id: phase.projectId },
+          data: { status: !nextPhase || /punch|final/i.test(nextPhase.name) ? "PUNCH_FINAL" : "IN_PROGRESS", nextStep: null, nextStepOverride: false },
+        });
       }
       await tx.projectActivity.create({ data: { companyId: ctx.company.id, projectId: phase.projectId, phaseId: phase.id, actorId: ctx.user.id, event: `PHASE_${status}`, summary: `${phase.name} changed to ${friendly(status)}${waitingReason ? ` — ${waitingReason}` : ""}` } });
     });
@@ -179,8 +191,8 @@ export async function scheduleProjectVisitAction(_prev: ActionResult | null, for
     const assigneeIds = [...new Set(formData.getAll("assigneeIds").map(String).filter(Boolean))];
     const validMembers = await prisma.membership.findMany({ where: { companyId: ctx.company.id, userId: { in: assigneeIds }, status: "ACTIVE" }, select: { userId: true } });
     if (validMembers.length !== assigneeIds.length) return fail("One or more crew members are not active in your company.");
-    const scheduledStart = date(formData, "scheduledStart");
-    const scheduledEnd = date(formData, "scheduledEnd");
+    const scheduledStart = localDateTime(formData, "scheduledStart", ctx.company.timezone);
+    const scheduledEnd = localDateTime(formData, "scheduledEnd", ctx.company.timezone);
     const purpose = text(formData, "purpose");
     if (!scheduledStart || !purpose) return fail("Choose a start time and visit purpose.");
     const jobNumber = await nextNumber(ctx.company.id, "JOB", "JOB");
@@ -232,7 +244,7 @@ export async function startProjectWorkAction(_prev: ActionResult | null, formDat
     const now = new Date();
     const rate = member.internalJobCostRateCents ?? member.user.loadedLaborCostCents ?? 0;
     const entry = await prisma.projectLaborEntry.create({
-      data: { companyId: ctx.company.id, projectId: project.id, phaseId, jobId: optional(formData, "jobId"), employeeId, workDate: startOfDay(now), startedAt: now, internalCostRateCents: rate, workCategory: optional(formData, "workCategory"), notes: optional(formData, "notes"), source: employeeId === ctx.user.id ? "TECH_CLOCK" : "CREW_CLOCK", createdById: ctx.user.id },
+      data: { companyId: ctx.company.id, projectId: project.id, phaseId, jobId: optional(formData, "jobId"), employeeId, workDate: workDateForTimeZone(now, ctx.company.timezone), startedAt: now, internalCostRateCents: rate, workCategory: optional(formData, "workCategory"), notes: optional(formData, "notes"), source: employeeId === ctx.user.id ? "TECH_CLOCK" : "CREW_CLOCK", createdById: ctx.user.id },
     });
     await activity(ctx.company.id, project.id, ctx.user.id, "LABOR_STARTED", `${member.user.firstName} ${member.user.lastName} started work`, phaseId, { laborEntryId: entry.id });
     refreshProject(project.id);
@@ -257,7 +269,7 @@ export async function startProjectCrewAction(_prev: ActionResult | null, formDat
     const now = new Date();
     await prisma.$transaction(async (tx) => {
       await tx.projectLaborEntry.createMany({
-        data: members.map((member) => ({ companyId: ctx.company.id, projectId: project.id, phaseId, employeeId: member.userId, workDate: startOfDay(now), startedAt: now, internalCostRateCents: member.internalJobCostRateCents ?? member.user.loadedLaborCostCents ?? 0, source: "CREW_CLOCK", createdById: ctx.user.id })),
+        data: members.map((member) => ({ companyId: ctx.company.id, projectId: project.id, phaseId, employeeId: member.userId, workDate: workDateForTimeZone(now, ctx.company.timezone), startedAt: now, internalCostRateCents: member.internalJobCostRateCents ?? member.user.loadedLaborCostCents ?? 0, source: "CREW_CLOCK", createdById: ctx.user.id })),
       });
       await tx.projectActivity.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId, actorId: ctx.user.id, event: "CREW_STARTED", summary: `${members.length} crew members started work`, details: { employeeIds } } });
     });
@@ -274,12 +286,13 @@ export async function endProjectWorkAction(_prev: ActionResult | null, formData:
     const entry = await prisma.projectLaborEntry.findFirst({ where: { id: text(formData, "laborEntryId"), companyId: ctx.company.id, endedAt: null }, include: { employee: true } });
     if (!entry) return fail("Active labor clock not found.");
     if (entry.employeeId !== ctx.user.id && !can(ctx.role, "project_labor:manage")) return fail("You can only end your own clock.");
-    const endedAt = date(formData, "endedAt") || new Date();
+    const endedAt = localDateTime(formData, "endedAt", ctx.company.timezone) || new Date();
     const breakMinutes = Math.max(0, Number(formData.get("breakMinutes") || 0));
     const totalMinutes = minutesBetween(entry.startedAt, endedAt, breakMinutes);
     if (!totalMinutes) return fail("End time must be after start time and break.");
     await prisma.projectLaborEntry.update({ where: { id: entry.id }, data: { endedAt, breakMinutes, totalMinutes, internalLaborCostCents: laborCostCents(totalMinutes, entry.internalCostRateCents), notes: optional(formData, "notes") || entry.notes } });
     await activity(ctx.company.id, entry.projectId, ctx.user.id, "LABOR_ENDED", `${entry.employee.firstName} ${entry.employee.lastName} ended work (${(totalMinutes / 60).toFixed(2)} hours)`, entry.phaseId, { laborEntryId: entry.id });
+    await maybeEmitLaborOverBudget(ctx.company.id, entry.projectId, entry.id);
     refreshProject(entry.projectId);
     return { ok: true, message: `Clock ended at ${(totalMinutes / 60).toFixed(2)} hours.` };
   } catch (error) {
@@ -292,8 +305,8 @@ export async function addManualProjectLaborAction(_prev: ActionResult | null, fo
     const ctx = await requirePermission("project_labor:manage");
     const project = await tenantProject(ctx.company.id, text(formData, "projectId"));
     const employeeId = text(formData, "employeeId");
-    const startedAt = date(formData, "startedAt");
-    const endedAt = date(formData, "endedAt");
+    const startedAt = localDateTime(formData, "startedAt", ctx.company.timezone);
+    const endedAt = localDateTime(formData, "endedAt", ctx.company.timezone);
     if (!project || !employeeId || !startedAt || !endedAt) return fail("Project, employee, start, and end are required.");
     const member = await prisma.membership.findFirst({ where: { companyId: ctx.company.id, userId: employeeId, status: "ACTIVE" }, include: { user: true } });
     if (!member) return fail("Employee not found.");
@@ -303,8 +316,9 @@ export async function addManualProjectLaborAction(_prev: ActionResult | null, fo
     const totalMinutes = minutesBetween(startedAt, endedAt, breakMinutes);
     if (!totalMinutes) return fail("Enter a valid time range.");
     const rate = member.internalJobCostRateCents ?? member.user.loadedLaborCostCents ?? 0;
-    const entry = await prisma.projectLaborEntry.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), employeeId, workDate: startOfDay(startedAt), startedAt, endedAt, breakMinutes, totalMinutes, internalCostRateCents: rate, internalLaborCostCents: laborCostCents(totalMinutes, rate), source: "MANUAL", createdById: ctx.user.id, notes: optional(formData, "notes") } });
+    const entry = await prisma.projectLaborEntry.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), employeeId, workDate: workDateForTimeZone(startedAt, ctx.company.timezone), startedAt, endedAt, breakMinutes, totalMinutes, internalCostRateCents: rate, internalLaborCostCents: laborCostCents(totalMinutes, rate), source: "MANUAL", createdById: ctx.user.id, notes: optional(formData, "notes") } });
     await activity(ctx.company.id, project.id, ctx.user.id, "LABOR_ADDED_MANUALLY", `${member.user.firstName} ${member.user.lastName}: ${(totalMinutes / 60).toFixed(2)} hours`, entry.phaseId, { laborEntryId: entry.id });
+    await maybeEmitLaborOverBudget(ctx.company.id, project.id, entry.id);
     refreshProject(project.id);
     return { ok: true, message: "Manual labor added with an audit trail." };
   } catch (error) {
@@ -317,9 +331,11 @@ export async function correctProjectLaborAction(_prev: ActionResult | null, form
     const ctx = await requirePermission("project_labor:manage");
     const entry = await prisma.projectLaborEntry.findFirst({ where: { id: text(formData, "laborEntryId"), companyId: ctx.company.id } });
     const reason = text(formData, "reason");
-    const startedAt = date(formData, "startedAt");
-    const endedAt = date(formData, "endedAt");
+    const startedAt = localDateTime(formData, "startedAt", ctx.company.timezone);
+    const endedAt = localDateTime(formData, "endedAt", ctx.company.timezone);
     if (!entry || !reason || !startedAt || !endedAt) return fail("Entry, corrected times, and reason are required.");
+    const overlap = await prisma.projectLaborEntry.findFirst({ where: { companyId: ctx.company.id, employeeId: entry.employeeId, id: { not: entry.id }, startedAt: { lt: endedAt }, OR: [{ endedAt: null }, { endedAt: { gt: startedAt } }] } });
+    if (overlap) return fail("Corrected time overlaps another project labor entry.");
     const breakMinutes = Math.max(0, Number(formData.get("breakMinutes") || 0));
     const totalMinutes = minutesBetween(startedAt, endedAt, breakMinutes);
     if (!totalMinutes) return fail("Enter a valid corrected time range.");
@@ -330,6 +346,7 @@ export async function correctProjectLaborAction(_prev: ActionResult | null, form
       await tx.projectLaborEntry.update({ where: { id: entry.id }, data: { ...after, editedById: ctx.user.id, editReason: reason.slice(0, 500), source: "ADMIN_CORRECTION" } });
       await tx.projectActivity.create({ data: { companyId: ctx.company.id, projectId: entry.projectId, phaseId: entry.phaseId, actorId: ctx.user.id, event: "LABOR_CORRECTED", summary: `Labor corrected: ${reason.slice(0, 300)}`, details: { laborEntryId: entry.id } } });
     });
+    await maybeEmitLaborOverBudget(ctx.company.id, entry.projectId, entry.id);
     refreshProject(entry.projectId);
     return { ok: true, message: "Labor corrected. Original values were preserved." };
   } catch (error) {
@@ -380,7 +397,7 @@ export async function addProjectMaterialAction(_prev: ActionResult | null, formD
     if (!project || !part || !Number.isInteger(quantity) || quantity < 1) return fail("Choose a Parts Bank item and quantity.");
     const material = await prisma.projectMaterial.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), partId: part.id, quantity, unitCostCents: part.internalCostCents || 0, status: "NEEDED", neededBy: date(formData, "neededBy"), notes: optional(formData, "notes"), createdById: ctx.user.id } });
     await activity(ctx.company.id, project.id, ctx.user.id, "MATERIAL_ADDED", `${quantity} × ${part.name} needed`, material.phaseId, { materialId: material.id });
-    await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_REQUIRED", project.id, project.customerId, material.phaseId);
+    await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_REQUIRED", project.id, project.customerId, material.phaseId, null, material.id);
     refreshProject(project.id);
     return { ok: true, message: "Material added from Parts Bank. Inventory has not been deducted." };
   } catch (error) {
@@ -394,9 +411,12 @@ export async function updateProjectMaterialAction(_prev: ActionResult | null, fo
     const material = await prisma.projectMaterial.findFirst({ where: { id: text(formData, "materialId"), companyId: ctx.company.id }, include: { project: true, part: true } });
     const status = text(formData, "status");
     if (!material || !["NEEDED", "REQUESTED", "ORDERED", "RECEIVED", "ALLOCATED", "LOADED", "INSTALLED", "RETURNED"].includes(status)) return fail("Material not found or status invalid.");
+    if (material.costTreatment === "INVENTORY_ALLOCATION" && ["ALLOCATED", "LOADED", "INSTALLED"].includes(status) && !material.linkedJobPartId) {
+      return fail("Link this item to a project visit. Parts Bank must handle allocation, loading, installation, and inventory cost.");
+    }
     await prisma.projectMaterial.update({ where: { id: material.id }, data: { status } });
     await activity(ctx.company.id, material.projectId, ctx.user.id, "MATERIAL_UPDATED", `${material.part.name} changed to ${friendly(status)}`, material.phaseId, { materialId: material.id });
-    if (status === "RECEIVED") await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_RECEIVED", material.projectId, material.project.customerId, material.phaseId);
+    if (status === "RECEIVED") await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_RECEIVED", material.projectId, material.project.customerId, material.phaseId, null, material.id);
     refreshProject(material.projectId);
     return { ok: true, message: "Material status updated." };
   } catch (error) {
@@ -435,7 +455,7 @@ export async function requestProjectMaterialAction(_prev: ActionResult | null, f
     if (!project || !description || !Number.isInteger(quantity) || quantity < 1) return fail("Add a material and quantity.");
     const request = await prisma.projectMaterialRequest.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), partId: optional(formData, "partId"), description: description.slice(0, 300), quantity, neededBy: date(formData, "neededBy"), urgency: text(formData, "urgency") || "NORMAL", notes: optional(formData, "notes"), requestedById: ctx.user.id } });
     await activity(ctx.company.id, project.id, ctx.user.id, "MATERIAL_REQUESTED", `${quantity} × ${description} requested`, request.phaseId, { materialRequestId: request.id });
-    await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_REQUIRED", project.id, project.customerId, request.phaseId);
+    await emitProjectEvent(ctx.company.id, "PROJECT_MATERIAL_REQUIRED", project.id, project.customerId, request.phaseId, null, request.id);
     refreshProject(project.id);
     return { ok: true, message: "Material request sent to the project team." };
   } catch (error) {
@@ -472,9 +492,11 @@ export async function addProjectIssueAction(_prev: ActionResult | null, formData
     const project = await accessibleProject(ctx.company.id, ctx.role, ctx.user.id, text(formData, "projectId"));
     const title = text(formData, "title");
     if (!project || !title) return fail("Project and issue title are required.");
-    const issue = await prisma.projectIssue.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), title: title.slice(0, 200), description: optional(formData, "description"), priority: text(formData, "priority") || "NORMAL", assignedToId: optional(formData, "assignedToId"), dueDate: date(formData, "dueDate"), createdById: ctx.user.id } });
+    const assignedToId = optional(formData, "assignedToId");
+    if (assignedToId && !await prisma.membership.findFirst({ where: { companyId: ctx.company.id, userId: assignedToId, status: "ACTIVE" } })) return fail("Assigned team member is not active in your company.");
+    const issue = await prisma.projectIssue.create({ data: { companyId: ctx.company.id, projectId: project.id, phaseId: optional(formData, "phaseId"), title: title.slice(0, 200), description: optional(formData, "description"), priority: text(formData, "priority") || "NORMAL", assignedToId, dueDate: date(formData, "dueDate"), createdById: ctx.user.id } });
     await activity(ctx.company.id, project.id, ctx.user.id, "ISSUE_CREATED", `Issue created: ${issue.title}`, issue.phaseId, { issueId: issue.id });
-    await emitProjectEvent(ctx.company.id, "PROJECT_ISSUE_CREATED", project.id, project.customerId, issue.phaseId);
+    await emitProjectEvent(ctx.company.id, "PROJECT_ISSUE_CREATED", project.id, project.customerId, issue.phaseId, null, issue.id);
     refreshProject(project.id);
     return { ok: true, message: "Project issue added." };
   } catch (error) {
@@ -489,7 +511,7 @@ export async function resolveProjectIssueAction(_prev: ActionResult | null, form
     if (!issue) return fail("Issue not found.");
     await prisma.projectIssue.update({ where: { id: issue.id }, data: { status: "RESOLVED", resolvedAt: new Date(), resolutionNotes: optional(formData, "resolutionNotes") } });
     await activity(ctx.company.id, issue.projectId, ctx.user.id, "ISSUE_RESOLVED", `Issue resolved: ${issue.title}`, issue.phaseId, { issueId: issue.id });
-    await emitProjectEvent(ctx.company.id, "PROJECT_ISSUE_RESOLVED", issue.projectId, issue.project.customerId, issue.phaseId);
+    await emitProjectEvent(ctx.company.id, "PROJECT_ISSUE_RESOLVED", issue.projectId, issue.project.customerId, issue.phaseId, null, issue.id);
     refreshProject(issue.projectId);
     return { ok: true, message: "Issue resolved." };
   } catch (error) {
@@ -519,14 +541,15 @@ export async function updateProjectChangeOrderStatusAction(_prev: ActionResult |
     const row = await prisma.projectChangeOrder.findFirst({ where: { id: text(formData, "changeOrderId"), companyId: ctx.company.id }, include: { project: true } });
     const status = text(formData, "status");
     if (!row || !["SENT", "APPROVED", "DECLINED", "VOID"].includes(status)) return fail("Change order or status invalid.");
+    if (row.status === "APPROVED") return { ok: true, message: "This change order is already approved. Project value and budgets were not changed again." };
     await prisma.$transaction(async (tx) => {
       await tx.projectChangeOrder.update({ where: { id: row.id }, data: { status, approvedAt: status === "APPROVED" ? new Date() : null, approvedById: status === "APPROVED" ? ctx.user.id : null } });
       if (status === "APPROVED") {
-        await tx.project.update({ where: { id: row.projectId }, data: { laborBudgetMinutes: row.laborMinutesChange ? { increment: row.laborMinutesChange } : undefined, laborBudgetCostCents: row.estimatedCostChangeCents ? { increment: row.estimatedCostChangeCents } : undefined } });
+        await tx.project.update({ where: { id: row.projectId }, data: { laborBudgetMinutes: row.laborMinutesChange ? { increment: row.laborMinutesChange } : undefined } });
       }
       await tx.projectActivity.create({ data: { companyId: ctx.company.id, projectId: row.projectId, phaseId: row.phaseId, actorId: ctx.user.id, event: `CHANGE_ORDER_${status}`, summary: `${row.number} changed to ${friendly(status)}`, details: { changeOrderId: row.id } } });
     });
-    if (status === "APPROVED") await emitProjectEvent(ctx.company.id, "PROJECT_CHANGE_ORDER_APPROVED", row.projectId, row.project.customerId, row.phaseId);
+    if (status === "APPROVED") await emitProjectEvent(ctx.company.id, "PROJECT_CHANGE_ORDER_APPROVED", row.projectId, row.project.customerId, row.phaseId, null, row.id);
     refreshProject(row.projectId);
     return { ok: true, message: `Change order ${friendly(status).toLowerCase()}.` };
   } catch (error) {
@@ -555,9 +578,10 @@ export async function markBillingMilestoneReadyAction(_prev: ActionResult | null
     const ctx = await requirePermission("projects:financial_manage");
     const row = await prisma.projectBillingMilestone.findFirst({ where: { id: text(formData, "milestoneId"), companyId: ctx.company.id }, include: { project: true } });
     if (!row) return fail("Milestone not found.");
+    if (row.status !== "NOT_READY") return { ok: true, message: "This milestone is already ready or billed." };
     await prisma.projectBillingMilestone.update({ where: { id: row.id }, data: { status: "READY_TO_BILL", readyAt: new Date() } });
     await activity(ctx.company.id, row.projectId, ctx.user.id, "BILLING_MILESTONE_READY", `${row.name} is ready to bill`, null, { milestoneId: row.id });
-    await emitProjectEvent(ctx.company.id, "PROJECT_BILLING_MILESTONE_READY", row.projectId, row.project.customerId);
+    await emitProjectEvent(ctx.company.id, "PROJECT_BILLING_MILESTONE_READY", row.projectId, row.project.customerId, null, null, row.id);
     refreshProject(row.projectId);
     return { ok: true, message: "Milestone marked ready to bill. No invoice was created automatically." };
   } catch (error) {
@@ -620,8 +644,17 @@ async function tenantPhase(companyId: string, id: string) {
 async function activity(companyId: string, projectId: string, actorId: string, event: string, summary: string, phaseId?: string | null, details?: Record<string, unknown>) {
   return prisma.projectActivity.create({ data: { companyId, projectId, phaseId: phaseId || null, actorId, event, summary, details: details as Prisma.InputJsonValue | undefined } });
 }
-async function emitProjectEvent(companyId: string, type: string, projectId: string, customerId: string, phaseId?: string | null, jobId?: string | null) {
-  await emitDomainEvent({ companyId, type: type as never, sourceType: "Project", sourceId: projectId, customerId, jobId, idempotencyKey: `${type.toLowerCase()}:${projectId}:${phaseId || jobId || Date.now()}`, payload: { projectId, phaseId: phaseId || null, jobId: jobId || null } }).catch(() => null);
+async function emitProjectEvent(companyId: string, type: string, projectId: string, customerId: string, phaseId?: string | null, jobId?: string | null, instanceId?: string | null) {
+  await emitDomainEvent({ companyId, type: type as never, sourceType: "Project", sourceId: projectId, customerId, jobId, idempotencyKey: `${type.toLowerCase()}:${projectId}:${instanceId || jobId || phaseId || "project"}`, payload: { projectId, phaseId: phaseId || null, jobId: jobId || null, instanceId: instanceId || null } }).catch(() => null);
+}
+async function maybeEmitLaborOverBudget(companyId: string, projectId: string, instanceId: string) {
+  const [project, total] = await Promise.all([
+    prisma.project.findFirst({ where: { id: projectId, companyId }, select: { customerId: true, laborBudgetMinutes: true } }),
+    prisma.projectLaborEntry.aggregate({ where: { companyId, projectId }, _sum: { totalMinutes: true } }),
+  ]);
+  if (project?.laborBudgetMinutes != null && (total._sum.totalMinutes || 0) > project.laborBudgetMinutes) {
+    await emitProjectEvent(companyId, "PROJECT_LABOR_OVER_BUDGET", projectId, project.customerId, null, null, instanceId);
+  }
 }
 function refreshProject(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
@@ -639,6 +672,12 @@ function date(formData: FormData, key: string) {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
+function localDateTime(formData: FormData, key: string, timeZone: string) {
+  const value = text(formData, key);
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return zonedLocalDateTime(timeZone, match[1], Number(match[2]) * 60 + Number(match[3]));
+}
 function money(formData: FormData, key: string) {
   return Math.max(0, dollarsToCents(text(formData, key)));
 }
@@ -653,8 +692,10 @@ function hoursToMinutes(value: FormDataEntryValue | null) {
   const hours = Number(value || 0);
   return Number.isFinite(hours) && hours !== 0 ? Math.round(hours * 60) : null;
 }
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+function workDateForTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
 }
 function friendly(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
@@ -664,6 +705,9 @@ function fail(error: string): ActionResult {
 }
 function actionError(error: unknown, fallback: string): ActionResult {
   if (error instanceof AuthError) return fail(error.message);
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    return fail("That record already exists or an employee already has an active clock. Nothing was duplicated.");
+  }
   return fail(error instanceof Error ? error.message : fallback);
 }
 function laborSnapshot(entry: { startedAt: Date; endedAt: Date | null; breakMinutes: number; totalMinutes: number | null; internalCostRateCents: number; internalLaborCostCents: number | null; notes: string | null; source: string }) {

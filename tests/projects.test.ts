@@ -21,6 +21,7 @@ describe("Projects / Project 360", () => {
       actualInstalledMaterialCents: 0,
       committedDirectCostCents: 200_000,
       committedMaterialCents: 0,
+      projectedRemainingCostCents: 0,
       billedCents: 1_200_000,
       collectedCents: 900_000,
     });
@@ -46,6 +47,7 @@ describe("Projects / Project 360", () => {
       status: "IN_PROGRESS",
       targetCompletion: new Date("2026-09-01T00:00:00.000Z"),
       projectedMarginBps: 1500,
+      projectValueCents: 2_000_000,
       minimumMarginBps: 2000,
       laborBudgetMinutes: 4800,
       actualLaborMinutes: 5000,
