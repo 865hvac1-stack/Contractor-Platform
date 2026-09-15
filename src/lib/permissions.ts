@@ -60,6 +60,9 @@ export type Permission =
   | "compensation:manage"
   | "performance:view_own"
   | "performance:view_team"
+  | "technician_intelligence:view"
+  | "technician_intelligence:manage"
+  | "technician_intelligence:confidential"
   | "jobs:lock"
   | "routing:optimize"
   | "payments:manage"
@@ -130,6 +133,9 @@ const ALL_COMPANY: Permission[] = [
   "compensation:manage",
   "performance:view_own",
   "performance:view_team",
+  "technician_intelligence:view",
+  "technician_intelligence:manage",
+  "technician_intelligence:confidential",
   "jobs:lock",
   "routing:optimize",
   "payments:manage",
@@ -194,6 +200,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "compensation:view_own",
     "performance:view_own",
     "performance:view_team",
+    "technician_intelligence:view",
     "projects:view",
     "projects:manage",
     "projects:financial_view",
@@ -217,6 +224,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "equipment:view",
     "playbooks:view",
     "intelligence:view",
+    "technician_intelligence:view",
     "inventory:view",
     "inventory:use",
     "projects:view",
@@ -239,6 +247,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "memberships:view",
     "memberships:manage",
     "performance:view_own",
+    "technician_intelligence:view",
     "compensation:view_own",
     "projects:view",
   ],
@@ -268,6 +277,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "memberships:manage",
     "compensation:view_own",
     "performance:view_own",
+    "technician_intelligence:view",
     "projects:view",
     "project_labor:clock",
     "project_assets:manage",
@@ -328,6 +338,9 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "compensation:view_all",
     "performance:view_own",
     "performance:view_team",
+    "technician_intelligence:view",
+    "technician_intelligence:manage",
+    "technician_intelligence:confidential",
     "receptionist:train",
     "projects:view",
     "projects:manage",

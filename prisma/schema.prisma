@@ -431,51 +431,56 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  memberships                    Membership[]
-  sessions                       Session[]
-  passwordResetTokens            PasswordResetToken[]
-  teamInvitesSent                TeamInvite[]                   @relation("TeamInviteSender")
-  auditLogs                      AuditLog[]                     @relation("AuditActor")
-  assignedJobs                   JobAssignment[]
-  expensesCreated                Expense[]                      @relation("ExpenseCreator")
-  invitedMemberships             Membership[]                   @relation("MembershipInviter")
-  assignedLeads                  Lead[]                         @relation("LeadAssignee")
-  leadActivities                 LeadActivity[]
-  attributionOverrides           AttributionEvent[]             @relation("AttributionOverride")
-  playbookVersionsCreated        PlaybookVersion[]              @relation("PlaybookVersionAuthor")
-  jobWorkflowEvents              JobWorkflowEvent[]
-  oauthStates                    OAuthState[]
-  importSessions                 ImportSession[]
-  importResetOperations          ImportResetOperation[]         @relation("ImportResetActor")
-  receiptsUploaded               Receipt[]                      @relation("ReceiptUploader")
-  jobCostsCreated                JobCost[]                      @relation("JobCostCreator")
-  jobPartsCreated                JobPart[]                      @relation("JobPartCreator")
-  inventoryMovements             InventoryMovement[]            @relation("InventoryMovementActor")
-  estimatesCreated               Estimate[]                     @relation("EstimateCreator")
-  paymentsRecorded               Payment[]                      @relation("PaymentRecorder")
-  membershipsSold                CustomerMembership[]           @relation("MembershipSoldBy")
-  compensationEvents             CompensationEvent[]
-  compensationApprovals          CompensationEvent[]            @relation("CompensationApprover")
-  jobPhotosUploaded              JobPhoto[]                     @relation("JobPhotoUploader")
-  customerNotesAuthored          CustomerNote[]                 @relation("CustomerNoteAuthor")
-  waitingRecordsOwned            WaitingRecord[]                @relation("WaitingRecordOwner")
-  waitingTransitions             WaitingTransition[]
-  performanceGoals               PerformanceGoal[]
-  aiConversations                AIConversation[]
-  aiUsageEvents                  AIUsageEvent[]
-  aiActionDrafts                 AIActionDraft[]
-  aiActionsRequested             AIActionRequest[]              @relation("AIActionRequestedBy")
-  aiActionsApproved              AIActionRequest[]              @relation("AIActionApprovedBy")
-  companyTasksAssigned           CompanyTask[]                  @relation("CompanyTaskAssignee")
-  companyTasksCreated            CompanyTask[]                  @relation("CompanyTaskCreator")
-  technicianWindowAvailabilities TechnicianWindowAvailability[]
-  availabilityOverrides          AvailabilityOverride[]
-  technicianServiceEligibilities TechnicianServiceEligibility[]
-  schedulingBookings             SchedulingBooking[]
-  projectLaborEntriesWorked      ProjectLaborEntry[]            @relation("ProjectLaborEmployee")
-  projectLaborEntriesCreated     ProjectLaborEntry[]            @relation("ProjectLaborCreator")
-  projectLaborEntriesEdited      ProjectLaborEntry[]            @relation("ProjectLaborEditor")
-  projectLaborRevisions          ProjectLaborRevision[]         @relation("ProjectLaborRevisionActor")
+  memberships                     Membership[]
+  sessions                        Session[]
+  passwordResetTokens             PasswordResetToken[]
+  teamInvitesSent                 TeamInvite[]                     @relation("TeamInviteSender")
+  auditLogs                       AuditLog[]                       @relation("AuditActor")
+  assignedJobs                    JobAssignment[]
+  expensesCreated                 Expense[]                        @relation("ExpenseCreator")
+  invitedMemberships              Membership[]                     @relation("MembershipInviter")
+  assignedLeads                   Lead[]                           @relation("LeadAssignee")
+  leadActivities                  LeadActivity[]
+  attributionOverrides            AttributionEvent[]               @relation("AttributionOverride")
+  playbookVersionsCreated         PlaybookVersion[]                @relation("PlaybookVersionAuthor")
+  jobWorkflowEvents               JobWorkflowEvent[]
+  oauthStates                     OAuthState[]
+  importSessions                  ImportSession[]
+  importResetOperations           ImportResetOperation[]           @relation("ImportResetActor")
+  receiptsUploaded                Receipt[]                        @relation("ReceiptUploader")
+  jobCostsCreated                 JobCost[]                        @relation("JobCostCreator")
+  jobPartsCreated                 JobPart[]                        @relation("JobPartCreator")
+  inventoryMovements              InventoryMovement[]              @relation("InventoryMovementActor")
+  estimatesCreated                Estimate[]                       @relation("EstimateCreator")
+  paymentsRecorded                Payment[]                        @relation("PaymentRecorder")
+  membershipsSold                 CustomerMembership[]             @relation("MembershipSoldBy")
+  compensationEvents              CompensationEvent[]
+  compensationApprovals           CompensationEvent[]              @relation("CompensationApprover")
+  jobPhotosUploaded               JobPhoto[]                       @relation("JobPhotoUploader")
+  customerNotesAuthored           CustomerNote[]                   @relation("CustomerNoteAuthor")
+  waitingRecordsOwned             WaitingRecord[]                  @relation("WaitingRecordOwner")
+  waitingTransitions              WaitingTransition[]
+  performanceGoals                PerformanceGoal[]
+  aiConversations                 AIConversation[]
+  aiUsageEvents                   AIUsageEvent[]
+  aiActionDrafts                  AIActionDraft[]
+  aiActionsRequested              AIActionRequest[]                @relation("AIActionRequestedBy")
+  aiActionsApproved               AIActionRequest[]                @relation("AIActionApprovedBy")
+  companyTasksAssigned            CompanyTask[]                    @relation("CompanyTaskAssignee")
+  companyTasksCreated             CompanyTask[]                    @relation("CompanyTaskCreator")
+  technicianWindowAvailabilities  TechnicianWindowAvailability[]
+  availabilityOverrides           AvailabilityOverride[]
+  technicianServiceEligibilities  TechnicianServiceEligibility[]
+  schedulingBookings              SchedulingBooking[]
+  projectLaborEntriesWorked       ProjectLaborEntry[]              @relation("ProjectLaborEmployee")
+  projectLaborEntriesCreated      ProjectLaborEntry[]              @relation("ProjectLaborCreator")
+  projectLaborEntriesEdited       ProjectLaborEntry[]              @relation("ProjectLaborEditor")
+  projectLaborRevisions           ProjectLaborRevision[]           @relation("ProjectLaborRevisionActor")
+  technicianIntelligenceProfiles  TechnicianIntelligenceProfile[]  @relation("TechnicianIntelligenceSubject")
+  technicianEvaluationsCompleted  TechnicianIntelligenceProfile[]  @relation("TechnicianIntelligenceEvaluator")
+  technicianQualificationsCreated TechnicianQualification[]        @relation("TechnicianQualificationCreator")
+  technicianPreferencesChanged    TechnicianCallPreference[]       @relation("TechnicianPreferenceActor")
+  technicianIntelligenceOverrides TechnicianIntelligenceOverride[] @relation("TechnicianIntelligenceOverrideActor")
 
   @@index([email])
   @@index([isPlatformAdmin])
@@ -568,144 +573,156 @@ model Company {
   createdAt                       DateTime                  @default(now())
   updatedAt                       DateTime                  @updatedAt
 
-  memberships                    Membership[]
-  customers                      Customer[]
-  properties                     Property[]
-  jobs                           Job[]
-  projects                       Project[]
-  projectPhases                  ProjectPhase[]
-  projectLaborEntries            ProjectLaborEntry[]
-  projectLaborRevisions          ProjectLaborRevision[]
-  projectCosts                   ProjectCost[]
-  projectMaterials               ProjectMaterial[]
-  projectMaterialRequests        ProjectMaterialRequest[]
-  projectAssets                  ProjectAsset[]
-  projectIssues                  ProjectIssue[]
-  projectChangeOrders            ProjectChangeOrder[]
-  projectBillingMilestones       ProjectBillingMilestone[]
-  projectActivities              ProjectActivity[]
-  projectContacts                ProjectContact[]
-  estimates                      Estimate[]
-  invoices                       Invoice[]
-  expenses                       Expense[]
-  receipts                       Receipt[]
-  equipment                      Equipment[]
-  auditLogs                      AuditLog[]
-  numberSequences                NumberSequence[]
-  leads                          Lead[]
-  leadActivities                 LeadActivity[]
-  integrationConnections         IntegrationConnection[]
-  integrationCredentials         IntegrationCredential[]
-  integrationSyncs               IntegrationSync[]
-  integrationEvents              IntegrationEvent[]
-  attributionEvents              AttributionEvent[]
-  marketingSpendEntries          MarketingSpend[]
-  campaigns                      Campaign[]
-  reviews                        Review[]
-  reviewRequests                 ReviewRequest[]
-  callRecords                    CallRecord[]
-  automations                    Automation[]
-  promotions                     Promotion[]
-  domainEvents                   DomainEvent[]
-  automationExecutions           AutomationExecution[]
-  conversationGoalSessions       ConversationGoalSession[]
-  conversationAuditEvents        ConversationAuditEvent[]
-  customerRequests               CustomerRequest[]
-  insights                       Insight[]
-  metricSnapshots                MetricSnapshot[]
-  socialPosts                    SocialPost[]
-  formSubmissions                FormSubmission[]
-  oauthStates                    OAuthState[]
-  integrationAccounts            IntegrationAccount[]
-  websiteForms                   WebsiteForm[]
-  landingPages                   LandingPage[]
-  trackingNumbers                TrackingNumber[]
-  socialPublications             SocialPostPublication[]
-  playbooks                      Playbook[]
-  playbookVersions               PlaybookVersion[]
-  jobPlaybookSnapshots           JobPlaybookSnapshot[]
-  jobWorkflowEvents              JobWorkflowEvent[]
-  jobChecklistItems              JobChecklistItem[]
-  formTemplates                  FormTemplate[]
-  aiConversations                AIConversation[]
-  aiMessages                     AIMessage[]
-  aiUsageEvents                  AIUsageEvent[]
-  aiActionDrafts                 AIActionDraft[]
-  aiActionRequests               AIActionRequest[]
-  aiActionTargets                AIActionTarget[]
-  companyTasks                   CompanyTask[]
-  intelligenceSetting            CompanyIntelligenceSetting?
-  aiReceptionistSetting          CompanyAiReceptionistSetting?
-  receptionistTurns              ReceptionistTurn[]
-  receptionistKnowledgeItems     ReceptionistKnowledgeItem[]
-  receptionistConversationRules  ReceptionistConversationRule[]
-  receptionistOpportunityRules   ReceptionistOpportunityRule[]
-  receptionistApprovedExamples   ReceptionistApprovedExample[]
-  receptionistTrainingReviews    ReceptionistTrainingReview[]
-  receptionistOpportunityEvents  ReceptionistOpportunityEvent[]
-  importSessions                 ImportSession[]
-  importRows                     ImportRow[]
-  importExternalRefs             ImportExternalRef[]
-  importProfiles                 ImportMappingProfile[]
-  importResetOperations          ImportResetOperation[]
-  importReviewItems              ImportReviewItem[]
-  quickBooksSyncRuns             QuickBooksSyncRun[]
-  quickBooksImportReviews        QuickBooksImportReview[]
-  vendors                        Vendor[]
-  accountingAccounts             AccountingAccount[]
-  migrationProjects              MigrationProject[]
-  vehicles                       Vehicle[]
-  jobCosts                       JobCost[]
-  quickBooksSettings             QuickBooksSettings?
-  quickBooksMappings             QuickBooksMapping[]
-  quickBooksSyncEvents           QuickBooksSyncEvent[]
-  inventoryLocations             InventoryLocation[]
-  inventoryStocks                InventoryStock[]
-  inventoryMovements             InventoryMovement[]
-  jobParts                       JobPart[]
-  billingWatchdogSettings        BillingWatchdogSettings?
-  billingWatchdogFindings        BillingWatchdogFinding[]
-  pricebookCategories            PricebookCategory[]
-  pricebookItems                 PricebookItem[]
-  membershipPlans                MembershipPlan[]
-  customerMemberships            CustomerMembership[]
-  estimateOptions                EstimateOption[]
-  compensationRules              CompensationRule[]
-  compensationRuleVersions       CompensationRuleVersion[]
-  compensationEvents             CompensationEvent[]
-  performanceGoals               PerformanceGoal[]
-  jobPhotos                      JobPhoto[]
-  customerNotes                  CustomerNote[]
-  teamInvites                    TeamInvite[]
-  routeOptimizationRuns          RouteOptimizationRun[]
-  stripeConnectAccount           StripeConnectAccount?
-  stripeWebhookEvents            StripeWebhookEvent[]
-  serviceTypes                   ServiceType[]
-  providerIdentityMaps           ProviderIdentityMap[]
-  communicationThreads           CommunicationThread[]
-  communicationMessages          CommunicationMessage[]
-  techDiscountLimitBps           Int?
-  routeStartKind                 String?
-  routeEndKind                   String?
-  providerTestGrantsAsTenant     ProviderTestGrant[]            @relation("ProviderTestGrantTenant")
-  providerTestGrantsAsOwner      ProviderTestGrant[]            @relation("ProviderTestGrantOwner")
-  waitingColumns                 WaitingColumn[]
-  waitingRecords                 WaitingRecord[]
-  waitingTransitions             WaitingTransition[]
-  waitingTemplates               WaitingTemplate[]
-  waitingCommunications          WaitingCommunication[]
-  waitingBoardSetting            WaitingBoardSetting?
-  appointmentWindows             AppointmentWindow[]
-  technicianWindowAvailabilities TechnicianWindowAvailability[]
-  availabilityOverrides          AvailabilityOverride[]
-  schedulingPolicy               SchedulingPolicy?
-  serviceTypeSchedulingRules     ServiceTypeSchedulingRule[]
-  technicianServiceEligibilities TechnicianServiceEligibility[]
-  conversationSchedulingStates   ConversationSchedulingState[]
-  maintenanceVisits              MaintenanceVisit[]
-  schedulingBookings             SchedulingBooking[]
-  agentToolCredentials           AgentToolCredential[]
-  agentToolCalls                 AgentToolCall[]
+  memberships                        Membership[]
+  customers                          Customer[]
+  properties                         Property[]
+  jobs                               Job[]
+  projects                           Project[]
+  projectPhases                      ProjectPhase[]
+  projectLaborEntries                ProjectLaborEntry[]
+  projectLaborRevisions              ProjectLaborRevision[]
+  projectCosts                       ProjectCost[]
+  projectMaterials                   ProjectMaterial[]
+  projectMaterialRequests            ProjectMaterialRequest[]
+  projectAssets                      ProjectAsset[]
+  projectIssues                      ProjectIssue[]
+  projectChangeOrders                ProjectChangeOrder[]
+  projectBillingMilestones           ProjectBillingMilestone[]
+  projectActivities                  ProjectActivity[]
+  projectContacts                    ProjectContact[]
+  estimates                          Estimate[]
+  invoices                           Invoice[]
+  expenses                           Expense[]
+  receipts                           Receipt[]
+  equipment                          Equipment[]
+  auditLogs                          AuditLog[]
+  numberSequences                    NumberSequence[]
+  leads                              Lead[]
+  leadActivities                     LeadActivity[]
+  integrationConnections             IntegrationConnection[]
+  integrationCredentials             IntegrationCredential[]
+  integrationSyncs                   IntegrationSync[]
+  integrationEvents                  IntegrationEvent[]
+  attributionEvents                  AttributionEvent[]
+  marketingSpendEntries              MarketingSpend[]
+  campaigns                          Campaign[]
+  reviews                            Review[]
+  reviewRequests                     ReviewRequest[]
+  callRecords                        CallRecord[]
+  automations                        Automation[]
+  promotions                         Promotion[]
+  domainEvents                       DomainEvent[]
+  automationExecutions               AutomationExecution[]
+  conversationGoalSessions           ConversationGoalSession[]
+  conversationAuditEvents            ConversationAuditEvent[]
+  customerRequests                   CustomerRequest[]
+  insights                           Insight[]
+  metricSnapshots                    MetricSnapshot[]
+  socialPosts                        SocialPost[]
+  formSubmissions                    FormSubmission[]
+  oauthStates                        OAuthState[]
+  integrationAccounts                IntegrationAccount[]
+  websiteForms                       WebsiteForm[]
+  landingPages                       LandingPage[]
+  trackingNumbers                    TrackingNumber[]
+  socialPublications                 SocialPostPublication[]
+  playbooks                          Playbook[]
+  playbookVersions                   PlaybookVersion[]
+  jobPlaybookSnapshots               JobPlaybookSnapshot[]
+  jobWorkflowEvents                  JobWorkflowEvent[]
+  jobChecklistItems                  JobChecklistItem[]
+  formTemplates                      FormTemplate[]
+  aiConversations                    AIConversation[]
+  aiMessages                         AIMessage[]
+  aiUsageEvents                      AIUsageEvent[]
+  aiActionDrafts                     AIActionDraft[]
+  aiActionRequests                   AIActionRequest[]
+  aiActionTargets                    AIActionTarget[]
+  companyTasks                       CompanyTask[]
+  intelligenceSetting                CompanyIntelligenceSetting?
+  aiReceptionistSetting              CompanyAiReceptionistSetting?
+  receptionistTurns                  ReceptionistTurn[]
+  receptionistKnowledgeItems         ReceptionistKnowledgeItem[]
+  receptionistConversationRules      ReceptionistConversationRule[]
+  receptionistOpportunityRules       ReceptionistOpportunityRule[]
+  receptionistApprovedExamples       ReceptionistApprovedExample[]
+  receptionistTrainingReviews        ReceptionistTrainingReview[]
+  receptionistOpportunityEvents      ReceptionistOpportunityEvent[]
+  importSessions                     ImportSession[]
+  importRows                         ImportRow[]
+  importExternalRefs                 ImportExternalRef[]
+  importProfiles                     ImportMappingProfile[]
+  importResetOperations              ImportResetOperation[]
+  importReviewItems                  ImportReviewItem[]
+  quickBooksSyncRuns                 QuickBooksSyncRun[]
+  quickBooksImportReviews            QuickBooksImportReview[]
+  vendors                            Vendor[]
+  accountingAccounts                 AccountingAccount[]
+  migrationProjects                  MigrationProject[]
+  vehicles                           Vehicle[]
+  jobCosts                           JobCost[]
+  quickBooksSettings                 QuickBooksSettings?
+  quickBooksMappings                 QuickBooksMapping[]
+  quickBooksSyncEvents               QuickBooksSyncEvent[]
+  inventoryLocations                 InventoryLocation[]
+  inventoryStocks                    InventoryStock[]
+  inventoryMovements                 InventoryMovement[]
+  jobParts                           JobPart[]
+  billingWatchdogSettings            BillingWatchdogSettings?
+  billingWatchdogFindings            BillingWatchdogFinding[]
+  pricebookCategories                PricebookCategory[]
+  pricebookItems                     PricebookItem[]
+  membershipPlans                    MembershipPlan[]
+  customerMemberships                CustomerMembership[]
+  estimateOptions                    EstimateOption[]
+  compensationRules                  CompensationRule[]
+  compensationRuleVersions           CompensationRuleVersion[]
+  compensationEvents                 CompensationEvent[]
+  performanceGoals                   PerformanceGoal[]
+  jobPhotos                          JobPhoto[]
+  customerNotes                      CustomerNote[]
+  teamInvites                        TeamInvite[]
+  routeOptimizationRuns              RouteOptimizationRun[]
+  stripeConnectAccount               StripeConnectAccount?
+  stripeWebhookEvents                StripeWebhookEvent[]
+  serviceTypes                       ServiceType[]
+  providerIdentityMaps               ProviderIdentityMap[]
+  communicationThreads               CommunicationThread[]
+  communicationMessages              CommunicationMessage[]
+  techDiscountLimitBps               Int?
+  routeStartKind                     String?
+  routeEndKind                       String?
+  providerTestGrantsAsTenant         ProviderTestGrant[]                 @relation("ProviderTestGrantTenant")
+  providerTestGrantsAsOwner          ProviderTestGrant[]                 @relation("ProviderTestGrantOwner")
+  waitingColumns                     WaitingColumn[]
+  waitingRecords                     WaitingRecord[]
+  waitingTransitions                 WaitingTransition[]
+  waitingTemplates                   WaitingTemplate[]
+  waitingCommunications              WaitingCommunication[]
+  waitingBoardSetting                WaitingBoardSetting?
+  appointmentWindows                 AppointmentWindow[]
+  technicianWindowAvailabilities     TechnicianWindowAvailability[]
+  availabilityOverrides              AvailabilityOverride[]
+  schedulingPolicy                   SchedulingPolicy?
+  serviceTypeSchedulingRules         ServiceTypeSchedulingRule[]
+  technicianServiceEligibilities     TechnicianServiceEligibility[]
+  conversationSchedulingStates       ConversationSchedulingState[]
+  maintenanceVisits                  MaintenanceVisit[]
+  schedulingBookings                 SchedulingBooking[]
+  agentToolCredentials               AgentToolCredential[]
+  agentToolCalls                     AgentToolCall[]
+  technicianIntelligenceProfiles     TechnicianIntelligenceProfile[]
+  technicianSkillDefinitions         TechnicianSkillDefinition[]
+  technicianSkillRatings             TechnicianSkillRating[]
+  technicianQualificationDefinitions TechnicianQualificationDefinition[]
+  technicianQualifications           TechnicianQualification[]
+  technicianJobCategories            TechnicianJobCategory[]
+  technicianJobCategoryMappings      TechnicianJobCategoryMapping[]
+  technicianJobTypeRequirements      TechnicianJobTypeRequirement[]
+  technicianCallPreferences          TechnicianCallPreference[]
+  technicianPerformanceAggregates    TechnicianPerformanceAggregate[]
+  technicianIntelligenceOverrides    TechnicianIntelligenceOverride[]
+  technicianJobRelationships         TechnicianJobRelationship[]
 
   @@index([status])
   @@index([industry])
@@ -1054,43 +1071,45 @@ model Job {
   createdAt                DateTime    @default(now())
   updatedAt                DateTime    @updatedAt
 
-  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  serviceType                  ServiceType?                  @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
-  playbook                     Playbook?                     @relation(fields: [playbookId], references: [id], onDelete: SetNull)
-  playbookVersion              PlaybookVersion?              @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
-  playbookSnapshot             JobPlaybookSnapshot?
-  workflowEvents               JobWorkflowEvent[]
-  checklistItems               JobChecklistItem[]
-  customer                     Customer                      @relation(fields: [customerId], references: [id])
-  property                     Property                      @relation(fields: [propertyId], references: [id])
-  estimate                     Estimate?                     @relation("JobEstimate", fields: [estimateId], references: [id])
-  estimates                    Estimate[]                    @relation("EstimateOptionalJob")
-  invoices                     Invoice[]
-  expenses                     Expense[]
-  jobCosts                     JobCost[]
-  jobParts                     JobPart[]
-  inventoryMovements           InventoryMovement[]
-  receipts                     Receipt[]
-  assignments                  JobAssignment[]
-  leads                        Lead[]
-  reviews                      Review[]
-  reviewRequests               ReviewRequest[]
-  callRecords                  CallRecord[]
-  attributionEvents            AttributionEvent[]
-  importSession                ImportSession?                @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
-  customerMemberships          CustomerMembership[]
-  compensationEvents           CompensationEvent[]
-  photos                       JobPhoto[]
-  waitingRecords               WaitingRecord[]
-  appointmentWindow            AppointmentWindow?            @relation(fields: [appointmentWindowId], references: [id], onDelete: SetNull)
-  schedulingBooking            SchedulingBooking?
-  maintenanceVisits            MaintenanceVisit[]
-  conversationSchedulingStates ConversationSchedulingState[]
-  billingWatchdogFindings      BillingWatchdogFinding[]
-  customerRequests             CustomerRequest[]
-  project                      Project?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectPhase                 ProjectPhase?                 @relation(fields: [projectPhaseId], references: [id], onDelete: SetNull)
-  projectLaborEntries          ProjectLaborEntry[]
+  company                            Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceType                        ServiceType?                  @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  playbook                           Playbook?                     @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  playbookVersion                    PlaybookVersion?              @relation(fields: [playbookVersionId], references: [id], onDelete: SetNull)
+  playbookSnapshot                   JobPlaybookSnapshot?
+  workflowEvents                     JobWorkflowEvent[]
+  checklistItems                     JobChecklistItem[]
+  customer                           Customer                      @relation(fields: [customerId], references: [id])
+  property                           Property                      @relation(fields: [propertyId], references: [id])
+  estimate                           Estimate?                     @relation("JobEstimate", fields: [estimateId], references: [id])
+  estimates                          Estimate[]                    @relation("EstimateOptionalJob")
+  invoices                           Invoice[]
+  expenses                           Expense[]
+  jobCosts                           JobCost[]
+  jobParts                           JobPart[]
+  inventoryMovements                 InventoryMovement[]
+  receipts                           Receipt[]
+  assignments                        JobAssignment[]
+  leads                              Lead[]
+  reviews                            Review[]
+  reviewRequests                     ReviewRequest[]
+  callRecords                        CallRecord[]
+  attributionEvents                  AttributionEvent[]
+  importSession                      ImportSession?                @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  customerMemberships                CustomerMembership[]
+  compensationEvents                 CompensationEvent[]
+  photos                             JobPhoto[]
+  waitingRecords                     WaitingRecord[]
+  appointmentWindow                  AppointmentWindow?            @relation(fields: [appointmentWindowId], references: [id], onDelete: SetNull)
+  schedulingBooking                  SchedulingBooking?
+  maintenanceVisits                  MaintenanceVisit[]
+  conversationSchedulingStates       ConversationSchedulingState[]
+  billingWatchdogFindings            BillingWatchdogFinding[]
+  customerRequests                   CustomerRequest[]
+  project                            Project?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectPhase                       ProjectPhase?                 @relation(fields: [projectPhaseId], references: [id], onDelete: SetNull)
+  projectLaborEntries                ProjectLaborEntry[]
+  technicianJobRelationshipsOriginal TechnicianJobRelationship[]   @relation("TechnicianOriginalJob")
+  technicianJobRelationshipsRelated  TechnicianJobRelationship[]   @relation("TechnicianRelatedJob")
 
   @@unique([companyId, jobNumber])
   @@unique([companyId, schedulingIdempotencyKey])
@@ -4661,4 +4680,259 @@ model BillingWatchdogFinding {
   @@index([companyId, lastDetectedAt])
   @@index([companyId, jobId])
   @@index([companyId, invoiceId])
+}
+
+// ============================================================
+// TECHNICIAN INTELLIGENCE
+// Owner evaluation and deterministic ContractorYou performance remain separate.
+// ============================================================
+
+model TechnicianIntelligenceProfile {
+  id                      String    @id @default(cuid())
+  companyId               String
+  technicianId            String
+  status                  String    @default("NEEDS_SETUP")
+  evaluationCompletedAt   DateTime?
+  evaluationCompletedById String?
+  evaluationUpdatedAt     DateTime?
+  notes                   String?   @db.Text
+  smartDispatchEligible   Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  company               Company                          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  technician            User                             @relation("TechnicianIntelligenceSubject", fields: [technicianId], references: [id], onDelete: Cascade)
+  evaluationCompletedBy User?                            @relation("TechnicianIntelligenceEvaluator", fields: [evaluationCompletedById], references: [id], onDelete: SetNull)
+  skillRatings          TechnicianSkillRating[]
+  qualifications        TechnicianQualification[]
+  preferences           TechnicianCallPreference[]
+  performance           TechnicianPerformanceAggregate[]
+  overrides             TechnicianIntelligenceOverride[]
+
+  @@unique([companyId, technicianId])
+  @@index([companyId, status, smartDispatchEligible])
+}
+
+model TechnicianJobCategory {
+  id          String   @id @default(cuid())
+  companyId   String
+  key         String
+  name        String
+  description String?
+  aliases     String[] @default([])
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company                          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  skills       TechnicianSkillDefinition[]
+  mappings     TechnicianJobCategoryMapping[]
+  requirements TechnicianJobTypeRequirement[]
+  preferences  TechnicianCallPreference[]
+  performance  TechnicianPerformanceAggregate[]
+
+  @@unique([companyId, key])
+  @@index([companyId, active, sortOrder])
+}
+
+model TechnicianJobCategoryMapping {
+  id            String   @id @default(cuid())
+  companyId     String
+  categoryId    String
+  serviceTypeId String?
+  sourceLabel   String?
+  createdAt     DateTime @default(now())
+
+  company  Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category TechnicianJobCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, serviceTypeId])
+  @@unique([companyId, sourceLabel])
+  @@index([companyId, categoryId])
+}
+
+model TechnicianSkillDefinition {
+  id         String   @id @default(cuid())
+  companyId  String
+  categoryId String?
+  key        String
+  name       String
+  group      String   @default("SERVICE")
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category TechnicianJobCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  ratings  TechnicianSkillRating[]
+
+  @@unique([companyId, key])
+  @@index([companyId, active, group, sortOrder])
+}
+
+model TechnicianSkillRating {
+  id          String   @id @default(cuid())
+  companyId   String
+  profileId   String
+  skillId     String
+  rating      Int
+  managerNote String?  @db.Text
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skill   TechnicianSkillDefinition     @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, skillId])
+  @@index([companyId, skillId, rating])
+}
+
+model TechnicianQualificationDefinition {
+  id        String   @id @default(cuid())
+  companyId String
+  key       String
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company        Company                        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  qualifications TechnicianQualification[]
+  requirements   TechnicianJobTypeRequirement[]
+
+  @@unique([companyId, key])
+  @@index([companyId, active, sortOrder])
+}
+
+model TechnicianQualification {
+  id                  String    @id @default(cuid())
+  companyId           String
+  profileId           String
+  definitionId        String
+  status              String    @default("ACTIVE")
+  issuedDate          DateTime? @db.Date
+  expirationDate      DateTime? @db.Date
+  certificationNumber String?
+  documentId          String?
+  notes               String?   @db.Text
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  company    Company                           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile    TechnicianIntelligenceProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  definition TechnicianQualificationDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  createdBy  User                              @relation("TechnicianQualificationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, definitionId])
+  @@index([companyId, definitionId, status, expirationDate])
+}
+
+model TechnicianJobTypeRequirement {
+  id                        String   @id @default(cuid())
+  companyId                 String
+  categoryId                String
+  qualificationDefinitionId String
+  createdById               String
+  createdAt                 DateTime @default(now())
+
+  company       Company                           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category      TechnicianJobCategory             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  qualification TechnicianQualificationDefinition @relation(fields: [qualificationDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, qualificationDefinitionId])
+  @@index([companyId, categoryId])
+}
+
+model TechnicianCallPreference {
+  id          String   @id @default(cuid())
+  companyId   String
+  profileId   String
+  categoryId  String
+  preference  String
+  reason      String?  @db.Text
+  changedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile   TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category  TechnicianJobCategory         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  changedBy User                          @relation("TechnicianPreferenceActor", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@unique([profileId, categoryId])
+  @@index([companyId, categoryId, preference])
+}
+
+model TechnicianPerformanceAggregate {
+  id                       String    @id @default(cuid())
+  companyId                String
+  profileId                String
+  categoryId               String
+  window                   String
+  windowStart              DateTime?
+  windowEnd                DateTime?
+  completedJobs            Int       @default(0)
+  recognizedRevenueCents   Int       @default(0)
+  invoiceCount             Int       @default(0)
+  callbackCount            Int       @default(0)
+  firstTimeCompletionCount Int       @default(0)
+  validDurationCount       Int       @default(0)
+  totalDurationMinutes     Int       @default(0)
+  estimatePresentedCount   Int       @default(0)
+  estimateApprovedCount    Int       @default(0)
+  confidence               String    @default("INSUFFICIENT")
+  calculatedAt             DateTime  @default(now())
+  sourceThrough            DateTime?
+
+  company  Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile  TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  category TechnicianJobCategory         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, categoryId, window])
+  @@index([companyId, categoryId, window, completedJobs])
+}
+
+model TechnicianIntelligenceOverride {
+  id          String   @id @default(cuid())
+  companyId   String
+  profileId   String
+  categoryId  String?
+  kind        String
+  active      Boolean  @default(true)
+  reason      String   @db.Text
+  changedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profile   TechnicianIntelligenceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  changedBy User                          @relation("TechnicianIntelligenceOverrideActor", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, profileId, active])
+  @@index([companyId, categoryId, active])
+}
+
+model TechnicianJobRelationship {
+  id            String   @id @default(cuid())
+  companyId     String
+  originalJobId String
+  relatedJobId  String
+  type          String
+  reason        String?
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  originalJob Job     @relation("TechnicianOriginalJob", fields: [originalJobId], references: [id], onDelete: Cascade)
+  relatedJob  Job     @relation("TechnicianRelatedJob", fields: [relatedJobId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, originalJobId, relatedJobId, type])
+  @@index([companyId, originalJobId, type])
+  @@index([companyId, relatedJobId, type])
 }
