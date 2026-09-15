@@ -18,7 +18,7 @@ import {
 export default async function TeamIntelligencePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; ready?: string; confidence?: string }>;
+  searchParams: Promise<{ q?: string; ready?: string; confidence?: string; category?: string }>;
 }) {
   const ctx = await requirePermission("technician_intelligence:view");
   const query = await searchParams;
@@ -78,7 +78,10 @@ export default async function TeamIntelligencePage({
   const rows = memberships
     .map((membership) => {
       const profile = membership.user.technicianIntelligenceProfiles[0];
-      const completed = profile?.performance.reduce((sum, metric) => sum + metric.completedJobs, 0) ?? 0;
+      const selectedPerformance = profile?.performance.filter(
+        (metric) => !query.category || metric.categoryId === query.category
+      ) ?? [];
+      const completed = selectedPerformance.reduce((sum, metric) => sum + metric.completedJobs, 0);
       const ready = readiness({
         ratingCount: profile?.skillRatings.length ?? 0,
         qualificationCount: profile?.qualifications.length ?? 0,
@@ -91,7 +94,10 @@ export default async function TeamIntelligencePage({
         completed,
         confidence: confidenceForSampleSize(completed),
         ready,
-        best: profile?.skillRatings.filter((rating) => rating.rating >= 4).slice(0, 3) ?? [],
+        best:
+          profile?.skillRatings
+            .filter((rating) => rating.rating >= 4 && (!query.category || rating.skill.categoryId === query.category))
+            .slice(0, 3) ?? [],
       };
     })
     .filter((row) => !query.ready || (query.ready === "yes" ? row.ready.ready : !row.ready.ready))
@@ -134,6 +140,10 @@ export default async function TeamIntelligencePage({
           <option value="LOW">Low</option>
           <option value="MEDIUM">Medium</option>
           <option value="HIGH">High</option>
+        </select>
+        <select name="category" defaultValue={query.category || ""} className={selectClass}>
+          <option value="">All call types</option>
+          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
         <button className="rounded-lg bg-[var(--cy-navy)] px-4 text-sm font-medium text-white">Filter</button>
       </form>

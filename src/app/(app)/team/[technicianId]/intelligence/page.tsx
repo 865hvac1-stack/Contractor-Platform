@@ -45,6 +45,7 @@ export default async function TechnicianIntelligenceProfilePage({
   if (!canViewTeam && technicianId !== ctx.user.id) notFound();
   const canManage = can(ctx.role, "technician_intelligence:manage");
   const showConfidential = can(ctx.role, "technician_intelligence:confidential");
+  const showOwnerEvaluation = canViewTeam;
 
   const [membership, skills, categories, qualificationDefinitions] = await Promise.all([
     prisma.membership.findFirst({
@@ -140,7 +141,7 @@ export default async function TechnicianIntelligenceProfilePage({
         <SummaryCard
           icon={Sparkles}
           label="Best at"
-          value={best?.map((rating) => rating.skill.name).join(" · ") || "No owner evaluation yet"}
+          value={showOwnerEvaluation ? best?.map((rating) => rating.skill.name).join(" · ") || "No owner evaluation yet" : "Manager-only evaluation"}
         />
         <SummaryCard
           icon={Award}
@@ -205,7 +206,7 @@ export default async function TechnicianIntelligenceProfilePage({
         </Section>
       ) : null}
 
-      <Section
+      {showOwnerEvaluation ? <Section
         eyebrow="Owner evaluation"
         title="Field strengths"
         description="A manager's operational assessment—not a measured statistic. 1 means supervised; 5 means expert/preferred."
@@ -258,7 +259,7 @@ export default async function TechnicianIntelligenceProfilePage({
             )}
           </div>
         )}
-      </Section>
+      </Section> : null}
 
       <Section
         eyebrow="Hard constraints"
@@ -394,7 +395,7 @@ export default async function TechnicianIntelligenceProfilePage({
         )}
       </Section>
 
-      <Section
+      {showConfidential ? <Section
         eyebrow="Coaching"
         title="Opportunities"
         description="Private, operational context—never a public leaderboard."
@@ -410,7 +411,7 @@ export default async function TechnicianIntelligenceProfilePage({
         ) : (
           <EmptyCopy>Add 1–2 ratings or development calls to create a coaching focus.</EmptyCopy>
         )}
-      </Section>
+      </Section> : null}
     </div>
   );
 }
