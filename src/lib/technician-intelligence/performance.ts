@@ -211,6 +211,66 @@ export async function refreshTechnicianPerformance(input: {
   return profile;
 }
 
+export async function refreshTechnicianPerformanceForJob(input: {
+  companyId: string;
+  jobId: string;
+}) {
+  const job = await prisma.job.findFirst({
+    where: { id: input.jobId, companyId: input.companyId, status: "COMPLETED" },
+    include: {
+      serviceType: { select: { key: true, name: true } },
+      assignments: { select: { userId: true } },
+    },
+  });
+  if (!job) return;
+  const category = await resolveJobCategory({
+    companyId: input.companyId,
+    serviceTypeId: job.serviceTypeId,
+    serviceTypeKey: job.serviceType?.key,
+    serviceTypeName: job.serviceType?.name,
+    jobType: job.jobType,
+  });
+  if (!category) return;
+
+  for (const assignment of job.assignments) {
+    const profile = await prisma.technicianIntelligenceProfile.upsert({
+      where: {
+        companyId_technicianId: {
+          companyId: input.companyId,
+          technicianId: assignment.userId,
+        },
+      },
+      update: {},
+      create: { companyId: input.companyId, technicianId: assignment.userId },
+    });
+    for (const window of ["LAST_30_DAYS", "LAST_90_DAYS", "THIS_YEAR", "ALL_TIME"] as const) {
+      const metric = await calculateTechnicianCategoryPerformance({
+        companyId: input.companyId,
+        technicianId: assignment.userId,
+        categoryId: category.id,
+        window,
+      });
+      await prisma.technicianPerformanceAggregate.upsert({
+        where: {
+          profileId_categoryId_window: {
+            profileId: profile.id,
+            categoryId: category.id,
+            window,
+          },
+        },
+        update: aggregateData(metric),
+        create: {
+          companyId: input.companyId,
+          profileId: profile.id,
+          categoryId: category.id,
+          window,
+          ...aggregateData(metric),
+        },
+      });
+    }
+  }
+}
+
 function aggregateData(metric: {
   completedJobs: number;
   recognizedRevenueCents: number;

@@ -273,6 +273,11 @@ export async function updateJobStatusAction(
           });
           revalidatePath(`/projects/${updated.projectId}`);
         }
+        const { refreshTechnicianPerformanceForJob } = await import("@/lib/technician-intelligence/performance");
+        await refreshTechnicianPerformanceForJob({
+          companyId: ctx.company.id,
+          jobId: updated.id,
+        }).catch((error) => console.error("[technician-intelligence] refresh failed", error));
       }
     }
 

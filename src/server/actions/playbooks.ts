@@ -489,6 +489,11 @@ export async function completeJobWithPlaybookAction(jobId: string): Promise<Acti
       });
       revalidatePath(`/projects/${job.projectId}`);
     }
+    const { refreshTechnicianPerformanceForJob } = await import("@/lib/technician-intelligence/performance");
+    await refreshTechnicianPerformanceForJob({
+      companyId: ctx.company.id,
+      jobId: job.id,
+    }).catch((error) => console.error("[technician-intelligence] refresh failed", error));
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath(`/tech/jobs/${job.id}`);
     revalidatePath("/tech");

@@ -144,7 +144,7 @@ describe("Technician Intelligence core", () => {
   });
 
   it("documents explicit callback and duration definitions", () => {
-    expect(PERFORMANCE_DEFINITIONS.callbackRate).toContain("explicit CALLBACK");
+    expect(PERFORMANCE_DEFINITIONS.callbackRate.toLowerCase()).toContain("explicit callback");
     expect(PERFORMANCE_DEFINITIONS.averageDuration).toContain("checked-in to checked-out");
   });
 

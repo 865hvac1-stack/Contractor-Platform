@@ -420,6 +420,11 @@ export async function overrideCompleteJobAction(jobId: string, reason: string): 
       });
       revalidatePath(`/projects/${job.projectId}`);
     }
+    const { refreshTechnicianPerformanceForJob } = await import("@/lib/technician-intelligence/performance");
+    await refreshTechnicianPerformanceForJob({
+      companyId: ctx.company.id,
+      jobId: job.id,
+    }).catch((error) => console.error("[technician-intelligence] refresh failed", error));
     revalidateJob(job.id);
     return { ok: true };
   } catch (e) {
