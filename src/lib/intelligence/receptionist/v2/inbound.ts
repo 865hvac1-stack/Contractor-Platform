@@ -62,10 +62,12 @@ export async function processReceptionistV2(
   const settings = await loadReceptionistSettings(input.companyId);
   const mode = parseReceptionistV2Mode(settings.mode);
   const owner = await loadCustomerConversationOwner(prisma, input.companyId);
-  const threadControl = await prisma.communicationThread.findFirst({
-    where: { id: input.threadId, companyId: input.companyId },
-    select: { handlingState: true },
-  });
+  const threadControl = prisma.communicationThread?.findFirst
+    ? await prisma.communicationThread.findFirst({
+        where: { id: input.threadId, companyId: input.companyId },
+        select: { handlingState: true },
+      })
+    : null;
   if (
     threadControl &&
     ["HUMAN_ACTIVE", "NEEDS_HUMAN", "WAITING_FOR_HUMAN", "PAUSED"].includes(threadControl.handlingState)
@@ -108,24 +110,26 @@ export async function processReceptionistV2(
       orderBy: { createdAt: "desc" },
       select: { intent: true, proposedResponse: true, extractedFields: true, verifiedFacts: true },
     }),
-    prisma.conversationGoalSession.findFirst({
-      where: {
-        companyId: input.companyId,
-        threadId: input.threadId,
-        state: {
-          in: [
-            "STARTED",
-            "WAITING_FOR_CUSTOMER",
-            "COLLECTING_INFORMATION",
-            "CHECKING_AVAILABILITY",
-            "WAITING_FOR_SLOT_SELECTION",
-            "BOOKING",
-          ],
-        },
-      },
-      orderBy: { updatedAt: "desc" },
-      include: { execution: { include: { promotion: true } } },
-    }),
+    prisma.conversationGoalSession?.findFirst
+      ? prisma.conversationGoalSession.findFirst({
+          where: {
+            companyId: input.companyId,
+            threadId: input.threadId,
+            state: {
+              in: [
+                "STARTED",
+                "WAITING_FOR_CUSTOMER",
+                "COLLECTING_INFORMATION",
+                "CHECKING_AVAILABILITY",
+                "WAITING_FOR_SLOT_SELECTION",
+                "BOOKING",
+              ],
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          include: { execution: { include: { promotion: true } } },
+        })
+      : Promise.resolve(null),
   ]);
 
   const boundedHistory = boundConversationHistory(history, { newestFirst: true });

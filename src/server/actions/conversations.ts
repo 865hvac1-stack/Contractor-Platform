@@ -171,7 +171,7 @@ export async function savePromotionAction(
       startsAt: new Date(parsed.data.startsAt),
       endsAt: new Date(parsed.data.endsAt),
       audience: parsed.data.audience,
-      eligibleServices: parsed.data.eligibleServices
+      eligibleServices: (parsed.data.eligibleServices || "")
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean),
