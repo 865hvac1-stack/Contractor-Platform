@@ -463,6 +463,16 @@ export async function completeJobWithPlaybookAction(jobId: string): Promise<Acti
       entityId: job.id,
       metadata: { from: job.status, to: "COMPLETED" },
     });
+    const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+    await emitDomainEvent({
+      companyId: ctx.company.id,
+      type: "JOB_COMPLETED",
+      sourceType: "Job",
+      sourceId: job.id,
+      customerId: job.customerId,
+      jobId: job.id,
+      idempotencyKey: `job-completed:${job.id}`,
+    }).catch(() => null);
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath(`/tech/jobs/${job.id}`);
     revalidatePath("/tech");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deterministicInterpretation,
+  CONNECTED_TRIGGERS,
   INDUSTRY_STARTER_PACKS,
   minimumActions,
   REGINA_NEVER,
@@ -23,7 +24,7 @@ describe("custom Regina automation interpretation", () => {
 
   it("uses least privilege for estimate follow-up", () => {
     const actions = minimumActions("FOLLOW_UP_ESTIMATE");
-    expect(actions).toEqual(["READ_ESTIMATE", "SEND_ESTIMATE_LINK", "CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"]);
+    expect(actions).toEqual(["READ_ESTIMATE", "REQUEST_HUMAN_HANDOFF"]);
     expect(actions).not.toContain("BOOK_APPOINTMENT");
     expect(actions).not.toContain("SEND_PAYMENT_LINK");
   });
@@ -38,5 +39,10 @@ describe("custom Regina automation interpretation", () => {
     expect(INDUSTRY_STARTER_PACKS.HVAC).toContain("MAINTENANCE_DUE");
     expect(INDUSTRY_STARTER_PACKS.ROOFING).toContain("UNSOLD_ESTIMATE_FOLLOW_UP");
     expect(INDUSTRY_STARTER_PACKS.POOL_SERVICE).toContain("PAST_CUSTOMER_REACTIVATION");
+  });
+
+  it("only marks triggers with real producers as activation-ready", () => {
+    expect(CONNECTED_TRIGGERS.has("JOB_COMPLETED")).toBe(true);
+    expect(CONNECTED_TRIGGERS.has("ESTIMATE_SENT")).toBe(false);
   });
 });

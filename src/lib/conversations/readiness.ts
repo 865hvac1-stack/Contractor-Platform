@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { resolveCommunicationProvider } from "@/lib/comms/provider";
 import { loadCustomerConversationOwner } from "@/lib/comms/conversation-owner";
+import { CONNECTED_TRIGGERS } from "@/lib/conversations/custom-automations";
 
 type AutomationReadinessInput = {
   companyId: string;
@@ -21,6 +22,7 @@ export async function automationReadiness(automation: AutomationReadinessInput) 
   ]);
   const checks = [
     check("Trigger configured", Boolean(automation.trigger)),
+    check("Trigger connected to a live ContractorYou event", CONNECTED_TRIGGERS.has(automation.trigger), "This trigger can be saved and tested, but its live event connection is not available yet."),
     check("Audience configured", true),
     check("Business goal configured", automation.mode !== "START_CONVERSATION" || Boolean(automation.goal)),
     check("First message configured", Boolean(automation.firstMessage?.trim())),

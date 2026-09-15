@@ -190,6 +190,12 @@ export async function processReceptionistV2(
     nextAction: conversationState.nextAction,
     defaultAction,
   });
+  const firstPermission = enforceGoalActionPermission(requestedAction, activeGoal?.allowedActions);
+  if (!firstPermission.allowed) {
+    requestedAction = firstPermission.fallback;
+    classified.data.shouldHandoff = firstPermission.fallback === "requestHumanHandoff";
+    classified.data.handoffReason = "automation_action_not_permitted";
+  }
   const tool = await runTool({
     companyId: input.companyId,
     action: requestedAction === "startScheduling" ? "findCustomer" : requestedAction,
@@ -201,7 +207,8 @@ export async function processReceptionistV2(
   });
   if (
     qualifiesMaintenanceAsk({ text, intent: classified.data.intent }) &&
-    requestedAction !== "getMembershipStatus"
+    requestedAction !== "getMembershipStatus" &&
+    (!activeGoal || activeGoal.allowedActions.includes("READ_MEMBERSHIP"))
   ) {
     const membership = await runTool({
       companyId: input.companyId,
@@ -250,6 +257,12 @@ export async function processReceptionistV2(
     nextAction: conversationState.nextAction,
     defaultAction,
   });
+  const finalPermission = enforceGoalActionPermission(requestedAction, activeGoal?.allowedActions);
+  if (!finalPermission.allowed) {
+    requestedAction = finalPermission.fallback;
+    classified.data.shouldHandoff = finalPermission.fallback === "requestHumanHandoff";
+    classified.data.handoffReason = "automation_action_not_permitted";
+  }
   classified.data.extractedContext = {
     ...classified.data.extractedContext,
     concern: conversationState.currentServiceConcern ?? classified.data.extractedContext.concern,
@@ -317,11 +330,11 @@ export async function processReceptionistV2(
       !conversationState.mentionsExistingAppointment,
     acceptedSchedulingOffer: conversationState.acceptedSchedulingOffer,
     conversationText: conversationCorpus(boundedHistory, text),
-    canScheduleService: settings.allowScheduling,
-    canReadAvailability: settings.allowScheduling,
-    canBookAppointment: settings.allowScheduling,
-    canReschedule: settings.allowRescheduling,
-    canCancel: settings.allowCancellations,
+    canScheduleService: settings.allowScheduling && goalAllows(activeGoal?.allowedActions, ["CHECK_AVAILABILITY", "BOOK_APPOINTMENT", "RESCHEDULE_APPOINTMENT"]),
+    canReadAvailability: settings.allowScheduling && goalAllows(activeGoal?.allowedActions, ["CHECK_AVAILABILITY"]),
+    canBookAppointment: settings.allowScheduling && goalAllows(activeGoal?.allowedActions, ["BOOK_APPOINTMENT"]),
+    canReschedule: settings.allowRescheduling && goalAllows(activeGoal?.allowedActions, ["RESCHEDULE_APPOINTMENT"]),
+    canCancel: settings.allowCancellations && goalAllows(activeGoal?.allowedActions, ["CANCEL_APPOINTMENT"]),
     conversationGoal: activeGoal?.goal ?? null,
     conversationGoalState: activeGoal?.state ?? null,
     allowedConversationActions: activeGoal?.allowedActions ?? [],
@@ -614,6 +627,37 @@ export async function maybeRunReceptionistV2(input: ReceptionistV2InboundInput) 
   const mode = parseReceptionistV2Mode(settings.mode);
   if (!receptionistV2ShouldObserve(mode)) return { skipped: true, reason: "v2_mode_off" };
   return processReceptionistV2(input);
+}
+
+export function enforceGoalActionPermission(
+  action: ReceptionistV2Action,
+  allowedActions?: string[]
+): { allowed: boolean; fallback: ReceptionistV2Action } {
+  if (!allowedActions) return { allowed: true, fallback: action };
+  const required: Partial<Record<ReceptionistV2Action, string[]>> = {
+    getCustomerJobs: ["READ_JOB"],
+    getAppointmentStatus: ["READ_JOB"],
+    getEstimateStatus: ["READ_ESTIMATE"],
+    getInvoiceBalance: ["READ_INVOICE"],
+    getMembershipStatus: ["READ_MEMBERSHIP"],
+    checkAvailability: ["CHECK_AVAILABILITY"],
+    startScheduling: ["CHECK_AVAILABILITY", "BOOK_APPOINTMENT", "RESCHEDULE_APPOINTMENT"],
+    selectOfferedSlot: ["BOOK_APPOINTMENT", "RESCHEDULE_APPOINTMENT"],
+    bookAppointment: ["BOOK_APPOINTMENT", "RESCHEDULE_APPOINTMENT"],
+    requestHumanHandoff: ["REQUEST_HUMAN_HANDOFF"],
+  };
+  const anyOf = required[action];
+  if (!anyOf || anyOf.some((permission) => allowedActions.includes(permission))) {
+    return { allowed: true, fallback: action };
+  }
+  return {
+    allowed: false,
+    fallback: allowedActions.includes("REQUEST_HUMAN_HANDOFF") ? "requestHumanHandoff" : "continue_workflow",
+  };
+}
+
+function goalAllows(allowedActions: string[] | undefined, anyOf: string[]) {
+  return !allowedActions || anyOf.some((permission) => allowedActions.includes(permission));
 }
 
 export async function attachOutboundToLatestShadowTurn(input: {

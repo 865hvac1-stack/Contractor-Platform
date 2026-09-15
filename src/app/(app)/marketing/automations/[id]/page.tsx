@@ -35,7 +35,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   if (!automation) notFound();
   const canManage = can(ctx.role, "marketing:manage");
   const readiness = await automationReadiness(automation);
-  const relevantActions = GOAL_ACTIONS[automation.goal || ""] || ["CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"];
+  const relevantActions = GOAL_ACTIONS[automation.goal || ""] || ["REQUEST_HUMAN_HANDOFF"];
   const selectedConditions = conditionList(automation.conditions);
   const preview = renderFirstMessage(automation.firstMessage || "", {
     customerFirstName: "Sarah",

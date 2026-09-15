@@ -45,9 +45,8 @@ function inferDryRunAction(text: string, actions: string[]) {
     if (actions.includes("RESCHEDULE_APPOINTMENT")) return "Validate a reschedule request";
   }
   if (/(book|that works|take it)/i.test(text) && actions.includes("BOOK_APPOINTMENT")) return "Book the selected appointment after validation";
-  if (/(estimate|proposal)/i.test(text) && actions.includes("SEND_ESTIMATE_LINK")) return "Send the verified estimate link";
-  if (/(pay|payment|invoice|balance)/i.test(text) && actions.includes("SEND_PAYMENT_LINK")) return "Send the secure payment link";
-  if (actions.includes("CREATE_FOLLOW_UP")) return "Create an office follow-up task if needed";
+  if (/(estimate|proposal)/i.test(text) && actions.includes("READ_ESTIMATE")) return "Read the confirmed estimate status";
+  if (/(pay|payment|invoice|balance)/i.test(text) && actions.includes("READ_INVOICE")) return "Read the confirmed invoice balance";
   return "Continue the configured conversation";
 }
 

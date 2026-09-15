@@ -394,6 +394,16 @@ export async function overrideCompleteJobAction(jobId: string, reason: string): 
       entityId: job.id,
       metadata: { reason, from: job.status },
     });
+    const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+    await emitDomainEvent({
+      companyId: ctx.company.id,
+      type: "JOB_COMPLETED",
+      sourceType: "Job",
+      sourceId: job.id,
+      customerId: job.customerId,
+      jobId: job.id,
+      idempotencyKey: `job-completed:${job.id}`,
+    }).catch(() => null);
     revalidateJob(job.id);
     return { ok: true };
   } catch (e) {

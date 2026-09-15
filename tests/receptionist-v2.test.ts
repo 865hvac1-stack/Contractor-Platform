@@ -60,7 +60,7 @@ import {
   OpenAiReceptionistProvider,
   parseReceptionistStructuredOutput,
 } from "@/lib/intelligence/receptionist/v2/provider";
-import { processReceptionistV2, attachOutboundToLatestShadowTurn } from "@/lib/intelligence/receptionist/v2/inbound";
+import { processReceptionistV2, attachOutboundToLatestShadowTurn, enforceGoalActionPermission } from "@/lib/intelligence/receptionist/v2/inbound";
 import { decideSchedulingNextStep } from "@/lib/agent-tools/scheduling-session";
 import { resolveOfferedSlotSelection } from "@/lib/scheduling/conversation-turn";
 
@@ -89,6 +89,15 @@ const hvacRunningHistory = [
 ];
 
 describe("ContractorYou AI Receptionist V2", () => {
+  it("enforces active automation action permissions before running receptionist tools", () => {
+    expect(enforceGoalActionPermission("getInvoiceBalance", ["READ_ESTIMATE", "REQUEST_HUMAN_HANDOFF"]))
+      .toEqual({ allowed: false, fallback: "requestHumanHandoff" });
+    expect(enforceGoalActionPermission("startScheduling", ["CHECK_AVAILABILITY", "BOOK_APPOINTMENT"]))
+      .toEqual({ allowed: true, fallback: "startScheduling" });
+    expect(enforceGoalActionPermission("bookAppointment", ["READ_CUSTOMER"]))
+      .toEqual({ allowed: false, fallback: "continue_workflow" });
+  });
+
   it("keeps HighLevel Regina as the default and only observes in shadow or live AI mode", () => {
     expect(parseReceptionistV2Mode(undefined)).toBe("HIGHLEVEL_REGINA");
     expect(receptionistV2ShouldObserve("HIGHLEVEL_REGINA")).toBe(false);
