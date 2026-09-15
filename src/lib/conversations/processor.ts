@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { emitDomainEvent } from "@/lib/conversations/event-engine";
+import { emitDomainEvent, executeAutomationForEvent } from "@/lib/conversations/event-engine";
 
 export async function processDueConversationEvents(input: { now?: Date; limit?: number } = {}) {
   const now = input.now ?? new Date();
@@ -72,6 +72,16 @@ export async function processDueConversationEvents(input: { now?: Date; limit?: 
         results.push({ companyId: automation.companyId, type: "MAINTENANCE_DUE", sourceId: visit.id });
       }
     }
+  }
+  const dueExecutions = await prisma.automationExecution.findMany({
+    where: { status: "SCHEDULED", scheduledFor: { lte: now } },
+    orderBy: { scheduledFor: "asc" },
+    take: Math.max(0, limit - results.length),
+    select: { eventId: true, automationId: true, companyId: true, sourceId: true },
+  });
+  for (const execution of dueExecutions) {
+    await executeAutomationForEvent(execution.eventId, execution.automationId);
+    results.push({ companyId: execution.companyId, type: "SCHEDULED_AUTOMATION", sourceId: execution.sourceId });
   }
   return { processed: results.length, events: results };
 }

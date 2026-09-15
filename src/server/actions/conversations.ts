@@ -6,9 +6,9 @@ import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/tenant";
 import { AuthError } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
-import { resolveCommunicationProvider } from "@/lib/comms/provider";
-import { loadCustomerConversationOwner } from "@/lib/comms/conversation-owner";
 import type { ActionResult } from "@/server/actions/auth";
+import { automationReadiness } from "@/lib/conversations/readiness";
+import { GOAL_ACTIONS } from "@/lib/conversations/custom-automations";
 
 const automationEditorSchema = z.object({
   automationId: z.string().cuid(),
@@ -19,6 +19,13 @@ const automationEditorSchema = z.object({
   promotionId: z.string().cuid().optional().or(z.literal("")),
   quietHoursStart: z.coerce.number().int().min(0).max(23).optional(),
   quietHoursEnd: z.coerce.number().int().min(0).max(23).optional(),
+  audience: z.enum(["EVENT_CUSTOMER", "RESIDENTIAL", "COMMERCIAL", "MAINTENANCE_MEMBERS", "NON_MEMBERS"]).optional(),
+  delayMinutes: z.coerce.number().int().min(0).max(525_600).optional(),
+  followUpDelayMinutes: z.coerce.number().int().min(15).max(43_200).optional(),
+  maxAttempts: z.coerce.number().int().min(1).max(3).optional(),
+  allowedActions: z.array(z.string()).max(12),
+  stopConditions: z.array(z.string()).min(1).max(12),
+  isCompanyTemplate: z.boolean().optional(),
 });
 
 const promotionSchema = z
@@ -54,14 +61,9 @@ export async function toggleAutomationAction(
     });
     if (!automation) return { ok: false, error: "Automation not found." };
     if (enable) {
-      const provider = await resolveCommunicationProvider(ctx.company.id);
-      if (provider === "none") return { ok: false, error: "Connect a company communications provider before turning this on." };
-      if (automation.mode === "START_CONVERSATION") {
-        const owner = await loadCustomerConversationOwner(prisma, ctx.company.id);
-        if (owner !== "CONTRACTORYOU") {
-          return { ok: false, error: "ContractorYou must own customer conversations before Regina automations can be enabled." };
-        }
-      }
+      const readiness = await automationReadiness(automation);
+      const blockers = readiness.checks.filter((item) => !item.ready).map((item) => item.blocker);
+      if (!readiness.ready) return { ok: false, error: blockers.join(" ") };
     }
     await prisma.automation.update({
       where: { id: automation.id },
@@ -98,12 +100,24 @@ export async function updateConversationAutomationAction(
       promotionId: formData.get("promotionId") || "",
       quietHoursStart: formData.get("quietHoursStart") || undefined,
       quietHoursEnd: formData.get("quietHoursEnd") || undefined,
+      audience: formData.get("audience") || undefined,
+      delayMinutes: formData.get("delayMinutes") || 0,
+      followUpDelayMinutes: formData.get("followUpDelayMinutes") || undefined,
+      maxAttempts: formData.get("maxAttempts") || 1,
+      allowedActions: formData.getAll("allowedActions"),
+      stopConditions: formData.getAll("stopConditions"),
+      isCompanyTemplate: formData.get("isCompanyTemplate") === "true",
     });
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message || "Invalid automation." };
     const automation = await prisma.automation.findFirst({
       where: { id: parsed.data.automationId, companyId: ctx.company.id },
     });
     if (!automation) return { ok: false, error: "Automation not found." };
+    const goalActions = new Set(GOAL_ACTIONS[parsed.data.goal || automation.goal || ""] || []);
+    const allowedActions = parsed.data.allowedActions.filter((action) => goalActions.has(action));
+    if (parsed.data.mode === "START_CONVERSATION" && !allowedActions.length) {
+      return { ok: false, error: "Choose at least one supported Regina action." };
+    }
     if (parsed.data.promotionId) {
       const promotion = await prisma.promotion.findFirst({
         where: { id: parsed.data.promotionId, companyId: ctx.company.id },
@@ -121,6 +135,14 @@ export async function updateConversationAutomationAction(
         promotionId: parsed.data.promotionId || null,
         quietHoursStart: parsed.data.quietHoursStart,
         quietHoursEnd: parsed.data.quietHoursEnd,
+        audience: parsed.data.audience,
+        delayMinutes: parsed.data.delayMinutes,
+        followUpDelayMinutes: parsed.data.maxAttempts && parsed.data.maxAttempts > 1 ? parsed.data.followUpDelayMinutes : null,
+        maxAttempts: parsed.data.maxAttempts,
+        allowedActions,
+        stopConditions: parsed.data.stopConditions,
+        isCompanyTemplate: parsed.data.isCompanyTemplate,
+        version: automation.enabled ? { increment: 1 } : undefined,
       },
     });
     await writeAudit({
@@ -129,7 +151,7 @@ export async function updateConversationAutomationAction(
       action: "automation.updated",
       entityType: "Automation",
       entityId: automation.id,
-      metadata: { mode: parsed.data.mode, promotionId: parsed.data.promotionId || null },
+      metadata: { mode: parsed.data.mode, promotionId: parsed.data.promotionId || null, version: automation.enabled ? automation.version + 1 : automation.version, allowedActions },
     });
     revalidatePath("/marketing/automations");
     revalidatePath(`/marketing/automations/${automation.id}`);

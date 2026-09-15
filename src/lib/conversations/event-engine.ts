@@ -98,7 +98,15 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     include: { promotion: true },
   });
   if (!automation) return { handled: false, reason: "automation_not_enabled" as const };
-  if (joined.executions[0]) return { handled: true, duplicate: true, executionId: joined.executions[0].id };
+  const existingExecution = joined.executions[0];
+  if (
+    existingExecution &&
+    (existingExecution.status !== "SCHEDULED" ||
+      !existingExecution.scheduledFor ||
+      existingExecution.scheduledFor.getTime() > Date.now())
+  ) {
+    return { handled: true, duplicate: true, executionId: existingExecution.id };
+  }
 
   const context = await loadExecutionContext({
     companyId: joined.companyId,
@@ -107,8 +115,10 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     sourceType: joined.sourceType,
     sourceId: joined.sourceId,
   });
-  let execution;
+  let execution = existingExecution;
   try {
+    if (!execution) {
+      const scheduledFor = new Date(joined.occurredAt.getTime() + automation.delayMinutes * 60_000);
     execution = await prisma.automationExecution.create({
       data: {
         companyId: joined.companyId,
@@ -120,9 +130,31 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
         sourceId: joined.sourceId,
         goal: automation.goal,
         mode: automation.mode,
-        status: "EVALUATING",
+        status: scheduledFor.getTime() > Date.now() ? "SCHEDULED" : "EVALUATING",
+        scheduledFor,
+        configSnapshot: {
+          version: automation.version,
+          trigger: automation.trigger,
+          goal: automation.goal,
+          mode: automation.mode,
+          audience: automation.audience,
+          conditions: automation.conditions,
+          allowedActions: automation.allowedActions,
+          stopConditions: automation.stopConditions,
+          promotionId: automation.promotionId,
+          firstMessage: automation.firstMessage,
+        },
       },
     });
+      if (scheduledFor.getTime() > Date.now()) {
+        return { handled: true, sent: false, scheduled: true, executionId: execution.id, scheduledFor };
+      }
+    } else {
+      execution = await prisma.automationExecution.update({
+        where: { id: execution.id },
+        data: { status: "EVALUATING" },
+      });
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const duplicate = await prisma.automationExecution.findFirst({
@@ -132,12 +164,27 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
     }
     throw error;
   }
+  const customConditionBlock = await customAutomationConditionBlock({
+    conditions: automation.conditions,
+    companyId: joined.companyId,
+    sourceType: joined.sourceType,
+    sourceId: joined.sourceId,
+    customerId: context.customer?.id,
+  });
+  if (customConditionBlock) {
+    await finishBlockedExecution(execution.id, joined.companyId, customConditionBlock);
+    return { handled: true, sent: false, executionId: execution.id, reason: customConditionBlock };
+  }
   const promotionEligible = promotionAudienceEligible(automation.promotion?.audience, {
     eventType: joined.type as ContractorYouEventType,
     propertyType: context.job?.property.propertyType || context.customer?.properties[0]?.propertyType,
   });
   const activePromotion =
     promotionIsActive(automation.promotion) && promotionEligible ? automation.promotion : null;
+  if (!automationAudienceEligible(automation.audience, context)) {
+    await finishBlockedExecution(execution.id, joined.companyId, "automation_audience_not_eligible");
+    return { handled: true, sent: false, executionId: execution.id, reason: "automation_audience_not_eligible" };
+  }
 
   const blockReason = executionBlockReason({
     eventType: joined.type as ContractorYouEventType,
@@ -270,6 +317,7 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
           context: {
             eventType: joined.type,
             automationKey: automation.templateKey,
+            automationVersion: automation.version,
             sourceType: joined.sourceType,
             sourceId: joined.sourceId,
             promotionId: activePromotion?.id ?? null,
@@ -290,11 +338,62 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
         executionId: execution.id,
         event: "AUTOMATION_STARTED",
         decision: "SENT",
-        details: { domainEvent: joined.type, automationKey: automation.templateKey, promotionValidated: Boolean(automation.promotionId) },
+        details: { domainEvent: joined.type, automationKey: automation.templateKey, automationVersion: automation.version, promotionValidated: Boolean(automation.promotionId) },
       },
     });
   });
   return { handled: true, sent: true, executionId: execution.id, threadId: thread?.id ?? null };
+}
+
+async function customAutomationConditionBlock(input: {
+  conditions: Prisma.JsonValue | null;
+  companyId: string;
+  sourceType: string;
+  sourceId: string;
+  customerId?: string;
+}) {
+  const record = input.conditions && typeof input.conditions === "object" && !Array.isArray(input.conditions)
+    ? input.conditions as Record<string, unknown> : {};
+  const onlyIf = Array.isArray(record.onlyIf) ? record.onlyIf.map(String) : [];
+  if (onlyIf.includes("CUSTOMER_HAS_NOT_BOOKED") && input.customerId) {
+    const booking = await prisma.job.findFirst({
+      where: {
+        companyId: input.companyId,
+        customerId: input.customerId,
+        status: { in: ["SCHEDULED", "DISPATCHED"] },
+        scheduledStart: { gte: new Date() },
+      },
+      select: { id: true },
+    });
+    if (booking) return "customer_already_booked";
+  }
+  if (onlyIf.includes("SOURCE_STILL_ACTIVE")) {
+    if (input.sourceType === "Job") {
+      const source = await prisma.job.findFirst({ where: { id: input.sourceId, companyId: input.companyId }, select: { status: true } });
+      if (!source || source.status === "CANCELLED") return "source_no_longer_active";
+    }
+    if (input.sourceType === "Estimate") {
+      const source = await prisma.estimate.findFirst({ where: { id: input.sourceId, companyId: input.companyId }, select: { status: true } });
+      if (!source || ["APPROVED", "DECLINED", "EXPIRED"].includes(source.status)) return "source_no_longer_active";
+    }
+    if (input.sourceType === "Invoice") {
+      const source = await prisma.invoice.findFirst({ where: { id: input.sourceId, companyId: input.companyId }, select: { status: true } });
+      if (!source || ["PAID", "VOID"].includes(source.status)) return "source_no_longer_active";
+    }
+  }
+  return null;
+}
+
+function automationAudienceEligible(
+  audience: string,
+  context: { customer: { properties: Array<{ propertyType: string }> } | null; job: { property: { propertyType: string } } | null }
+) {
+  const propertyType = context.job?.property.propertyType || context.customer?.properties[0]?.propertyType;
+  if (audience === "RESIDENTIAL") return propertyType === "RESIDENTIAL";
+  if (audience === "COMMERCIAL") return propertyType === "COMMERCIAL";
+  // Membership filters need a membership-qualified producer. They fail closed until that context is present.
+  if (audience === "MAINTENANCE_MEMBERS" || audience === "NON_MEMBERS") return false;
+  return true;
 }
 
 function executionBlockReason(input: {

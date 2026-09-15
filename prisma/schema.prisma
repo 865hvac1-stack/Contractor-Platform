@@ -2327,9 +2327,19 @@ model CommunicationMessage {
 model Automation {
   id              String    @id @default(cuid())
   companyId       String
+  createdById     String?
   playbookId      String?
   promotionId     String?
   templateKey     String?
+  sourceType      String    @default("RECOMMENDED")
+  sourceRequest   String?   @db.Text
+  interpretation  Json?
+  audience        String    @default("EVENT_CUSTOMER")
+  delayMinutes    Int       @default(0)
+  version         Int       @default(1)
+  isCompanyTemplate Boolean @default(false)
+  followUpDelayMinutes Int?
+  maxAttempts     Int       @default(1)
   name            String
   trigger         String
   conditions      Json?
@@ -2425,6 +2435,8 @@ model AutomationExecution {
   status          String    @default("STARTED")
   decision        String?
   firstMessage    String?   @db.Text
+  configSnapshot  Json?
+  scheduledFor    DateTime?
   messageId       String?
   failure         String?
   startedAt       DateTime  @default(now())
@@ -2446,6 +2458,7 @@ model AutomationExecution {
 
   @@unique([companyId, automationId, eventId])
   @@index([companyId, status, startedAt])
+  @@index([status, scheduledFor])
   @@index([companyId, customerId, startedAt])
   @@index([companyId, threadId, status])
 }
