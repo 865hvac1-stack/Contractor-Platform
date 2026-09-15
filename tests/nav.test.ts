@@ -15,11 +15,12 @@ import { landingPath } from "@/lib/workspaces";
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/customers/list";
 
 describe("nav catalog", () => {
-  it("keeps the everyday shell to five destinations", () => {
+  it("adds Projects as a major primary module", () => {
     expect(PRIMARY_NAV.map((item) => item.label)).toEqual([
       "Home",
       "Jobs & Dispatch",
       "Customers",
+      "Projects",
       "Money",
       "Marketing",
     ]);
@@ -74,17 +75,19 @@ describe("role-aware navigation", () => {
       "Home",
       "Jobs & Dispatch",
       "Customers",
+      "Projects",
       "Money",
       "Marketing",
     ]);
     expect(visibleMoreNav("COMPANY_OWNER").some((item) => item.label === "Compensation")).toBe(true);
   });
 
-  it("hides Money and Marketing from dispatchers", () => {
+  it("shows dispatchers operational modules while hiding Money and Marketing", () => {
     expect(visiblePrimaryNav("DISPATCHER").map((item) => item.label)).toEqual([
       "Home",
       "Jobs & Dispatch",
       "Customers",
+      "Projects",
     ]);
     expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Inbox")).toBe(false);
     expect(visibleMoreNav("DISPATCHER").some((item) => item.label === "Waiting Board")).toBe(false);
