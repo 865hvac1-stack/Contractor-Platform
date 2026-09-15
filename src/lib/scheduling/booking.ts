@@ -269,6 +269,27 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
     },
   });
 
+  const { completeConversationGoalForBooking } = await import("@/lib/conversations/lifecycle");
+  await completeConversationGoalForBooking({
+    companyId: input.companyId,
+    threadId: input.threadId,
+    jobId: booked.jobId,
+  });
+  const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+  const bookingEvent = await emitDomainEvent({
+    companyId: input.companyId,
+    type: "JOB_BOOKED",
+    sourceType: "Job",
+    sourceId: booked.jobId,
+    customerId: input.customerId,
+    jobId: booked.jobId,
+    idempotencyKey: `job-booked:${booked.jobId}`,
+    processAutomations: input.sendConfirmation !== false,
+  });
+  const reginaConfirmationSent = bookingEvent.results.some(
+    (result) => "sent" in result && result.sent === true
+  );
+
   if (input.sendConfirmation === false) {
     return {
       ok: true,
@@ -284,6 +305,27 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
         endMinutes: window.endMinutes,
         timeZone: company.timezone,
       }),
+      duplicate: false,
+    };
+  }
+
+  if (reginaConfirmationSent) {
+    await prisma.schedulingBooking.updateMany({
+      where: { jobId: booked.jobId, companyId: input.companyId },
+      data: { confirmationStatus: "SENT", confirmationError: null },
+    });
+    await prisma.job.update({
+      where: { id: booked.jobId },
+      data: { confirmationFailed: false },
+    });
+    return {
+      ok: true,
+      committed: true,
+      jobId: booked.jobId,
+      technicianId: booked.technicianId,
+      windowId: booked.windowId,
+      date: booked.date,
+      confirmationStatus: "SENT",
       duplicate: false,
     };
   }

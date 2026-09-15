@@ -49,6 +49,16 @@ export async function upsertExternalLead(input: {
       lastTouch: input.provider,
     },
   });
+  const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+  await emitDomainEvent({
+    companyId: input.companyId,
+    type: "LEAD_CREATED",
+    sourceType: "Lead",
+    sourceId: lead.id,
+    customerId: lead.customerId,
+    idempotencyKey: `lead-created:${lead.id}`,
+    occurredAt: lead.receivedAt,
+  }).catch(() => null);
   return { lead, created: true };
 }
 

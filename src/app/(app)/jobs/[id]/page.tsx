@@ -67,7 +67,7 @@ export default async function JobDetailPage({
     view.job.status !== "COMPLETED" &&
     view.job.status !== "CANCELED";
   const canAddCost = can(ctx.role, "job_costs:manage");
-  const [{ columns: waitingColumns }, activeWaiting, officeMembers, parts, jobParts, stocks] = await Promise.all([
+  const [{ columns: waitingColumns }, activeWaiting, officeMembers, parts, jobParts, stocks, customerRequests] = await Promise.all([
     ensureWaitingSetup(ctx.company.id),
     loadActiveWaitingForJob(ctx.company.id, view.job.id),
     prisma.membership.findMany({
@@ -91,6 +91,11 @@ export default async function JobDetailPage({
     prisma.inventoryStock.findMany({
       where: { companyId: ctx.company.id, part: { active: true } },
       include: { location: { select: { name: true } } },
+    }),
+    prisma.customerRequest.findMany({
+      where: { companyId: ctx.company.id, jobId: view.job.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
     }),
   ]);
   const waitingOwners = officeMembers.map((row) => ({
@@ -143,6 +148,26 @@ export default async function JobDetailPage({
           )
         }
       />
+
+      {customerRequests.length ? (
+        <section className="rounded-2xl border border-orange-300 bg-orange-50/60 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">Customer requests</p>
+          <h2 className="mt-1 font-semibold text-[var(--cy-navy)]">Shared from the customer conversation</h2>
+          <ul className="mt-3 space-y-3">
+            {customerRequests.map((request) => (
+              <li key={request.id} className="rounded-xl bg-white p-3 text-sm">
+                <p className="text-[var(--cy-navy)]">{request.body}</p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  Source: Customer conversation with Regina · {formatDateTime(request.createdAt, ctx.company.timezone)}
+                  {request.threadId ? (
+                    <> · <Link href={`/marketing/communications/${request.threadId}`} className="hover:underline">Open conversation</Link></>
+                  ) : null}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <JobWaitingPanel
         jobId={view.job.id}

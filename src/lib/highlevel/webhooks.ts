@@ -322,7 +322,7 @@ export async function processHighLevelWebhook(
         contactId,
       });
     } else if (contactId && (type.includes("create") || type.includes("contactcreate"))) {
-      await ingestHighLevelLead(prisma, {
+      const ingested = await ingestHighLevelLead(prisma, {
         companyId: input.companyId,
         externalId: contactId,
         firstName: emptyToNull(text(data.firstName) || text(data.first_name)),
@@ -332,9 +332,20 @@ export async function processHighLevelWebhook(
         source: emptyToNull(text(data.source) || text(data.contact_source)),
         contactId,
       });
+      if (ingested.created && ingested.lead?.id) {
+        const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+        await emitDomainEvent({
+          companyId: input.companyId,
+          type: "LEAD_CREATED",
+          sourceType: "Lead",
+          sourceId: ingested.lead.id,
+          customerId: ingested.customerId,
+          idempotencyKey: `lead-created:${ingested.lead.id}`,
+        });
+      }
     }
   } else if (type.includes("opportunity")) {
-    await ingestHighLevelLead(prisma, {
+    const ingested = await ingestHighLevelLead(prisma, {
       companyId: input.companyId,
       role: "opportunity",
       externalId: emptyToNull(text(data.id) || text(data.opportunityId)) || externalId,
@@ -347,6 +358,17 @@ export async function processHighLevelWebhook(
       message: emptyToNull(text(data.opportunity_name) || text(data.name)),
       contactId: fields.contactId,
     });
+    if (ingested.created && ingested.lead?.id) {
+      const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+      await emitDomainEvent({
+        companyId: input.companyId,
+        type: "LEAD_CREATED",
+        sourceType: "Lead",
+        sourceId: ingested.lead.id,
+        customerId: ingested.customerId,
+        idempotencyKey: `lead-created:${ingested.lead.id}`,
+      });
+    }
   } else if (isHighLevelConversationEvent(fields)) {
     const direction = fields.direction || "inbound";
     let fromNumber = fields.from;
@@ -380,6 +402,29 @@ export async function processHighLevelWebhook(
       recordingUrl: fields.hasRecording ? "available" : null,
       locationId: fields.locationId || null,
     });
+    if (comms.callRecordId && comms.callMissed && (fields.direction || "inbound").toLowerCase() === "inbound") {
+      const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+      await emitDomainEvent({
+        companyId: input.companyId,
+        type: "MISSED_CALL",
+        sourceType: "CallRecord",
+        sourceId: comms.callRecordId,
+        customerId: comms.customerId,
+        idempotencyKey: `missed-call:${comms.callRecordId}`,
+        occurredAt: fields.timestamp ?? new Date(),
+      });
+    } else if (comms.leadCreated && comms.leadId) {
+      const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+      await emitDomainEvent({
+        companyId: input.companyId,
+        type: "LEAD_CREATED",
+        sourceType: "Lead",
+        sourceId: comms.leadId,
+        customerId: comms.customerId,
+        idempotencyKey: `lead-created:${comms.leadId}`,
+        occurredAt: fields.timestamp ?? new Date(),
+      });
+    }
     if (comms?.thread.id && comms.message && (fields.direction || "inbound").toLowerCase() === "inbound") {
       try {
         const { contractorYouMayAutoreply, loadCustomerConversationOwner } = await import(
@@ -396,6 +441,40 @@ export async function processHighLevelWebhook(
           channel: comms.message.channel,
           phone: fields.from || emptyToNull(text(data.phone)),
         };
+        const { applyInboundConversationControls } = await import("@/lib/conversations/inbound-control");
+        const controls = await applyInboundConversationControls(inbound);
+        if (controls.stopAutoReply) {
+          await Promise.all([
+            prisma.integrationEvent.update({
+              where: { id: stored.id },
+              data: { processedAt: new Date() },
+            }),
+            prisma.integrationConnection.update({
+              where: { id: input.connectionId },
+              data: { lastHealthAt: new Date(), healthMessage: `Last webhook: ${fields.type}` },
+            }),
+          ]);
+          return {
+            processed: true,
+            duplicate: false,
+            type: fields.type,
+            locationId: fields.locationId,
+            conversationId: fields.conversationId,
+            messageId: fields.messageId,
+            contactId: fields.contactId,
+            channel: fields.channel,
+            direction: fields.direction,
+            from: fields.from,
+            to: fields.to,
+            trackingSource: comms.trackingSource ?? null,
+            customerMatched: Boolean(comms.customerId),
+            leadCreated: Boolean(comms.leadCreated),
+            callRecordCreated: Boolean(comms.callRecordCreated),
+            callRecordUpdated: Boolean(comms.callRecordUpdated),
+            threadId: comms.thread.id,
+            hasRecording: fields.hasRecording,
+          };
+        }
         const { processSchedulingSessionInbound } = await import("@/lib/agent-tools/scheduling-session");
         const session = await processSchedulingSessionInbound({
           companyId: inbound.companyId,

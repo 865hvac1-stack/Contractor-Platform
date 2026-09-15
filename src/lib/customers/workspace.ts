@@ -170,6 +170,7 @@ export async function getCustomer360(input: Customer360Options) {
       take: 6,
       include: {
         messages: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true, direction: true, createdAt: true } },
+        goalSessions: { orderBy: { updatedAt: "desc" }, take: 1, select: { goal: true, state: true } },
       },
     }),
     prisma.callRecord.findMany({
@@ -556,6 +557,9 @@ export async function getCustomer360(input: Customer360Options) {
         channel: thread.channel,
         last: thread.messages[0]?.body ?? null,
         at: thread.lastActivityAt,
+        handlingState: thread.handlingState,
+        goal: thread.goalSessions[0]?.goal ?? null,
+        goalState: thread.goalSessions[0]?.state ?? null,
       })),
       calls: calls.map((call) => ({
         id: call.id,

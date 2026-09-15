@@ -33,6 +33,29 @@ export async function maybeSendOnMyWayMessage(input: {
   if (isHistoricalImport(job.importMode)) {
     return { attempted: false, sent: false, reason: "historical" as const };
   }
+  const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+  const conversationEvent = await emitDomainEvent({
+    companyId: input.companyId,
+    type: "TECHNICIAN_ON_MY_WAY",
+    sourceType: "Job",
+    sourceId: job.id,
+    customerId: job.customerId,
+    jobId: job.id,
+    idempotencyKey: `technician-on-my-way:${job.id}`,
+    payload: {
+      technicianFirstName: input.actorFirstName,
+    },
+  });
+  if (conversationEvent.matched > 0) {
+    const sent = conversationEvent.results.some(
+      (result) => ("sent" in result && result.sent === true) || ("duplicate" in result && result.duplicate === true)
+    );
+    return {
+      attempted: true,
+      sent,
+      reason: sent ? ("sent" as const) : ("provider_failed" as const),
+    };
+  }
   if (!job.playbookSnapshot) return { attempted: false, sent: false, reason: "no_playbook" as const };
 
   const definition = parseDefinition(job.playbookSnapshot.definition);

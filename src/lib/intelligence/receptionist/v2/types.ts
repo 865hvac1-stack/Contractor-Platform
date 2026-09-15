@@ -123,6 +123,14 @@ export type VerifiedFacts = {
   canBookAppointment?: boolean;
   canReschedule?: boolean;
   canCancel?: boolean;
+  conversationGoal?: string | null;
+  conversationGoalState?: string | null;
+  allowedConversationActions?: string[];
+  promotion?: {
+    headline: string;
+    offer: string;
+    terms?: string | null;
+  } | null;
 };
 
 export function parseReceptionistV2Mode(value: unknown): ReceptionistV2Mode {

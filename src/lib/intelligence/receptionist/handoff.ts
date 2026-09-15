@@ -13,6 +13,26 @@ export async function handoffToOffice(input: {
   sendCustomerReply?: boolean;
   replyText?: string;
 }) {
+  await prisma.communicationThread.updateMany({
+    where: { id: input.threadId, companyId: input.companyId },
+    data: {
+      handlingState: "NEEDS_HUMAN",
+      needsHumanAt: new Date(),
+      reginaPausedAt: new Date(),
+    },
+  });
+  await prisma.conversationGoalSession.updateMany({
+    where: { companyId: input.companyId, threadId: input.threadId, completedAt: null },
+    data: { state: "HUMAN_TAKEOVER" },
+  });
+  await prisma.automationExecution.updateMany({
+    where: {
+      companyId: input.companyId,
+      threadId: input.threadId,
+      status: { notIn: ["COMPLETED", "FAILED", "BLOCKED", "OPTED_OUT"] },
+    },
+    data: { status: "NEEDS_HUMAN", humanTakeoverAt: new Date() },
+  });
   if (input.stateId) {
     await prisma.conversationSchedulingState.update({
       where: { id: input.stateId },

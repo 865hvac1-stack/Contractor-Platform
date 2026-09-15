@@ -132,6 +132,16 @@ export async function createLeadAction(
       entityId: lead.id,
       metadata: { source: d.source, matchedCustomer: Boolean(match) },
     });
+    const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+    await emitDomainEvent({
+      companyId: ctx.company.id,
+      type: "LEAD_CREATED",
+      sourceType: "Lead",
+      sourceId: lead.id,
+      customerId: lead.customerId,
+      idempotencyKey: `lead-created:${lead.id}`,
+      occurredAt: lead.receivedAt,
+    }).catch(() => null);
 
     revalidatePath("/marketing");
     revalidatePath("/marketing/leads");

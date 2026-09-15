@@ -15,6 +15,7 @@ const items = [
   { href: "/marketing/forms", label: "Website" },
   { href: "/marketing/social", label: "Social" },
   { href: "/marketing/automations", label: "Automations" },
+  { href: "/marketing/promotions", label: "Promotions" },
 ];
 
 export function MarketingSubnav() {

@@ -144,7 +144,7 @@ export default async function TechJobWorkspacePage({
     loadActiveWaitingForJob(ctx.company.id, full.id),
   ]);
   const readyColumnId = waitingColumns.find((column) => column.kind === "READY" || column.key === "READY_TO_SCHEDULE")?.id;
-  const [partOptions, jobParts, inventoryStocks] = await Promise.all([
+  const [partOptions, jobParts, inventoryStocks, customerRequests] = await Promise.all([
     prisma.pricebookItem.findMany({
       where: { companyId: ctx.company.id, active: true, type: { in: ["MATERIAL", "PRODUCT"] } },
       select: { id: true, name: true, sku: true, internalCostCents: true },
@@ -163,6 +163,11 @@ export default async function TechJobWorkspacePage({
       where: { companyId: ctx.company.id, part: { active: true } },
       include: { location: { select: { name: true } } },
     }),
+    prisma.customerRequest.findMany({
+      where: { companyId: ctx.company.id, jobId: full.id, acknowledgedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
   ]);
 
   return (
@@ -176,6 +181,23 @@ export default async function TechJobWorkspacePage({
           {full.playbook?.name || full.jobType || "Job"} · {fieldStatusLabel(full.status)}
         </p>
       </div>
+
+      {customerRequests.length ? (
+        <section className="rounded-2xl border-2 border-orange-300 bg-orange-50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--cy-orange)]">
+            New customer request
+          </p>
+          {customerRequests.map((request) => (
+            <div key={request.id} className="mt-2">
+              <p className="font-medium text-[var(--cy-navy)]">{request.body}</p>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                Shared by Regina · {formatDateTime(request.createdAt, ctx.company.timezone)}
+              </p>
+            </div>
+          ))}
+          <p className="mt-2 text-xs text-amber-900">Treat this as a request, not approved scope or pricing.</p>
+        </section>
+      ) : null}
 
       {next ? (
         <section id="next" className="rounded-2xl bg-[var(--cy-navy)] p-4 text-white shadow-lg">

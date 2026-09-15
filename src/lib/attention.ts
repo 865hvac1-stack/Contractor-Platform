@@ -615,6 +615,34 @@ registerAttentionDetector(async (companyId) => {
   }));
 });
 
+registerAttentionDetector(async (companyId) => {
+  const threads = await prisma.communicationThread.findMany({
+    where: { companyId, handlingState: { in: ["NEEDS_HUMAN", "WAITING_FOR_HUMAN"] } },
+    orderBy: { needsHumanAt: "asc" },
+    take: 25,
+    include: {
+      customer: { select: { firstName: true, lastName: true, businessName: true } },
+      goalSessions: { orderBy: { updatedAt: "desc" }, take: 1, select: { goal: true } },
+    },
+  });
+  return threads.map((thread) => ({
+    id: `conversation-human-${thread.id}`,
+    type: "conversation_needs_human",
+    title: "Conversation needs human",
+    description: thread.goalSessions[0]?.goal
+      ? `Regina paused · ${thread.goalSessions[0].goal.toLowerCase().replaceAll("_", " ")}`
+      : "Regina paused for an office response.",
+    severity: "warning" as const,
+    href: `/marketing/communications/${thread.id}`,
+    entityType: "CommunicationThread",
+    entityId: thread.id,
+    createdAt: thread.needsHumanAt ?? thread.updatedAt,
+    customerName: customerLabel(thread.customer),
+    recommendedAction: "Open the conversation and take over.",
+    category: "customers" as const,
+  }));
+});
+
 function customerLabel(customer?: { firstName: string; lastName: string; businessName: string | null } | null) {
   if (!customer) return null;
   const person = `${customer.firstName} ${customer.lastName}`.trim();

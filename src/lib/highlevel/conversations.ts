@@ -221,6 +221,7 @@ export async function upsertConversationMessage(
   let leadCreated = false;
   let callRecordCreated = false;
   let callRecordUpdated = false;
+  let callRecordId: string | null = null;
 
   if (isCall) {
     const missed = /missed|voicemail|no-answer|no_answer/i.test(`${input.callStatus ?? ""} ${input.status ?? ""}`);
@@ -231,6 +232,7 @@ export async function upsertConversationMessage(
       },
     });
     if (existingCall) {
+      callRecordId = existingCall.id;
       await prisma.callRecord.update({
         where: { id: existingCall.id },
         data: {
@@ -263,7 +265,7 @@ export async function upsertConversationMessage(
         leadId = ingested.lead?.id ?? leadId;
         leadCreated = ingested.created;
       }
-      await prisma.callRecord.create({
+      const createdCall = await prisma.callRecord.create({
         data: {
           companyId: input.companyId,
           direction: (input.direction || "inbound").toLowerCase(),
@@ -280,6 +282,7 @@ export async function upsertConversationMessage(
           recordingRef: input.messageId,
         },
       });
+      callRecordId = createdCall.id;
       callRecordCreated = true;
       if (tracking && (match.customerId || leadId)) {
         await recordAttribution({
@@ -320,5 +323,7 @@ export async function upsertConversationMessage(
     leadCreated,
     callRecordCreated,
     callRecordUpdated,
+    callRecordId,
+    callMissed: isCall && /missed|voicemail|no-answer|no_answer/i.test(`${input.callStatus ?? ""} ${input.status ?? ""}`),
   };
 }

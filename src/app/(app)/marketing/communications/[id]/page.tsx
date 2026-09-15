@@ -12,6 +12,9 @@ import { ConversationScheduleSheet } from "@/components/scheduling/conversation-
 import { getAvailabilityRange } from "@/lib/scheduling/capacity";
 import { companyTodayKey, formatLocalDateShort } from "@/lib/scheduling/time";
 import { ensureSchedulingSetup } from "@/lib/scheduling/ensure";
+import { setConversationOwnerAction } from "@/server/actions/conversations";
+import { ActionForm } from "@/components/action-form";
+import { Button } from "@/components/ui/button";
 
 export default async function CommunicationThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,6 +25,11 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
       customer: { include: { properties: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], take: 1 } } },
       lead: true,
       messages: { orderBy: { occurredAt: "asc" }, take: 200 },
+      goalSessions: {
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        include: { execution: { include: { automation: true, promotion: true } } },
+      },
     },
   });
   if (!thread) notFound();
@@ -67,6 +75,13 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
       }`
     : null;
   const highlevel = await isHighLevelConnected(prisma, ctx.company.id);
+  const handledBy = thread.handledByUserId
+    ? await prisma.user.findFirst({
+        where: { id: thread.handledByUserId },
+        select: { firstName: true, lastName: true },
+      })
+    : null;
+  const activeGoal = thread.goalSessions.find((goal) => !goal.completedAt) || thread.goalSessions[0] || null;
   const name = thread.customer
     ? thread.customer.businessName || `${thread.customer.firstName} ${thread.customer.lastName}`
     : thread.contactName || thread.phone || thread.email || "Unknown contact";
@@ -99,6 +114,33 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto">
             <StatusBadge status={thread.channel} />
+            <StatusBadge status={thread.handlingState.replaceAll("_", " ")} />
+            {activeGoal ? (
+              <p className="max-w-xs text-xs text-[var(--muted-foreground)]">
+                Goal: {activeGoal.goal.replaceAll("_", " ")} · {activeGoal.state.replaceAll("_", " ")}
+              </p>
+            ) : null}
+            {handledBy ? (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Handled by: {handledBy.firstName} {handledBy.lastName}
+              </p>
+            ) : null}
+            {can(ctx.role, "marketing:manage") ? (
+              <ActionForm
+                action={setConversationOwnerAction}
+                successMessage={thread.handlingState === "HUMAN_ACTIVE" ? "Returned to Regina." : "You took over this conversation."}
+              >
+                <input type="hidden" name="threadId" value={thread.id} />
+                <input
+                  type="hidden"
+                  name="mode"
+                  value={thread.handlingState === "HUMAN_ACTIVE" ? "RETURN_TO_REGINA" : "TAKE_OVER"}
+                />
+                <Button type="submit" size="sm" variant={thread.handlingState === "HUMAN_ACTIVE" ? "outline" : "default"}>
+                  {thread.handlingState === "HUMAN_ACTIVE" ? "Return to Regina" : "Take over"}
+                </Button>
+              </ActionForm>
+            ) : null}
             {thread.customer ? (
               <ConversationScheduleSheet
                 customerId={thread.customer.id}
@@ -129,6 +171,18 @@ export default async function CommunicationThreadPage({ params }: { params: Prom
           </ul>
         ) : null}
       </header>
+
+      {activeGoal?.execution ? (
+        <section className="rounded-2xl border border-orange-200 bg-orange-50/50 p-4 text-sm">
+          <p className="font-semibold text-[var(--cy-navy)]">
+            Why this conversation started
+          </p>
+          <p className="mt-1 text-[var(--muted-foreground)]">
+            {activeGoal.execution.automation.name} · {activeGoal.execution.sourceType} event
+            {activeGoal.execution.promotion ? ` · ${activeGoal.execution.promotion.offer}` : ""}
+          </p>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         {thread.messages.length === 0 ? (

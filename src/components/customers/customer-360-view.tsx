@@ -427,6 +427,12 @@ export function Customer360View({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cy-orange)]">
                   {latestComms.thread.channel} · {formatDayTime(latestComms.thread.at, timeZone)}
                 </p>
+                <p className="mt-1 text-xs font-medium text-[var(--muted-foreground)]">
+                  {latestComms.thread.handlingState === "REGINA_ACTIVE"
+                    ? "Regina active"
+                    : latestComms.thread.handlingState.replaceAll("_", " ")}
+                  {latestComms.thread.goal ? ` · ${latestComms.thread.goal.replaceAll("_", " ")}` : ""}
+                </p>
                 <p className="mt-1 text-sm text-[var(--cy-navy)]">
                   “{latestComms.thread.last || "Conversation"}”
                 </p>

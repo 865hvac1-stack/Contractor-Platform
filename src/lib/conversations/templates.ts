@@ -1,0 +1,177 @@
+export type ConversationAutomationTemplate = {
+  key: string;
+  name: string;
+  purpose: string;
+  trigger: string;
+  mode: "SEND_MESSAGE" | "START_CONVERSATION";
+  goal: string;
+  channel: "SMS";
+  firstMessage: string;
+  allowedActions: string[];
+  stopConditions: string[];
+};
+
+const COMMON_STOPS = ["GOAL_COMPLETED", "CUSTOMER_DECLINED", "CUSTOMER_OPTED_OUT", "HUMAN_TAKEOVER"];
+
+export const RECOMMENDED_AUTOMATIONS: ConversationAutomationTemplate[] = [
+  {
+    key: "MISSED_CALL_TEXT_BACK",
+    name: "Missed Call Text Back",
+    purpose: "Regina responds to a verified missed call and helps the caller get service.",
+    trigger: "MISSED_CALL",
+    mode: "START_CONVERSATION",
+    goal: "RECOVER_MISSED_CALL",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, this is {{assistant.name}} with {{company.name}}. Sorry we missed your call! What can I help you with?",
+    allowedActions: ["READ_CUSTOMER", "READ_PROPERTY", "CHECK_AVAILABILITY", "BOOK_APPOINTMENT", "CREATE_FOLLOW_UP"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "NEW_LEAD_CONVERSATION",
+    name: "New Lead Conversation",
+    purpose: "Regina follows up personally, learns what is happening, and helps book service.",
+    trigger: "LEAD_CREATED",
+    mode: "START_CONVERSATION",
+    goal: "QUALIFY_NEW_LEAD",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}! This is {{assistant.name}} with {{company.name}}. I got your service request. What's going on?",
+    allowedActions: ["READ_CUSTOMER", "READ_PROPERTY", "CHECK_AVAILABILITY", "BOOK_APPOINTMENT", "CREATE_FOLLOW_UP"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "BOOKING_CONFIRMATION",
+    name: "Booking Confirmation",
+    purpose: "Confirms a real appointment and handles questions or a request to move it.",
+    trigger: "JOB_BOOKED",
+    mode: "START_CONVERSATION",
+    goal: "CONFIRM_APPOINTMENT",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}! This is {{assistant.name}} with {{company.name}}. You're scheduled for {{job.appointmentWindow}} at {{property.address}}. Does that still work for you?",
+    allowedActions: ["READ_JOB", "READ_PROPERTY", "CHECK_AVAILABILITY", "RESCHEDULE_APPOINTMENT", "CANCEL_APPOINTMENT"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "APPOINTMENT_REMINDER",
+    name: "Appointment Reminder",
+    purpose: "Reminds customers about the current appointment without sending stale notices.",
+    trigger: "APPOINTMENT_REMINDER_DUE",
+    mode: "START_CONVERSATION",
+    goal: "CONFIRM_APPOINTMENT",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, a quick reminder from {{company.name}}: we're scheduled for {{job.appointmentWindow}} at {{property.address}}. Does that still work?",
+    allowedActions: ["READ_JOB", "READ_PROPERTY", "CHECK_AVAILABILITY", "RESCHEDULE_APPOINTMENT", "CANCEL_APPOINTMENT"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "TECHNICIAN_ON_THE_WAY",
+    name: "Technician On The Way",
+    purpose: "Introduces the assigned technician and keeps pre-arrival requests with the job.",
+    trigger: "TECHNICIAN_ON_MY_WAY",
+    mode: "START_CONVERSATION",
+    goal: "ANSWER_PRE_ARRIVAL_QUESTIONS",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}} — {{technician.firstName}} from {{company.name}} is headed your way now{{job.etaClause}}. Is there anything you'd like us to know before arrival?",
+    allowedActions: ["READ_JOB", "READ_PROPERTY", "ADD_CUSTOMER_REQUEST_NOTE", "REQUEST_HUMAN_HANDOFF"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "JOB_COMPLETE_FOLLOW_UP",
+    name: "Job Complete Follow-Up",
+    purpose: "Checks in after completed work and routes unresolved concerns to the office.",
+    trigger: "JOB_COMPLETED",
+    mode: "START_CONVERSATION",
+    goal: "FOLLOW_UP_COMPLETED_JOB",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, thanks for having {{company.name}} out today. How did everything go?",
+    allowedActions: ["READ_JOB", "CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "REVIEW_REQUEST",
+    name: "Review Request",
+    purpose: "Requests a review only after eligible completed work and no unresolved complaint.",
+    trigger: "REVIEW_ELIGIBLE",
+    mode: "SEND_MESSAGE",
+    goal: "GET_REVIEW",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}! Thanks again for having {{company.name}} out. If everything went well, would you mind leaving our local team a quick review? {{company.reviewLink}}",
+    allowedActions: ["SEND_REVIEW_LINK"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "UNSOLD_ESTIMATE_FOLLOW_UP",
+    name: "Unsold Estimate Follow-Up",
+    purpose: "Answers factual questions about an open estimate without negotiating price.",
+    trigger: "ESTIMATE_OPEN",
+    mode: "START_CONVERSATION",
+    goal: "FOLLOW_UP_ESTIMATE",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, {{assistant.name}} with {{company.name}} here. I wanted to make sure you received the options we sent. Any questions I can help with?",
+    allowedActions: ["READ_ESTIMATE", "SEND_ESTIMATE_LINK", "CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "MAINTENANCE_DUE",
+    name: "Maintenance Due",
+    purpose: "Starts a personal maintenance conversation and books through real availability.",
+    trigger: "MAINTENANCE_DUE",
+    mode: "START_CONVERSATION",
+    goal: "BOOK_MAINTENANCE",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}! This is {{assistant.name}} with {{company.name}}. It looks like your maintenance is due{{promotion.offerClause}}. Want me to see what we have available next week?",
+    allowedActions: ["READ_CUSTOMER", "READ_PROPERTY", "READ_MEMBERSHIP", "CHECK_AVAILABILITY", "BOOK_APPOINTMENT"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "MEMBERSHIP_RENEWAL",
+    name: "Membership Renewal",
+    purpose: "Helps customers understand an expiring plan and gets the office involved when needed.",
+    trigger: "MEMBERSHIP_EXPIRING",
+    mode: "START_CONVERSATION",
+    goal: "RENEW_MEMBERSHIP",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, this is {{assistant.name}} with {{company.name}}. Your maintenance plan is coming up for renewal. Would you like help with the next step?",
+    allowedActions: ["READ_MEMBERSHIP", "CREATE_FOLLOW_UP", "REQUEST_HUMAN_HANDOFF"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "PAST_CUSTOMER_REACTIVATION",
+    name: "Past Customer Reactivation",
+    purpose: "Reconnects with eligible past customers while respecting consent and quiet hours.",
+    trigger: "CUSTOMER_INACTIVE",
+    mode: "START_CONVERSATION",
+    goal: "REACTIVATE_CUSTOMER",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, it's {{assistant.name}} with {{company.name}}. It's been a little while since we've been out{{promotion.offerClause}}. Want me to find a time for service?",
+    allowedActions: ["READ_CUSTOMER", "READ_PROPERTY", "CHECK_AVAILABILITY", "BOOK_APPOINTMENT"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "PAYMENT_REMINDER",
+    name: "Payment Reminder",
+    purpose: "Uses the verified invoice balance and directs the customer to a secure payment flow.",
+    trigger: "PAYMENT_DUE",
+    mode: "START_CONVERSATION",
+    goal: "COLLECT_PAYMENT",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, {{assistant.name}} with {{company.name}}. Just a heads-up that there is still a balance on your service visit. I can send the secure payment link if you'd like.",
+    allowedActions: ["READ_INVOICE", "SEND_PAYMENT_LINK", "REQUEST_HUMAN_HANDOFF"],
+    stopConditions: COMMON_STOPS,
+  },
+  {
+    key: "PROMOTIONAL_CAMPAIGN",
+    name: "Promotional Campaign",
+    purpose: "Starts a personal conversation with an eligible audience using a currently valid offer.",
+    trigger: "PROMOTION_AUDIENCE_READY",
+    mode: "START_CONVERSATION",
+    goal: "PROMOTE_SEASONAL_OFFER",
+    channel: "SMS",
+    firstMessage: "Hey {{customer.firstName}}, it's {{assistant.name}} with {{company.name}}. {{promotion.headline}} — {{promotion.offer}}. Want me to find an available time?",
+    allowedActions: ["READ_CUSTOMER", "READ_PROPERTY", "CHECK_AVAILABILITY", "BOOK_APPOINTMENT"],
+    stopConditions: COMMON_STOPS,
+  },
+];
+
+export function automationTemplate(key: string | null | undefined) {
+  return RECOMMENDED_AUTOMATIONS.find((item) => item.key === key) ?? null;
+}

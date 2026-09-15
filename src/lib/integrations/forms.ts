@@ -120,6 +120,16 @@ export async function createLeadFromWebsiteForm(input: {
     },
   });
 
+  const { emitDomainEvent } = await import("@/lib/conversations/event-engine");
+  await emitDomainEvent({
+    companyId: form.companyId,
+    type: "LEAD_CREATED",
+    sourceType: "Lead",
+    sourceId: lead.id,
+    customerId,
+    idempotencyKey: `lead-created:${lead.id}`,
+    occurredAt: lead.receivedAt,
+  }).catch(() => null);
   await markWebsiteProductsLive(form.companyId);
   return { ok: true as const, leadId: lead.id, companyId: form.companyId };
 }

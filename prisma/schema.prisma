@@ -588,6 +588,12 @@ model Company {
   reviewRequests                 ReviewRequest[]
   callRecords                    CallRecord[]
   automations                    Automation[]
+  promotions                     Promotion[]
+  domainEvents                   DomainEvent[]
+  automationExecutions           AutomationExecution[]
+  conversationGoalSessions       ConversationGoalSession[]
+  conversationAuditEvents        ConversationAuditEvent[]
+  customerRequests               CustomerRequest[]
   insights                       Insight[]
   metricSnapshots                MetricSnapshot[]
   socialPosts                    SocialPost[]
@@ -702,17 +708,23 @@ model Membership {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  invitedBy         User?    @relation("MembershipInviter", fields: [invitedById], references: [id])
-  assignedVehicleId String?
-  assignedVehicle   Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
-  routeStartKind    String?
-  routeEndKind      String?
-  homeAddress       String?
-  homeCity          String?
-  homeState         String?
-  homeZip           String?
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy            User?    @relation("MembershipInviter", fields: [invitedById], references: [id])
+  assignedVehicleId    String?
+  assignedVehicle      Vehicle? @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+  routeStartKind       String?
+  routeEndKind         String?
+  homeAddress          String?
+  homeCity             String?
+  homeState            String?
+  homeZip              String?
+  customerPhotoPath    String?
+  customerDisplayName  String?
+  customerBio          String?
+  yearsExperience      Int?
+  certifications       String[] @default([])
+  customerIntroduction String?
 
   @@unique([companyId, userId])
   @@index([userId])
@@ -767,31 +779,34 @@ model ServiceType {
 // ============================================================
 
 model Customer {
-  id                       String                 @id @default(cuid())
-  companyId                String
-  firstName                String
-  lastName                 String
-  businessName             String?
-  email                    String?
-  phone                    String?
-  secondaryPhone           String?
-  preferredContactMethod   PreferredContactMethod @default(ANY)
-  notes                    String?
-  status                   CustomerStatus         @default(ACTIVE)
-  tags                     String[]               @default([])
-  source                   String?
-  sourceSystem             String?
-  externalId               String?
-  importSessionId          String?
-  importMode               String                 @default("LIVE")
-  quickbooksCustomerId     String?
-  quickbooksRealmId        String?
-  quickbooksLastModifiedAt DateTime?
-  lastSyncedAt             DateTime?
-  syncStatus               String?
-  syncError                String?
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
+  id                            String                 @id @default(cuid())
+  companyId                     String
+  firstName                     String
+  lastName                      String
+  businessName                  String?
+  email                         String?
+  phone                         String?
+  secondaryPhone                String?
+  preferredContactMethod        PreferredContactMethod @default(ANY)
+  notes                         String?
+  status                        CustomerStatus         @default(ACTIVE)
+  tags                          String[]               @default([])
+  source                        String?
+  sourceSystem                  String?
+  externalId                    String?
+  importSessionId               String?
+  importMode                    String                 @default("LIVE")
+  quickbooksCustomerId          String?
+  quickbooksRealmId             String?
+  quickbooksLastModifiedAt      DateTime?
+  lastSyncedAt                  DateTime?
+  syncStatus                    String?
+  syncError                     String?
+  smsMarketingOptedOutAt        DateTime?
+  smsOptOutSource               String?
+  communicationConsentUpdatedAt DateTime?
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
 
   company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   properties                   Property[]
@@ -814,6 +829,9 @@ model Customer {
   waitingRecords               WaitingRecord[]
   conversationSchedulingStates ConversationSchedulingState[]
   maintenanceVisits            MaintenanceVisit[]
+  automationExecutions         AutomationExecution[]
+  conversationGoalSessions     ConversationGoalSession[]
+  customerRequests             CustomerRequest[]
 
   @@index([companyId])
   @@index([companyId, lastName, firstName])
@@ -1046,6 +1064,7 @@ model Job {
   maintenanceVisits            MaintenanceVisit[]
   conversationSchedulingStates ConversationSchedulingState[]
   billingWatchdogFindings      BillingWatchdogFinding[]
+  customerRequests             CustomerRequest[]
 
   @@unique([companyId, jobNumber])
   @@unique([companyId, schedulingIdempotencyKey])
@@ -2243,7 +2262,7 @@ model ProviderIdentityMap {
 }
 
 model CommunicationThread {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   companyId         String
   provider          String
   externalId        String
@@ -2256,19 +2275,29 @@ model CommunicationThread {
   externalContactId String?
   lastPreview       String?
   lastActivityAt    DateTime
-  unread            Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  unread            Boolean   @default(false)
+  handlingState     String    @default("UNASSIGNED")
+  handledByUserId   String?
+  currentGoal       String?
+  needsHumanAt      DateTime?
+  reginaPausedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  company          Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer         Customer?                     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  lead             Lead?                         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  messages         CommunicationMessage[]
-  schedulingStates ConversationSchedulingState[]
+  company                 Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer                Customer?                     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead                    Lead?                         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages                CommunicationMessage[]
+  schedulingStates        ConversationSchedulingState[]
+  automationExecutions    AutomationExecution[]
+  goalSessions            ConversationGoalSession[]
+  conversationAuditEvents ConversationAuditEvent[]
+  customerRequests        CustomerRequest[]
 
   @@unique([companyId, provider, externalId])
   @@index([companyId, lastActivityAt])
   @@index([companyId, unread])
+  @@index([companyId, handlingState, lastActivityAt])
   @@index([companyId, externalContactId])
 }
 
@@ -2296,23 +2325,199 @@ model CommunicationMessage {
 }
 
 model Automation {
-  id         String   @id @default(cuid())
-  companyId  String
-  playbookId String?
-  name       String
-  trigger    String
-  conditions Json?
-  action     String
-  enabled    Boolean  @default(false)
-  status     String   @default("DRAFT")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String    @id @default(cuid())
+  companyId       String
+  playbookId      String?
+  promotionId     String?
+  templateKey     String?
+  name            String
+  trigger         String
+  conditions      Json?
+  action          String
+  mode            String    @default("SEND_MESSAGE")
+  goal            String?
+  channel         String    @default("SMS")
+  firstMessage    String?   @db.Text
+  allowedActions  String[]  @default([])
+  escalationRules String[]  @default([])
+  stopConditions  String[]  @default([])
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+  lastTriggeredAt DateTime?
+  enabled         Boolean   @default(false)
+  status          String    @default("DRAFT")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  playbook Playbook? @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook   Playbook?             @relation(fields: [playbookId], references: [id], onDelete: SetNull)
+  promotion  Promotion?            @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  executions AutomationExecution[]
 
+  @@unique([companyId, templateKey])
   @@index([companyId])
   @@index([companyId, playbookId])
+  @@index([companyId, enabled, trigger])
+  @@index([companyId, promotionId])
+}
+
+model Promotion {
+  id                  String   @id @default(cuid())
+  companyId           String
+  name                String
+  internalDescription String?
+  headline            String
+  customerCopy        String?  @db.Text
+  offer               String
+  startsAt            DateTime
+  endsAt              DateTime
+  eligibleServices    String[] @default([])
+  audience            String   @default("ALL_CUSTOMERS")
+  targeting           Json?
+  promoCode           String?
+  imagePath           String?
+  terms               String?  @db.Text
+  bookingLinkBehavior String   @default("REGINA_BOOKS")
+  status              String   @default("DRAFT")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  company     Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automations Automation[]
+  executions  AutomationExecution[]
+
+  @@index([companyId, status, startsAt, endsAt])
+}
+
+model DomainEvent {
+  id             String   @id @default(cuid())
+  companyId      String
+  type           String
+  sourceType     String
+  sourceId       String
+  customerId     String?
+  jobId          String?
+  payload        Json?
+  idempotencyKey String
+  occurredAt     DateTime
+  createdAt      DateTime @default(now())
+
+  company    Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  executions AutomationExecution[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, type, occurredAt])
+  @@index([companyId, customerId, occurredAt])
+}
+
+model AutomationExecution {
+  id              String    @id @default(cuid())
+  companyId       String
+  automationId    String
+  eventId         String
+  customerId      String?
+  threadId        String?
+  promotionId     String?
+  sourceType      String
+  sourceId        String
+  goal            String?
+  mode            String
+  status          String    @default("STARTED")
+  decision        String?
+  firstMessage    String?   @db.Text
+  messageId       String?
+  failure         String?
+  startedAt       DateTime  @default(now())
+  repliedAt       DateTime?
+  goalCompletedAt DateTime?
+  humanTakeoverAt DateTime?
+  optedOutAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company     Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automation  Automation               @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  event       DomainEvent              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  customer    Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  thread      CommunicationThread?     @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  promotion   Promotion?               @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  goalSession ConversationGoalSession?
+  auditEvents ConversationAuditEvent[]
+
+  @@unique([companyId, automationId, eventId])
+  @@index([companyId, status, startedAt])
+  @@index([companyId, customerId, startedAt])
+  @@index([companyId, threadId, status])
+}
+
+model ConversationGoalSession {
+  id                    String    @id @default(cuid())
+  companyId             String
+  threadId              String
+  executionId           String?   @unique
+  customerId            String?
+  propertyId            String?
+  jobId                 String?
+  goal                  String
+  state                 String    @default("STARTED")
+  context               Json?
+  allowedActions        String[]  @default([])
+  stopConditions        String[]  @default([])
+  lastInboundMessageId  String?
+  lastOutboundMessageId String?
+  humanTakeoverById     String?
+  completedAt           DateTime?
+  expiresAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  thread    CommunicationThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  execution AutomationExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  customer  Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, threadId, state])
+  @@index([companyId, customerId, updatedAt])
+}
+
+model ConversationAuditEvent {
+  id          String   @id @default(cuid())
+  companyId   String
+  threadId    String?
+  executionId String?
+  event       String
+  decision    String?
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  thread    CommunicationThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  execution AutomationExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, threadId, createdAt])
+  @@index([companyId, executionId, createdAt])
+}
+
+model CustomerRequest {
+  id             String    @id @default(cuid())
+  companyId      String
+  customerId     String
+  jobId          String
+  threadId       String?
+  body           String    @db.Text
+  source         String    @default("CUSTOMER_CONVERSATION")
+  author         String    @default("REGINA")
+  acknowledgedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  company  Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  job      Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  thread   CommunicationThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, jobId, acknowledgedAt, createdAt])
+  @@index([companyId, customerId, createdAt])
 }
 
 model Insight {

@@ -13,9 +13,14 @@ import { formatCallDurationLabel } from "@/lib/highlevel/webhook-log";
 import { formatDateTime } from "@/lib/datetime";
 
 const COMM_FILTERS = [
-  { id: "inbox", label: "Inbox" },
-  { id: "today", label: "Today's calls" },
-  { id: "missed", label: "Missed" },
+  { id: "all", label: "All" },
+  { id: "regina", label: "Regina Active" },
+  { id: "needs-human", label: "Needs Human" },
+  { id: "human", label: "Human Active" },
+  { id: "unread", label: "Unread" },
+  { id: "jobs-today", label: "Jobs Today" },
+  { id: "new-leads", label: "New Leads" },
+  { id: "missed", label: "Missed Calls" },
 ] as const;
 
 type MessageMeta = {
@@ -35,7 +40,7 @@ export default async function CommunicationsPage({
 }) {
   const ctx = await requirePermission("marketing:view");
   const params = await searchParams;
-  const filter = params.filter?.trim() || "inbox";
+  const filter = params.filter?.trim() || "all";
   const composeCustomerId = params.customerId?.trim() || "";
   const composeTo = params.to?.trim() || "";
   const dayStart = startOfDay(new Date());
@@ -43,18 +48,21 @@ export default async function CommunicationsPage({
   const connection = await prisma.integrationConnection.findFirst({
     where: { companyId: ctx.company.id, providerKey: HIGHLEVEL_PROVIDER_KEY },
   });
+  const jobsToday = filter === "jobs-today"
+    ? await prisma.job.findMany({
+        where: { companyId: ctx.company.id, scheduledStart: { gte: dayStart, lte: dayEnd }, status: { not: "CANCELED" } },
+        select: { id: true },
+      })
+    : [];
   const threads = await prisma.communicationThread.findMany({
     where: {
       companyId: ctx.company.id,
-      ...(filter === "today" ? { lastActivityAt: { gte: dayStart, lte: dayEnd } } : {}),
-      ...(filter === "needs-response"
-        ? {
-            lead: {
-              firstRespondedAt: null,
-              status: { in: ["NEW", "CONTACTED"] },
-            },
-          }
-        : {}),
+      ...(filter === "regina" ? { handlingState: "REGINA_ACTIVE" } : {}),
+      ...(filter === "needs-human" ? { handlingState: { in: ["NEEDS_HUMAN", "WAITING_FOR_HUMAN"] } } : {}),
+      ...(filter === "human" ? { handlingState: "HUMAN_ACTIVE" } : {}),
+      ...(filter === "unread" ? { unread: true } : {}),
+      ...(filter === "jobs-today" ? { goalSessions: { some: { jobId: { in: jobsToday.map((job) => job.id) } } } } : {}),
+      ...(filter === "new-leads" ? { leadId: { not: null }, lead: { firstRespondedAt: null } } : {}),
     },
     orderBy: { lastActivityAt: "desc" },
     take: 80,
@@ -62,10 +70,11 @@ export default async function CommunicationsPage({
       customer: { select: { id: true, firstName: true, lastName: true, businessName: true } },
       lead: { select: { id: true, firstName: true, lastName: true, source: true } },
       messages: { orderBy: { occurredAt: "desc" }, take: 1 },
+      goalSessions: { orderBy: { updatedAt: "desc" }, take: 1, select: { goal: true, state: true, jobId: true } },
     },
   });
   const connected = connection?.status === "CONNECTED";
-  const loadCalls = filter === "inbox" || filter === "today" || filter === "missed";
+  const loadCalls = filter === "all" || filter === "missed";
   const calls = loadCalls
     ? await prisma.callRecord.findMany({
         where: {
@@ -120,7 +129,7 @@ export default async function CommunicationsPage({
         {COMM_FILTERS.map((item) => (
           <Link
             key={item.id}
-            href={item.id === "inbox" ? "/marketing/communications" : `/marketing/communications?filter=${item.id}`}
+            href={item.id === "all" ? "/marketing/communications" : `/marketing/communications?filter=${item.id}`}
             className={`rounded-full px-3 py-1 text-sm ${
               filter === item.id
                 ? "bg-[var(--cy-navy)] text-white"
@@ -132,14 +141,14 @@ export default async function CommunicationsPage({
         ))}
       </div>
 
-      {filter === "needs-response" ? (
+      {filter === "needs-human" ? (
         <div className="flex flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cy-orange)]">
-              Needs a response
+              Needs human
             </p>
             <p className="mt-0.5 text-sm text-[var(--cy-navy)]">
-              Conversations for leads that have not received a first response.
+              Regina is paused on these conversations until an office user takes over.
             </p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--cy-navy)]">
               {threads.length} conversation{threads.length === 1 ? "" : "s"}
@@ -229,9 +238,9 @@ export default async function CommunicationsPage({
             })}
           </ul>
         </section>
-      ) : filter === "missed" || filter === "today" ? (
+      ) : filter === "missed" ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)]">
-          {filter === "missed" ? "No open missed-call records." : "No calls recorded today."}
+          No open missed-call records.
         </p>
       ) : null}
 
@@ -252,6 +261,7 @@ export default async function CommunicationsPage({
                 ? thread.customer.businessName || `${thread.customer.firstName} ${thread.customer.lastName}`
                 : thread.contactName || thread.phone || thread.email || "Unknown contact";
               const latest = thread.messages[0];
+              const goal = thread.goalSessions[0];
               const meta = (latest?.metadata ?? {}) as MessageMeta;
               const isCall = thread.channel === "CALL" || latest?.kind === "CALL" || latest?.kind === "VOICEMAIL";
               const duration = formatCallDurationLabel(meta.callDuration);
@@ -264,6 +274,18 @@ export default async function CommunicationsPage({
                           {name}
                           {thread.unread ? <span className="ml-2 text-xs text-[var(--cy-orange)]">Unread</span> : null}
                         </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-[var(--cy-gray)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--cy-navy)]">
+                            {thread.handlingState === "REGINA_ACTIVE"
+                              ? "Regina"
+                              : thread.handlingState.replaceAll("_", " ")}
+                          </span>
+                          {goal ? (
+                            <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-[var(--cy-orange)]">
+                              {goal.goal.replaceAll("_", " ")} · {goal.state.replaceAll("_", " ")}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="text-sm text-[var(--muted-foreground)]">
                           {isCall ? "Inbound Call" : thread.channel}
                           {thread.phone ? ` · ${thread.phone}` : thread.email ? ` · ${thread.email}` : " · No contact detail"}

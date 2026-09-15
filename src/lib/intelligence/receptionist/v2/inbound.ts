@@ -62,6 +62,16 @@ export async function processReceptionistV2(
   const settings = await loadReceptionistSettings(input.companyId);
   const mode = parseReceptionistV2Mode(settings.mode);
   const owner = await loadCustomerConversationOwner(prisma, input.companyId);
+  const threadControl = await prisma.communicationThread.findFirst({
+    where: { id: input.threadId, companyId: input.companyId },
+    select: { handlingState: true },
+  });
+  if (
+    threadControl &&
+    ["HUMAN_ACTIVE", "NEEDS_HUMAN", "WAITING_FOR_HUMAN", "PAUSED"].includes(threadControl.handlingState)
+  ) {
+    return { handled: false, skipped: true, reason: "regina_paused_for_thread", mode };
+  }
   if (mode === "OFFICE_ONLY") {
     return { handled: false, skipped: true, reason: "office_only", mode };
   }
@@ -80,7 +90,7 @@ export async function processReceptionistV2(
     return { handled: true, duplicate: true, mode, shadow, intent: existing.intent };
   }
 
-  const [company, history, scheduling, trainingPack, lastTurn] = await Promise.all([
+  const [company, history, scheduling, trainingPack, lastTurn, activeGoal] = await Promise.all([
     prisma.company.findFirst({
       where: { id: input.companyId },
       select: { businessName: true, timezone: true, hoursNote: true, serviceArea: true, description: true, phone: true },
@@ -97,6 +107,24 @@ export async function processReceptionistV2(
       where: { companyId: input.companyId, threadId: input.threadId },
       orderBy: { createdAt: "desc" },
       select: { intent: true, proposedResponse: true, extractedFields: true, verifiedFacts: true },
+    }),
+    prisma.conversationGoalSession.findFirst({
+      where: {
+        companyId: input.companyId,
+        threadId: input.threadId,
+        state: {
+          in: [
+            "STARTED",
+            "WAITING_FOR_CUSTOMER",
+            "COLLECTING_INFORMATION",
+            "CHECKING_AVAILABILITY",
+            "WAITING_FOR_SLOT_SELECTION",
+            "BOOKING",
+          ],
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      include: { execution: { include: { promotion: true } } },
     }),
   ]);
 
@@ -290,6 +318,20 @@ export async function processReceptionistV2(
     canBookAppointment: settings.allowScheduling,
     canReschedule: settings.allowRescheduling,
     canCancel: settings.allowCancellations,
+    conversationGoal: activeGoal?.goal ?? null,
+    conversationGoalState: activeGoal?.state ?? null,
+    allowedConversationActions: activeGoal?.allowedActions ?? [],
+    promotion:
+      activeGoal?.execution?.promotion &&
+      activeGoal.execution.promotion.status === "ACTIVE" &&
+      activeGoal.execution.promotion.startsAt <= new Date() &&
+      activeGoal.execution.promotion.endsAt >= new Date()
+        ? {
+            headline: activeGoal.execution.promotion.headline,
+            offer: activeGoal.execution.promotion.offer,
+            terms: activeGoal.execution.promotion.terms,
+          }
+        : null,
     isTroubleshootingAsk: conversationState.isTroubleshootingAsk,
     safeGuidance: conversationState.isTroubleshootingAsk && !knowledgeAnswer
       ? "I don't want to walk you through anything that could be unsafe. I can help get someone out to take a look."
