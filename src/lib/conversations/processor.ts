@@ -132,6 +132,7 @@ async function processAutomationFollowUp(executionId: string, now: Date) {
     await prisma.automationExecution.update({ where: { id: execution.id }, data: { status: "STOPPED", decision: "FOLLOW_UP_STOP_CONDITION" } });
     return null;
   }
+  if (!customer?.phone) return null;
   const company = await prisma.company.findFirstOrThrow({ where: { id: execution.companyId }, select: { businessName: true, timezone: true } });
   if (isQuietHour(company.timezone, automation.quietHoursStart ?? 20, automation.quietHoursEnd ?? 8, now)) {
     await prisma.automationExecution.update({ where: { id: execution.id }, data: { status: "WAITING_FOR_CUSTOMER", nextFollowUpAt: new Date(now.getTime() + 60 * 60_000) } });
