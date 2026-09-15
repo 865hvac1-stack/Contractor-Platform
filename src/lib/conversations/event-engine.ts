@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { sendCompanyCommunication } from "@/lib/comms/provider";
 import { loadReceptionistSettings } from "@/lib/intelligence/receptionist/settings";
 import { renderFirstMessage, promotionIsActive } from "@/lib/conversations/personalization";
+import { isSmsOptedOut } from "@/lib/actions/eligibility";
 
 export const CONTRACTORYOU_EVENTS = [
   "LEAD_CREATED",
@@ -140,7 +141,9 @@ export async function executeAutomationForEvent(eventId: string, automationId: s
 
   const blockReason = executionBlockReason({
     eventType: joined.type as ContractorYouEventType,
-    customerOptedOut: Boolean(context.customer?.smsMarketingOptedOutAt),
+    customerOptedOut:
+      Boolean(context.customer?.smsMarketingOptedOutAt) ||
+      Boolean(context.customer && isSmsOptedOut(context.customer)),
     customerPhone: context.customer?.phone || context.lead?.phone,
     companyTimeZone: context.company.timezone,
     quietHoursStart: automation.quietHoursStart,

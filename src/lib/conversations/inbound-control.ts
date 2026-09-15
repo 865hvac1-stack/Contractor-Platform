@@ -53,6 +53,13 @@ export async function applyInboundConversationControls(input: {
   const customerId = session?.customerId || input.customerId || null;
 
   if (isSmsOptOut(body)) {
+    const customer = customerId
+      ? await prisma.customer.findFirst({
+          where: { id: customerId, companyId: input.companyId },
+          select: { tags: true },
+        })
+      : null;
+    const tags = Array.from(new Set([...(customer?.tags || []), "sms-opt-out"]));
     await prisma.$transaction(async (tx) => {
       if (customerId) {
         await tx.customer.updateMany({
@@ -61,6 +68,7 @@ export async function applyInboundConversationControls(input: {
             smsMarketingOptedOutAt: new Date(),
             smsOptOutSource: "INBOUND_SMS_KEYWORD",
             communicationConsentUpdatedAt: new Date(),
+            tags: { set: tags },
           },
         });
       }
