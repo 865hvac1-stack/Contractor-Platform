@@ -5,6 +5,7 @@ import { fieldStatusLabel, propertyAddress } from "@/lib/tech/access";
 import { operationalRecordWhere } from "@/lib/imports/modes";
 import { classifyDispatchJob } from "@/lib/dispatch/job-type";
 import { isRunningLate, scheduledMinutes, technicianBoardState } from "@/lib/dispatch/validate";
+import type { DispatchCard } from "@/lib/dispatch/types";
 
 const jobInclude = {
   customer: {
@@ -177,7 +178,7 @@ export function toDispatchCard(job: {
     part: { inventoryStocks: Array<{ onHand: number; reserved: number }> };
   }>;
   waitingRecords?: Array<{ column: { key: string } }>;
-}) {
+}): DispatchCard {
   const kind = classifyDispatchJob({ jobType: job.jobType, priority: job.priority, description: job.description });
   return {
     id: job.id,
