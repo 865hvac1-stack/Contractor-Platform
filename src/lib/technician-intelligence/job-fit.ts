@@ -97,8 +97,9 @@ export async function getTechnicianJobFit(input: {
   );
 
   const result = evaluateJobFit({
-    technicianActive: membership.status === "ACTIVE" && actualServiceEligibility?.eligible !== false,
+    technicianActive: membership.status === "ACTIVE",
     smartDispatchEligible: profile?.smartDispatchEligible ?? true,
+    serviceTypeEligible: actualServiceEligibility?.eligible !== false,
     requiredQualifications,
     ownerSkillRating,
     preference: preference?.preference ?? null,

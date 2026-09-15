@@ -252,7 +252,7 @@ describe("Technician Intelligence persistence and job-fit integration", () => {
       categoryId: ids.category,
       window: "ALL_TIME",
     });
-    expect(metric.completedJobs).toBe(2);
+    expect(metric.completedJobs).toBe(1);
     expect(metric.recognizedRevenueCents).toBe(50_000);
     expect(metric.averageTicketCents).toBe(50_000);
     expect(metric.confidence).toBe("INSUFFICIENT");
@@ -265,9 +265,9 @@ describe("Technician Intelligence persistence and job-fit integration", () => {
       categoryId: ids.category,
       window: "ALL_TIME",
     });
-    expect(metric.completedJobs).toBe(2);
+    expect(metric.completedJobs).toBe(1);
     expect(metric.callbackCount).toBe(1);
-    expect(metric.firstTimeCompletionRate).toBe(50);
+    expect(metric.firstTimeCompletionRate).toBe(0);
   });
 
   it("calculates durations from check-in and check-out only", async () => {
@@ -277,7 +277,7 @@ describe("Technician Intelligence persistence and job-fit integration", () => {
       categoryId: ids.category,
       window: "ALL_TIME",
     });
-    expect(metric.validDurationCount).toBe(2);
+    expect(metric.validDurationCount).toBe(1);
     expect(metric.averageDurationMinutes).toBeGreaterThan(0);
   });
 
@@ -296,7 +296,7 @@ describe("Technician Intelligence persistence and job-fit integration", () => {
         },
       },
     });
-    expect(aggregate?.completedJobs).toBe(2);
+    expect(aggregate?.completedJobs).toBe(1);
     expect(aggregate?.callbackCount).toBe(1);
   });
 

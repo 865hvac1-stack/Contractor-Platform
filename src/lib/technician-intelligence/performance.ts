@@ -101,10 +101,16 @@ export async function calculateTechnicianCategoryPerformance(input: {
         where: { type: "CALLBACK" },
         select: { id: true },
       },
+      technicianJobRelationshipsRelated: {
+        where: { type: "CALLBACK" },
+        select: { id: true },
+      },
     },
   });
 
   const eligible = jobs.filter((job) => {
+    // A callback visit is evidence against its original job, not a new denominator.
+    if (job.technicianJobRelationshipsRelated.length > 0) return false;
     if (job.serviceTypeId && mappingServiceTypeIds.includes(job.serviceTypeId)) return true;
     const labels = [job.serviceType?.key, job.serviceType?.name, job.jobType].map(normalizeJobLabel);
     return labels.some((label) => label && normalizedLabels.includes(label));

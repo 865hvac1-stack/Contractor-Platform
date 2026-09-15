@@ -48,6 +48,7 @@ export type FitReasonCode =
   | "TECHNICIAN_ACTIVE"
   | "TECHNICIAN_INACTIVE"
   | "SMART_DISPATCH_DISABLED"
+  | "SERVICE_TYPE_INELIGIBLE"
   | "REQUIRED_QUALIFICATIONS_MET"
   | "MISSING_REQUIRED_QUALIFICATION"
   | "EXPIRED_REQUIRED_CERTIFICATION"
@@ -72,6 +73,7 @@ export type FitReason = {
 export type JobFitInput = {
   technicianActive: boolean;
   smartDispatchEligible: boolean;
+  serviceTypeEligible?: boolean;
   requiredQualifications: Array<{
     id: string;
     name: string;
@@ -98,6 +100,13 @@ export function evaluateJobFit(input: JobFitInput) {
   }
   if (!input.smartDispatchEligible) {
     reasons.push({ code: "SMART_DISPATCH_DISABLED", label: "Smart Dispatch recommendations are disabled", kind: "BLOCKER" });
+  }
+  if (input.serviceTypeEligible === false) {
+    reasons.push({
+      code: "SERVICE_TYPE_INELIGIBLE",
+      label: "Technician is disabled for this service type",
+      kind: "BLOCKER",
+    });
   }
 
   for (const requirement of input.requiredQualifications) {

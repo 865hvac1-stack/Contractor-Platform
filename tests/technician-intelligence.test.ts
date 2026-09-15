@@ -102,6 +102,14 @@ describe("Technician Intelligence core", () => {
     );
   });
 
+  it("honors existing service-type eligibility as a hard constraint", () => {
+    const fit = evaluateJobFit({ ...baseFit, serviceTypeEligible: false });
+    expect(fit.eligible).toBe(false);
+    expect(fit.reasons).toContainEqual(
+      expect.objectContaining({ code: "SERVICE_TYPE_INELIGIBLE", kind: "BLOCKER" })
+    );
+  });
+
   it("supports new-technician readiness without historical jobs", () => {
     expect(
       readiness({
