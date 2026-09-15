@@ -28,11 +28,19 @@ import { formatMoney } from "@/lib/money";
 
 export default async function TechnicianIntelligenceProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ technicianId: string }>;
+  searchParams: Promise<{ window?: string }>;
 }) {
   const ctx = await requirePermission("technician_intelligence:view");
   const { technicianId } = await params;
+  const requestedWindow = (await searchParams).window;
+  const performanceWindow = ["LAST_30_DAYS", "LAST_90_DAYS", "THIS_YEAR", "ALL_TIME"].includes(
+    requestedWindow || ""
+  )
+    ? requestedWindow!
+    : "ALL_TIME";
   const canViewTeam = can(ctx.role, "performance:view_team");
   if (!canViewTeam && technicianId !== ctx.user.id) notFound();
   const canManage = can(ctx.role, "technician_intelligence:manage");
@@ -54,7 +62,7 @@ export default async function TechnicianIntelligenceProfilePage({
                 skillRatings: { include: { skill: true } },
                 qualifications: { include: { definition: true } },
                 preferences: { include: { category: true } },
-                performance: { where: { window: "ALL_TIME" }, include: { category: true } },
+                performance: { where: { window: performanceWindow }, include: { category: true } },
                 overrides: { where: { active: true } },
               },
             },
@@ -335,6 +343,22 @@ export default async function TechnicianIntelligenceProfilePage({
           ) : null
         }
       >
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            ["LAST_30_DAYS", "Last 30 Days"],
+            ["LAST_90_DAYS", "Last 90 Days"],
+            ["THIS_YEAR", "This Year"],
+            ["ALL_TIME", "All Time"],
+          ].map(([value, label]) => (
+            <Link
+              key={value}
+              href={`/team/${technicianId}/intelligence?window=${value}`}
+              className={`rounded-full px-3 py-1.5 text-sm ${performanceWindow === value ? "bg-[var(--cy-navy)] text-white" : "border bg-white"}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
         {profile?.performance.some((metric) => metric.completedJobs) ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {profile.performance.filter((metric) => metric.completedJobs).map((metric) => {

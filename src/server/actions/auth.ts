@@ -215,6 +215,8 @@ export async function completeOnboardingAction(
 
   const { ensureCompanyServiceTypes } = await import("@/lib/trades/service-types");
   await ensureCompanyServiceTypes(prisma, company.id, company.industry);
+  const { ensureTechnicianIntelligenceCatalog } = await import("@/lib/technician-intelligence/catalog");
+  await ensureTechnicianIntelligenceCatalog(company.id, company.industry);
 
   await setActiveCompany(company.id, user.id);
   await writeAudit({
