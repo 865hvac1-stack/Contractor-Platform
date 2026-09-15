@@ -15,6 +15,7 @@ export type DispatchCard = {
   scheduledStart: Date | string | null;
   scheduledEnd: Date | string | null;
   scheduleLocked: boolean;
+  routeOrder: number | null;
   customer: string;
   phone: string | null;
   email: string | null;
