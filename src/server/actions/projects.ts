@@ -24,6 +24,7 @@ import {
 } from "@/lib/projects/core";
 import { emitDomainEvent } from "@/lib/conversations/event-engine";
 import { zonedLocalDateTime } from "@/lib/scheduling/time";
+import { loadProject360 } from "@/lib/projects/load";
 import type { ActionResult } from "@/server/actions/auth";
 
 const ALLOWED_ASSETS = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -622,7 +623,26 @@ export async function completeProjectAction(_prev: ActionResult | null, formData
     const overrideReason = optional(formData, "overrideReason");
     if (blockers.length && !overrideReason) return fail(`Cannot complete yet: ${blockers.join(", ")}. An authorized override requires a reason.`);
     const now = new Date();
-    await prisma.project.update({ where: { id: project.id }, data: { status: "COMPLETE", completedAt: now, completionOverrideReason: overrideReason } });
+    const finalView = await loadProject360({ companyId: ctx.company.id, projectId: project.id, role: ctx.role, userId: ctx.user.id });
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        status: "COMPLETE",
+        completedAt: now,
+        completionOverrideReason: overrideReason,
+        finalSnapshot: finalView ? {
+          completedAt: now.toISOString(),
+          financials: finalView.financials,
+          laborMinutes: finalView.actualLaborMinutes,
+          laborCostCents: finalView.actualLaborCents,
+          phases: finalView.project.phases.map((phase) => ({ id: phase.id, name: phase.name, status: phase.status, actualStart: phase.actualStart?.toISOString() || null, actualCompletion: phase.actualCompletion?.toISOString() || null })),
+          visits: finalView.project.jobs.map((job) => ({ id: job.id, jobNumber: job.jobNumber, status: job.status })),
+          issueCount: finalView.project.issues.length,
+          receiptCount: finalView.project.receipts.length,
+          assetCount: finalView.project.assets.length,
+        } as Prisma.InputJsonValue : undefined,
+      },
+    });
     await activity(ctx.company.id, project.id, ctx.user.id, "PROJECT_COMPLETED", `Project completed${overrideReason ? ` with override: ${overrideReason}` : ""}`);
     await emitProjectEvent(ctx.company.id, "PROJECT_COMPLETED", project.id, project.customerId);
     refreshProject(project.id);

@@ -124,6 +124,11 @@ export async function uploadReceiptAction(
       entityId: receipt.id,
       metadata: { fileName: file.name, duplicate: Boolean(duplicate) },
     });
+    if (projectId) {
+      await prisma.projectActivity.create({
+        data: { companyId: ctx.company.id, projectId, phaseId: projectPhaseId, actorId: ctx.user.id, event: "RECEIPT_UPLOADED", summary: `Receipt uploaded: ${file.name}`, details: { receiptId: receipt.id } },
+      });
+    }
     revalidatePath("/receipts");
     const returnTo = String(formData.get("returnTo") || "");
     if (returnTo.startsWith("/projects/")) {
@@ -275,6 +280,11 @@ export async function reviewReceiptAction(
             incurredAt: dateRaw ? new Date(dateRaw) : new Date(),
           },
         });
+        if (!receipt.confirmedAt) {
+          await prisma.projectActivity.create({
+            data: { companyId: ctx.company.id, projectId, phaseId: projectPhaseId, actorId: ctx.user.id, event: "RECEIPT_CONFIRMED", summary: `Receipt confirmed${vendor ? `: ${vendor}` : ""}`, details: { receiptId: receipt.id, amountCents: amount } },
+          });
+        }
       }
     }
     revalidatePath("/receipts");

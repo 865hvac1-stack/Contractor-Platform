@@ -40,6 +40,7 @@ CREATE TABLE "Project" (
     "actualStart" TIMESTAMP(3),
     "completedAt" TIMESTAMP(3),
     "completionOverrideReason" TEXT,
+    "finalSnapshot" JSONB,
     "minimumMarginBps" INTEGER NOT NULL DEFAULT 2000,
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

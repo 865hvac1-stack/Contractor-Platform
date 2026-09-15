@@ -126,7 +126,7 @@ export async function loadProjectsDashboard(input: { companyId: string; role: Co
           { projectNumber: { contains: input.q, mode: "insensitive" } },
           { builderName: { contains: input.q, mode: "insensitive" } },
           { property: { address: { contains: input.q, mode: "insensitive" } } },
-          { customer: { OR: [{ firstName: { contains: input.q, mode: "insensitive" } }, { lastName: { contains: input.q, mode: "insensitive" } }, { businessName: { contains: input.q, mode: "insensitive" } }] } },
+          { customer: { OR: [{ firstName: { contains: input.q, mode: "insensitive" } }, { lastName: { contains: input.q, mode: "insensitive" } }, { businessName: { contains: input.q, mode: "insensitive" } }, { phone: { contains: input.q } }] } },
         ],
       } : {}),
     },

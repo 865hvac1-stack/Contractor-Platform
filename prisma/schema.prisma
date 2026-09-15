@@ -2604,6 +2604,7 @@ model Project {
   actualStart              DateTime?
   completedAt              DateTime?
   completionOverrideReason String?
+  finalSnapshot            Json?
   minimumMarginBps         Int       @default(2000)
   createdById              String
   createdAt                DateTime  @default(now())
