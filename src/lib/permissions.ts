@@ -297,6 +297,7 @@ export const ROLE_PERMISSIONS: Record<CompanyRole, Permission[]> = {
     "inventory:view",
     "inventory:use",
     "projects:view",
+    "technician_intelligence:view",
     "project_labor:clock",
     "project_assets:manage",
   ],

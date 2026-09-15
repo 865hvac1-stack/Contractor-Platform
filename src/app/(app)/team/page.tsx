@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { CompanyRole } from "@prisma/client";
+import Link from "next/link";
 
 const INVITE_ROLES: CompanyRole[] = [
   "ADMIN",
@@ -57,7 +58,8 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
         <h1 className="font-display text-3xl tracking-tight">Team</h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           People with access to {ctx.company.businessName}.
@@ -65,6 +67,12 @@ export default async function TeamPage() {
             ? " Loaded labor cost is office-only and used later for job costing. It is not payroll and is never shown to technicians."
             : ""}
         </p>
+        </div>
+        {can(ctx.role, "technician_intelligence:view") ? (
+          <Link href="/team/intelligence" className="rounded-lg bg-[var(--cy-navy)] px-4 py-2 text-center text-sm font-medium text-white">
+            Technician Intelligence
+          </Link>
+        ) : null}
       </div>
 
       {members.length === 0 ? (
@@ -83,6 +91,7 @@ export default async function TeamPage() {
                 <TableHead>Status</TableHead>
                 {canManage ? <TableHead>Change role</TableHead> : null}
                 {canLabor ? <TableHead>Loaded labor / hr</TableHead> : null}
+                <TableHead>Intelligence</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -150,6 +159,15 @@ export default async function TeamPage() {
                       </ActionForm>
                     </TableCell>
                   ) : null}
+                  <TableCell>
+                    {["TECHNICIAN", "INSTALLER", "MANAGER"].includes(m.role) ? (
+                      <Link href={`/team/${m.userId}/intelligence`} className="text-sm font-medium text-[var(--cy-orange)] hover:underline">
+                        Open profile
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-[var(--muted-foreground)]">Not a field role</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

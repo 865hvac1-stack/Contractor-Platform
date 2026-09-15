@@ -20,6 +20,7 @@ import {
   CircleHelp,
   ListChecks,
   FolderKanban,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import type { CompanyRole } from "@prisma/client";
@@ -57,6 +58,7 @@ export const MORE_NAV: NavItem[] = [
   { href: "/settings/playbooks", label: "Playbooks", icon: BookOpen, permission: "playbooks:view" },
   { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports:view" },
   { href: "/team", label: "Team", icon: UserCog, exact: true, permission: "team:view" },
+  { href: "/team/intelligence", label: "Technician Intelligence", icon: Sparkles, permission: "technician_intelligence:view" },
   { href: "/team/compensation", label: "Compensation", icon: Wallet, permission: "compensation:view_all" },
   { href: "/team/performance", label: "Scorecards", icon: BarChart3, permission: "performance:view_team" },
   { href: "/me/performance", label: "My Performance", icon: Star, permission: "performance:view_own" },
@@ -154,6 +156,6 @@ export function moreGroups(role: CompanyRole) {
     { label: "Daily tools", items: pick(["/attention", "/actions", "/intelligence", "/marketing/communications", "/office"]) },
     { label: "Operations", items: pick(["/schedule", "/operations/waiting", "/estimates", "/settings/playbooks", "/pricebook"]) },
     { label: "Money & growth", items: pick(["/billing-watchdog", "/invoices", "/payments", "/receipts", "/expenses", "/reports", "/memberships", "/maintenance", "/marketing/leads", "/marketing/campaigns", "/marketing/reviews", "/marketing/automations", "/marketing/promotions", "/marketing/channels"]) },
-    { label: "Team", items: pick(["/team", "/team/compensation", "/team/performance", "/me/performance"]) },
+    { label: "Team", items: pick(["/team", "/team/intelligence", "/team/compensation", "/team/performance", "/me/performance"]) },
   ].filter((group) => group.items.length > 0 && group.items.every((item) => byHref.has(item.href)));
 }
